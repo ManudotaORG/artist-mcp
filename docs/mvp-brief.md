@@ -34,8 +34,8 @@ No Docker needed — we're using a hosted Supabase project, not a local one.
 - [x] Project created at supabase.com, nearby region, **database password saved** (shown once) — `artist-mcp`, eu-west-2
 - [x] Written down: Project URL, anon key, service_role key (Project Settings → API) — pulled via CLI into `apps/web/.env.local`
 - [x] Written down: project ref (from the URL) — `zxiemadwrkcoovvpscfb`
-- [ ] Email provider enabled (Authentication → Providers) — this is magic-link sign-in
-- [ ] Site URL set to `http://localhost:3000` and `http://localhost:3000/**` added to redirect URLs
+- [x] Email provider enabled (Authentication → Providers) — this is magic-link sign-in — proven: a sign-in email was delivered
+- [x] Site URL set to `http://localhost:3000` and `http://localhost:3000/**` added to redirect URLs — proven: the emailed link reached `/auth/confirm`
 
 The built-in email sender is rate-limited but fine for testing. Don't set up SMTP yet.
 
@@ -43,12 +43,12 @@ The built-in email sender is rate-limited but fine for testing. Don't set up SMT
 
 portal.azure.com → **Microsoft Entra ID** → **App registrations** → **New registration**.
 
-- [ ] Scope question below answered — do this before registering anything
-- [ ] Registration created with **supported account types** = any org directory + personal Microsoft accounts
-- [ ] Redirect URI added: platform **Web**, `http://localhost:3000/api/auth/microsoft/callback`
-- [ ] Application (client) ID written down (Overview)
-- [ ] Client secret created, 24 months, **Value copied immediately** — not the Secret ID, it's never shown again
-- [ ] Delegated permissions added: `Notes.Read`, `offline_access`, `User.Read`
+- [x] Scope question below answered — do this before registering anything
+- [x] Registration created with **supported account types** = any org directory + personal Microsoft accounts
+- [x] Redirect URI added: platform **Web**, `http://localhost:3000/api/auth/microsoft/callback` — Web is required; a client secret cannot be used with the SPA platform type
+- [x] Application (client) ID written down (Overview)
+- [x] Client secret created, **Value copied immediately** — validated against Microsoft before use
+- [x] Delegated permissions added: `Notes.Read`, `offline_access`, `User.Read` — consent granted; a refresh token came back, so `offline_access` took
 
 ## 4. Environment
 
@@ -100,8 +100,8 @@ TOKEN_ENCRYPTION_KEY=
 
 Do this last — the connection key doesn't exist until the web app is running and Microsoft is connected.
 
-- [ ] `npx @yourscope/artist-mcp init` run, key pasted, config written
-- [ ] Claude Desktop restarted (it doesn't reload config on its own)
+- [x] `npx @manudota/artist-mcp init` run, key pasted, config written
+- [x] Claude Desktop restarted (it doesn't reload config on its own) — restarted after the `npx` entry was written; `list_notes` works from the published package
 
 Config file locations, if you need to look:
 
@@ -221,8 +221,12 @@ without it `read_note` fails intermittently for no reason.
 - [x] `files` field or `.npmignore` so only `dist` ships
 - [x] Build runs on `prepublishOnly`
 - [x] Edge function URL baked in as a default, overridable by env for testing — real project URL baked in; `ARTIST_MCP_ENDPOINT` overrides
-- [ ] Published at `0.1.0`
-- [ ] Verified: `npx @yourscope/artist-mcp init` works from a directory outside the repo
+- [x] Published at `0.1.0` — publish confirmed by npm's email and by `npm access` (package exists, owner `manudota`, status `public`). Required 2FA; a security key means no `--otp` code, so it goes through `npm publish` and its browser handshake, not `pnpm publish`.
+- [x] Verified: `npx @manudota/artist-mcp init` works from a directory outside the repo — run from an empty temp dir with no checkout: bad key refused without writing, valid key wrote the `npx` entry, and the installed package served `list_notes` and `read_note` over a real MCP client
+
+Registry propagation lagged well behind the publish: `npm access` reported the
+package public while the packument and tarball still 404'd for ~15 minutes.
+`npm access` is the reliable signal right after publishing, not `npm view`.
 - [x] No workspace-internal imports anywhere in `apps/mcp`
 
 ## Acceptance test
@@ -231,7 +235,7 @@ Run this end to end. Every box ticked, or it isn't done.
 
 - [x] 1. Sign in to the web app
 - [x] 2. Click **Connect Microsoft**, approve consent, land back showing connected
-- [ ] 3. Copy the connection key, run `npx @yourscope/artist-mcp init`, paste it, restart Claude
+- [x] 3. Copy the connection key, run `npx @manudota/artist-mcp init`, paste it, restart Claude
 - [x] 4. Ask Claude Desktop to list the OneNote notes — it does
 - [x] 5. Ask it to read one — it does (full page: milestones, tasks, musician table)
 - [ ] 6. A second user, on a different machine, installs from npm with their own key and sees only their own notes
