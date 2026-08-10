@@ -246,6 +246,30 @@ Step 6 is not optional. It's both the multi-tenancy test and the proof that dist
 
 No agents. No project types. No calendar. No Google. No scheduled jobs. No teams or organisations. No billing. No web app deployment. No CI. No tests beyond the acceptance test above. No custom design. No error handling beyond showing "reconnect needed" when a refresh fails.
 
+## Known gaps — deferred, not forgotten
+
+Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
+
+1. **No way to disconnect Microsoft.** The page offers Reconnect but nothing
+   deletes the `connections` row, so a user cannot revoke Microsoft access from
+   the app — only at Microsoft's end, or by deleting the row directly. Revoking
+   the connection key stops MCP access but leaves the refresh token stored.
+   This is the one users will expect to find and won't.
+
+2. **Rate limiter can't limit unauthenticated callers.** It keys on the sha256
+   of the presented key, so garbage keys get a fresh bucket every request. Keys
+   are 32 random bytes, so this is a cost and availability risk, not a data one.
+   A real fix needs shared state. Internal to the function — fixable without
+   touching the `/v1/` contract.
+
+3. **Key→user isolation never observed.** Every test used one user. The code
+   isolates by resolving the key to a `user_id`, and RLS covers the browser
+   path, but no test has confirmed one user's key fails to reach another's
+   notes. Cheapest meaningful check: a second Supabase user with their own key.
+
+4. **One key per user.** Generating replaces the old, so two machines cannot
+   hold separate keys.
+
 ## Confirm before registering the Microsoft app
 
 Are the notes **OneNote notebooks** or **files in a OneDrive folder**? This brief assumes files. If it's OneNote the scope becomes `Notes.Read` and it's a different API — ask before registering, because changing scopes later means dragging users back through consent.
