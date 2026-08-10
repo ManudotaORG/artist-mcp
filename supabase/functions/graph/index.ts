@@ -80,12 +80,16 @@ function htmlToText(html: string): string {
     .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, "\n")
     .replace(/<li[^>]*>/gi, "- ")
     .replace(/<[^>]+>/g, "")
+    // Numeric entities first: OneNote emits these for accented characters, so
+    // without this "Müller" arrives as "M&#252;ller".
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
     .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+    // &amp; last, so "&amp;lt;" does not become "<".
+    .replace(/&amp;/g, "&")
     // OneNote nests deeply, leaving every line indented with tabs and stray
     // blank lines between them. Flatten both so the model reads prose.
     .split("\n")
@@ -225,7 +229,15 @@ async function readNote(token: string, noteId: unknown) {
 
 // -------------------------------------------------------------------- router
 
-Deno.serve(async (req) => {
+/**
+ * The trust boundary: authenticates the caller, rate limits, then dispatches.
+ *
+ * Named rather than passed inline to Deno.serve so it appears in stack traces
+ * and in structural analysis. As an anonymous arrow it had no node in the call
+ * graph, which made everything it calls — the operation whitelist, sha256, the
+ * rate limiter, the key lookup — look unreachable.
+ */
+export const handleRequest = async (req: Request): Promise<Response> => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
 
   try {
@@ -274,4 +286,6 @@ Deno.serve(async (req) => {
     console.error(err);
     return json({ error: "Unexpected server error." }, 500);
   }
-});
+};
+
+Deno.serve(handleRequest);
