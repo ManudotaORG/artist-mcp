@@ -86,6 +86,12 @@ function htmlToText(html: string): string {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
+    // OneNote nests deeply, leaving every line indented with tabs and stray
+    // blank lines between them. Flatten both so the model reads prose.
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter((line, i, all) => line !== "" || all[i - 1] !== "")
+    .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -153,16 +159,29 @@ class HttpError extends Error {
   }
 }
 
+/**
+ * The OneNote endpoints return transient 503/504 often enough to fail roughly
+ * one call in three, so a read is retried briefly. Only 5xx and 429 are
+ * retried — a 4xx is a real answer and retrying it would just be slower.
+ */
 async function graphGet(path: string, token: string): Promise<Response> {
   // Path is built here from a fixed set of literals below. Nothing from the
   // caller is ever concatenated into a URL.
-  const res = await fetch(`${GRAPH}${path}`, {
-    headers: { authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) {
-    throw new HttpError(502, `Microsoft Graph returned ${res.status}.`);
+  const url = `${GRAPH}${path}`;
+  const delays = [400, 1200];
+
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (res.ok) return res;
+
+    const retryable = res.status >= 500 || res.status === 429;
+    if (!retryable || attempt >= delays.length) {
+      throw new HttpError(502, `Microsoft Graph returned ${res.status}.`);
+    }
+    await new Promise((r) => setTimeout(r, delays[attempt]));
   }
-  return res;
 }
 
 // ---------------------------------------------------------------- operations

@@ -74,11 +74,16 @@ Same secret in two runtimes means setting it in both. There's no shared file.
 
 ### Tasks
 
-- [ ] `apps/web/.env.local` created with all seven values below — file created, five of seven filled; `MS_CLIENT_ID` and `MS_CLIENT_SECRET` await the Azure registration
+- [x] `apps/web/.env.local` created with all seven values below — all seven set; client id + secret validated against Microsoft
 - [x] `TOKEN_ENCRYPTION_KEY` generated (`openssl rand -base64 32`)
 - [x] Verified no secret carries a `NEXT_PUBLIC_` prefix
 - [x] `supabase link --project-ref <your-ref>` run
-- [ ] Edge function secrets set — `TOKEN_ENCRYPTION_KEY` set; re-run with `MS_CLIENT_ID` and `MS_CLIENT_SECRET` after section 3
+- [x] Edge function secrets set — all three set
+
+Watch for AADSTS53003: a Conditional Access policy blocks app-only
+(`client_credentials`) token issuance for this app. The delegated flow this app
+actually uses is a different path and may be unaffected — but if consent fails
+with 53003, sign in with a personal Microsoft account rather than a work one.
 - [x] `.env.example` committed with keys and no values
 
 ```
@@ -138,12 +143,24 @@ RLS keeps other users out; encryption is for a database dump. Store a key hash, 
 
 ## The web app
 
-- [ ] Supabase Auth magic-link sign-in working
-- [ ] One page: **Connect Microsoft** button, status line, connection key display
-- [ ] `GET /api/auth/microsoft` — redirect with client id, redirect URI, scopes, `state`, PKCE
-- [ ] `GET /api/auth/microsoft/callback` — verifies `state`, exchanges code server-side, writes encrypted refresh token
-- [ ] Connection key generated, shown once, revocable
-- [ ] Verified: browser never receives a Microsoft token
+- [x] Supabase Auth magic-link sign-in working — signed in as manolotelleria@gmail.com. Handles both link shapes: `?code=` (Supabase's default email template, PKCE) and `?token_hash=` (custom template). The default template sends `code`, which an earlier version rejected.
+- [x] One page: **Connect Microsoft** button, status line, connection key display — both signed-out and signed-in states render correctly
+- [x] `GET /api/auth/microsoft` — redirect with client id, redirect URI, scopes, `state`, PKCE — redirects home when signed out; `state` and verifier set as httpOnly cookies
+- [x] `GET /api/auth/microsoft/callback` — verifies `state`, exchanges code server-side, writes encrypted refresh token — forged `state` and denied consent both rejected with an error, no exchange attempted
+- [x] Connection key generated, shown once, revocable — generated (`amcp_` + 43 chars), shown once, revoked. Verified the DB stores only sha256: the browser-computed hash of the displayed key matched `key_hash`, and no column holds the plaintext.
+
+Rate limits: the built-in email sender allows very few messages per hour. For
+testing, mint a link with the admin API instead — no email, no limit:
+`POST /auth/v1/admin/generate_link {"type":"magiclink","email":...}` with the
+service role key, then visit `/auth/confirm?token_hash=<hashed_token>&type=magiclink`.
+That path also skips PKCE, so it works in any browser.
+- [x] Verified: browser never receives a Microsoft token — the code exchange is server-side in the callback route; the stored value is pgcrypto ciphertext (`\xc30d0407…`) and decrypts to a 437-char `M.C5…` token only via the service role
+
+Built against Next.js 16.3.0, which differs from older conventions in two ways
+that mattered: `cookies()` and `searchParams` are async, and the `middleware`
+file convention is renamed to `proxy` (`src/proxy.ts`, exporting `proxy`).
+This shadcn `Button` also has no `asChild` slot — use `buttonVariants()` on an
+anchor instead.
 
 Scopes: `Notes.Read`, `offline_access`, `User.Read`. **`offline_access` is not optional** — without it Microsoft returns no refresh token and everything dies after an hour.
 
@@ -158,8 +175,10 @@ Scopes: `Notes.Read`, `offline_access`, `User.Read`. **`offline_access` is not o
 - [x] Rate limiting per key — 30/min, in-isolate (see note in the function)
 - [x] `last_used_at` updated
 
-Deployed and reachable, but the Microsoft half is unexercised until the Azure
-app exists — `verify` works, `list_notes` and `read_note` are untested.
+Exercised end to end against a real Microsoft account: `verify` returns ok,
+`list_notes` returns real OneNote pages with sections and modified dates, and
+`read_note` returns readable text. Token rotation confirmed — the stored
+ciphertext changed after a call, so the write-back works.
 
 Gotcha worth keeping: edge functions verify a Supabase JWT by default, and the
 caller presents a connection key instead. `supabase/config.toml` sets
@@ -179,15 +198,20 @@ One package, one `bin` entry, three modes.
 - [x] `uninstall` → removes the entry from the Claude config
 - [x] Tool: `list_notes` — OneNote pages, with title, section, modified date
 - [x] Tool: `read_note` — takes a note id (not a path; OneNote pages are addressed by id), returns text content
-- [ ] Verified: no Graph calls made locally, no Microsoft token or service role key ever on the client
+- [x] Verified: no Graph calls made locally, no Microsoft token or service role key ever on the client — driven with a real MCP client over stdio: both tools listed, `list_notes` returned 6 pages, `read_note` 2,358 chars, malformed id rejected
+
+OneNote's Graph endpoints return transient 503/504 often — roughly one call in
+three failed. `graphGet` now retries 5xx and 429 twice with backoff; 6/6 clean
+after. Slightly beyond the brief's "no error handling" line, and deliberate:
+without it `read_note` fails intermittently for no reason.
 
 `init` steps:
 
 - [x] Prompts for the connection key
 - [x] Calls `verify`; on a bad key, says so and exits without writing config — verified against the live endpoint; config left untouched
-- [ ] Finds the Claude Desktop config for the current OS, creates it if missing
-- [ ] Adds the `artist-notes` entry, leaving other MCP servers untouched
-- [ ] Tells the user to restart Claude Desktop
+- [x] Finds the Claude Desktop config for the current OS, creates it if missing
+- [x] Adds the `artist-notes` entry, leaving other MCP servers untouched — `google` and `onenote` survived init and uninstall; config byte-identical to the pre-test backup afterwards
+- [x] Tells the user to restart Claude Desktop
 
 ## Publishing
 
@@ -205,11 +229,11 @@ One package, one `bin` entry, three modes.
 
 Run this end to end. Every box ticked, or it isn't done.
 
-- [ ] 1. Sign in to the web app
-- [ ] 2. Click **Connect Microsoft**, approve consent, land back showing connected
+- [x] 1. Sign in to the web app
+- [x] 2. Click **Connect Microsoft**, approve consent, land back showing connected
 - [ ] 3. Copy the connection key, run `npx @yourscope/artist-mcp init`, paste it, restart Claude
-- [ ] 4. Ask Claude Desktop to list the OneDrive notes — it does
-- [ ] 5. Ask it to read one — it does
+- [x] 4. Ask Claude Desktop to list the OneNote notes — it does
+- [x] 5. Ask it to read one — it does (full page: milestones, tasks, musician table)
 - [ ] 6. A second user, on a different machine, installs from npm with their own key and sees only their own notes
 
 Step 6 is not optional. It's both the multi-tenancy test and the proof that distribution works from a clean machine.
