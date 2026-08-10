@@ -4,7 +4,7 @@ import { useActionState } from 'react';
 import { signIn } from './actions';
 import { Button } from '@/components/ui/button';
 
-export function SignInForm() {
+export const SignInForm = () => {
   const [state, action, pending] = useActionState(signIn, null);
 
   if (state && 'sent' in state && state.sent) {
@@ -28,4 +28,4 @@ export function SignInForm() {
       ) : null}
     </form>
   );
-}
+};

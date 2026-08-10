@@ -5,7 +5,7 @@ import { NextResponse, type NextRequest } from 'next/server';
  * Refreshes the Supabase session cookie on each request. Server Components
  * cannot write cookies, so without this an expired session is never renewed.
  */
-export async function proxy(request: NextRequest) {
+export const proxy = async (request: NextRequest) => {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -28,7 +28,7 @@ export async function proxy(request: NextRequest) {
   await supabase.auth.getUser();
 
   return response;
-}
+};
 
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],

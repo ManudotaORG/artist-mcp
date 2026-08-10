@@ -9,7 +9,7 @@ const home = (params: Record<string, string>) => {
   return url;
 };
 
-export async function GET(request: NextRequest) {
+export const GET = async (request: NextRequest) => {
   const params = request.nextUrl.searchParams;
 
   // Microsoft reports consent failures here rather than by status code.
@@ -81,4 +81,4 @@ export async function GET(request: NextRequest) {
   res.cookies.delete('ms_state');
   res.cookies.delete('ms_verifier');
   return res;
-}
+};

@@ -11,7 +11,7 @@ import { supabaseServer } from '@/lib/supabase/server';
  *   ?token_hash=...  a custom template using {{ .TokenHash }}.
  * Both are supported so this works whichever template the project has.
  */
-export async function GET(request: NextRequest) {
+export const GET = async (request: NextRequest) => {
   const params = request.nextUrl.searchParams;
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
 
@@ -38,4 +38,4 @@ export async function GET(request: NextRequest) {
   }
 
   return fail('Invalid sign-in link.');
-}
+};

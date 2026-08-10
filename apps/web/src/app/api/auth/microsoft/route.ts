@@ -8,7 +8,7 @@ const AUTHORIZE = 'https://login.microsoftonline.com/common/oauth2/v2.0/authoriz
 // token and the connection dies after the first hour.
 const SCOPES = 'Notes.Read offline_access User.Read';
 
-export async function GET() {
+export const GET = async () => {
   const supabase = await supabaseServer();
   const {
     data: { user },
@@ -46,4 +46,4 @@ export async function GET() {
   res.cookies.set('ms_verifier', verifier, cookie);
 
   return res;
-}
+};

@@ -7,7 +7,7 @@ import { supabaseAdmin, supabaseServer } from '@/lib/supabase/server';
 
 const siteUrl = () => process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
 
-export async function signIn(_prev: unknown, formData: FormData) {
+export const signIn = async (_prev: unknown, formData: FormData) => {
   const email = String(formData.get('email') ?? '').trim();
   if (!email) return { error: 'Enter your email address.' };
 
@@ -19,13 +19,13 @@ export async function signIn(_prev: unknown, formData: FormData) {
 
   if (error) return { error: error.message };
   return { sent: true };
-}
+};
 
-export async function signOut() {
+export const signOut = async () => {
   const supabase = await supabaseServer();
   await supabase.auth.signOut();
   redirect('/');
-}
+};
 
 /**
  * Issues a connection key, replacing any existing one.
@@ -33,7 +33,7 @@ export async function signOut() {
  * Returned to the caller once and never stored — only the sha256 goes in the
  * database, so a dump yields nothing usable and we cannot show it again.
  */
-export async function createKey(): Promise<{ key?: string; error?: string }> {
+export const createKey = async (): Promise<{ key?: string; error?: string }> => {
   const supabase = await supabaseServer();
   const {
     data: { user },
@@ -55,9 +55,9 @@ export async function createKey(): Promise<{ key?: string; error?: string }> {
 
   revalidatePath('/');
   return { key };
-}
+};
 
-export async function revokeKey(): Promise<{ error?: string }> {
+export const revokeKey = async (): Promise<{ error?: string }> => {
   const supabase = await supabaseServer();
   const {
     data: { user },
@@ -70,4 +70,4 @@ export async function revokeKey(): Promise<{ error?: string }> {
 
   revalidatePath('/');
   return {};
-}
+};

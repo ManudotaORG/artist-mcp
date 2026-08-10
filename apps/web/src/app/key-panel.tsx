@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react';
 import { createKey, revokeKey } from './actions';
 import { Button } from '@/components/ui/button';
 
-export function KeyPanel({ hasKey }: { hasKey: boolean }) {
+export const KeyPanel = ({ hasKey }: { hasKey: boolean }) => {
   // Held in component state only. The server cannot show it again, so leaving
   // the page loses it — which the copy below says plainly.
   const [key, setKey] = useState<string | null>(null);
@@ -61,4 +61,4 @@ export function KeyPanel({ hasKey }: { hasKey: boolean }) {
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
     </div>
   );
-}
+};
