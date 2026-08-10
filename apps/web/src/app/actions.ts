@@ -1,15 +1,15 @@
-"use server";
+'use server';
 
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-import { connectionKey, hashKey } from "@/lib/crypto";
-import { supabaseAdmin, supabaseServer } from "@/lib/supabase/server";
+import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
+import { connectionKey, hashKey } from '@/lib/crypto';
+import { supabaseAdmin, supabaseServer } from '@/lib/supabase/server';
 
-const siteUrl = () => process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+const siteUrl = () => process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
 
 export async function signIn(_prev: unknown, formData: FormData) {
-  const email = String(formData.get("email") ?? "").trim();
-  if (!email) return { error: "Enter your email address." };
+  const email = String(formData.get('email') ?? '').trim();
+  if (!email) return { error: 'Enter your email address.' };
 
   const supabase = await supabaseServer();
   const { error } = await supabase.auth.signInWithOtp({
@@ -24,7 +24,7 @@ export async function signIn(_prev: unknown, formData: FormData) {
 export async function signOut() {
   const supabase = await supabaseServer();
   await supabase.auth.signOut();
-  redirect("/");
+  redirect('/');
 }
 
 /**
@@ -35,38 +35,39 @@ export async function signOut() {
  */
 export async function createKey(): Promise<{ key?: string; error?: string }> {
   const supabase = await supabaseServer();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Sign in first." };
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: 'Sign in first.' };
 
   const key = connectionKey();
   const admin = supabaseAdmin();
 
   // One key per user keeps revocation unambiguous: generating a new one
   // invalidates every installed copy of the old.
-  await admin.from("mcp_keys").delete().eq("user_id", user.id);
+  await admin.from('mcp_keys').delete().eq('user_id', user.id);
 
   const { error } = await admin
-    .from("mcp_keys")
+    .from('mcp_keys')
     .insert({ user_id: user.id, key_hash: hashKey(key) });
 
   if (error) return { error: error.message };
 
-  revalidatePath("/");
+  revalidatePath('/');
   return { key };
 }
 
 export async function revokeKey(): Promise<{ error?: string }> {
   const supabase = await supabaseServer();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Sign in first." };
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: 'Sign in first.' };
 
-  const { error } = await supabaseAdmin()
-    .from("mcp_keys")
-    .delete()
-    .eq("user_id", user.id);
+  const { error } = await supabaseAdmin().from('mcp_keys').delete().eq('user_id', user.id);
 
   if (error) return { error: error.message };
 
-  revalidatePath("/");
+  revalidatePath('/');
   return {};
 }

@@ -1,8 +1,8 @@
-import "server-only";
+import 'server-only';
 
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes } from 'node:crypto';
 
-const b64url = (buf: Buffer) => buf.toString("base64url");
+const b64url = (buf: Buffer) => buf.toString('base64url');
 
 /** PKCE verifier: 43-128 chars of unreserved characters. */
 export function codeVerifier(): string {
@@ -10,7 +10,7 @@ export function codeVerifier(): string {
 }
 
 export function codeChallenge(verifier: string): string {
-  return b64url(createHash("sha256").update(verifier).digest());
+  return b64url(createHash('sha256').update(verifier).digest());
 }
 
 /** CSRF token for the OAuth `state` parameter. */
@@ -29,5 +29,5 @@ export function connectionKey(): string {
 }
 
 export function hashKey(key: string): string {
-  return createHash("sha256").update(key).digest("hex");
+  return createHash('sha256').update(key).digest('hex');
 }

@@ -1,8 +1,8 @@
-import "server-only";
+import 'server-only';
 
-import { createServerClient } from "@supabase/ssr";
-import { createClient } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
+import { createServerClient } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
 
 /** Request-scoped client carrying the signed-in user's session. */
 export async function supabaseServer() {

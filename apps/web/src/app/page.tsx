@@ -1,8 +1,8 @@
-import { supabaseServer } from "@/lib/supabase/server";
-import { signOut } from "./actions";
-import { SignInForm } from "./sign-in-form";
-import { KeyPanel } from "./key-panel";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { supabaseServer } from '@/lib/supabase/server';
+import { signOut } from './actions';
+import { SignInForm } from './sign-in-form';
+import { KeyPanel } from './key-panel';
+import { Button, buttonVariants } from '@/components/ui/button';
 
 export default async function Home({
   searchParams,
@@ -13,13 +13,15 @@ export default async function Home({
   const { error, connected } = await searchParams;
 
   const supabase = await supabaseServer();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   // RLS scopes both of these to the signed-in user.
   const [{ data: connection }, { data: keyRow }] = user
     ? await Promise.all([
-        supabase.from("connections").select("updated_at").maybeSingle(),
-        supabase.from("mcp_keys").select("last_used_at").maybeSingle(),
+        supabase.from('connections').select('updated_at').maybeSingle(),
+        supabase.from('mcp_keys').select('last_used_at').maybeSingle(),
       ])
     : [{ data: null }, { data: null }];
 
@@ -52,7 +54,7 @@ export default async function Home({
             <p className="text-sm text-muted-foreground">
               {connection
                 ? `Connected. Last updated ${new Date(connection.updated_at).toLocaleString()}.`
-                : "Not connected."}
+                : 'Not connected.'}
             </p>
             <div>
               {/* A plain link, not a form: the route issues a redirect to
@@ -60,11 +62,11 @@ export default async function Home({
               <a
                 href="/api/auth/microsoft"
                 className={buttonVariants({
-                  size: "sm",
-                  variant: connection ? "outline" : "default",
+                  size: 'sm',
+                  variant: connection ? 'outline' : 'default',
                 })}
               >
-                {connection ? "Reconnect" : "Connect Microsoft"}
+                {connection ? 'Reconnect' : 'Connect Microsoft'}
               </a>
             </div>
           </div>

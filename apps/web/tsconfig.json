@@ -18,6 +18,7 @@
         "name": "next"
       }
     ],
+    // ./src/*, not ./*: this app has a src/ directory.
     "paths": {
       "@/*": ["./src/*"]
     }
