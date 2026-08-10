@@ -1,0 +1,8 @@
+# Claude Code tooling config; not app source.
+.claude/
+
+# Build/dependency output.
+node_modules/
+.next/
+dist/
+coverage/
