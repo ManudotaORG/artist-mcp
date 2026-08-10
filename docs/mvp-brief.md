@@ -1,6 +1,8 @@
 # MVP brief
 
-Build one thing: a multi-tenant web app where a user connects their Microsoft account, plus a Claude MCP server — published to npm — that can then read that user's OneDrive notes. Nothing else. If you find yourself building something that isn't in this document, stop.
+Build one thing: a multi-tenant web app where a user connects their Microsoft account, plus a Claude MCP server — published to npm — that can then read that user's OneNote notes. Nothing else. If you find yourself building something that isn't in this document, stop.
+
+(This line originally said OneDrive. The confirmation question at the bottom was answered "OneNote notebooks" — see the note there.)
 
 ## How to use this document
 

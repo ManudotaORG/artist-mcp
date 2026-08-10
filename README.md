@@ -1,8 +1,8 @@
 # artist-mcp
 
-A multi-tenant web app that connects a user's Microsoft account, plus a Claude MCP server — published to npm — that reads that user's OneDrive notes.
+A multi-tenant web app that connects a user's Microsoft account, plus a Claude MCP server — published to npm — that reads that user's OneNote notes.
 
-See [CLAUDE.md](CLAUDE.md) for the full build brief and current status.
+See [docs/mvp-brief.md](docs/mvp-brief.md) for the full build brief and current status, and [CLAUDE.md](CLAUDE.md) for the short orientation.
 
 ## Core Technologies
 
@@ -10,13 +10,13 @@ See [CLAUDE.md](CLAUDE.md) for the full build brief and current status.
 - `apps/web` — Next.js (App Router), Tailwind, shadcn/ui
 - `apps/mcp` — Node MCP server + install CLI, published to npm
 - `supabase/` — Postgres, RLS, edge functions
-- Microsoft Graph (OneDrive)
+- Microsoft Graph (OneNote, `Notes.Read`)
 
 ## Prerequisites
 
 - Node 22 (see [.nvmrc](.nvmrc))
 - pnpm (`corepack enable`)
-- A Supabase project and a Microsoft Entra ID app registration — setup steps in [CLAUDE.md](CLAUDE.md)
+- A Supabase project and a Microsoft Entra ID app registration — setup steps in [docs/mvp-brief.md](docs/mvp-brief.md)
 
 ## Getting Started
 
@@ -25,12 +25,12 @@ pnpm install
 pnpm dev
 ```
 
-Copy `.env.example` to `apps/web/.env.local` and fill in the values before running.
+Copy `apps/web/.env.example` to `apps/web/.env.local` and fill in the values before running.
 
 ## Installation (MCP server)
 
 ```bash
-npx @yourscope/artist-mcp init
+npx @manudota/artist-mcp init
 ```
 
 Paste the connection key from the web app, then restart Claude Desktop.
