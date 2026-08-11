@@ -89,6 +89,11 @@ and `main`. Husky and Commitlint enforce Conventional Commits locally and in
 pull-request validation. This avoids spending Actions minutes on PRs that cannot
 deploy.
 
+Dependabot groups npm production dependencies, npm development dependencies,
+and GitHub Actions updates into weekly PRs targeting `staging`. Limits are kept
+small to reduce notification noise and Actions usage. A merged dependency update
+must be synchronized back into `release` before production promotion.
+
 The npm staging and stable channels share `.github/workflows/release.yml` so
 they can use npm's single trusted-publisher mapping:
 

@@ -160,6 +160,11 @@ Vercel is connected directly to GitHub. `artist-mcp-staging` tracks only
 `staging`; `artist-mcp` tracks only `main`. Preview branch tracking is disabled
 for both projects, and GitHub Actions does not deploy the website.
 
+Dependabot opens grouped weekly npm and GitHub Actions updates against
+`staging`, where PR CI runs without creating a Vercel preview deployment. After
+reviewing and merging a dependency update, synchronize that commit into
+`release` before the next production promotion so branch history stays aligned.
+
 The npm package uses a separate branch-aware release workflow:
 
 - `staging` publishes a unique prerelease to the npm `staging` dist-tag.
