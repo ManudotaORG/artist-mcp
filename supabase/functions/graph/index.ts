@@ -182,7 +182,13 @@ async function graphGet(path: string, token: string): Promise<Response> {
 
     const retryable = res.status >= 500 || res.status === 429;
     if (!retryable || attempt >= delays.length) {
-      throw new HttpError(502, `Microsoft Graph returned ${res.status}.`);
+      // Graph explains 4xx in the body. Without it every failure looks the
+      // same and the only debugging tool left is guesswork.
+      const detail = (await res.text().catch(() => "")).slice(0, 300);
+      throw new HttpError(
+        502,
+        `Microsoft Graph returned ${res.status}.${detail ? ` ${detail}` : ""}`,
+      );
     }
     await new Promise((r) => setTimeout(r, delays[attempt]));
   }
@@ -194,26 +200,57 @@ type OneNotePage = {
   id: string;
   title: string;
   lastModifiedDateTime: string;
-  parentSection?: { displayName?: string };
+};
+
+type OneNoteSection = {
+  id: string;
+  displayName?: string;
   parentNotebook?: { displayName?: string };
 };
 
+/**
+ * `/me/onenote/pages` looks like the obvious call and works right up until the
+ * account has too many sections, at which point Graph fails the whole request
+ * with error 20266 and tells you to page per section instead. Organised
+ * notebooks hit this, so sections are enumerated first and their pages fetched
+ * one section at a time. The notebook name comes along for free.
+ */
 async function listNotes(token: string) {
-  const res = await graphGet(
-    "/me/onenote/pages?$select=id,title,lastModifiedDateTime" +
-      "&$expand=parentSection($select=displayName)," +
-      "parentNotebook($select=displayName)&$top=100",
+  const sectionsRes = await graphGet(
+    "/me/onenote/sections?$select=id,displayName" +
+      "&$expand=parentNotebook($select=displayName)&$top=100",
     token,
   );
-  const body = await res.json();
-  const notes = (body.value as OneNotePage[]).map((p) => ({
-    id: p.id,
-    title: p.title ?? "(untitled)",
-    section: p.parentSection?.displayName ?? null,
-    // Additive field: older installed copies ignore it, so /v1/ stays intact.
-    notebook: p.parentNotebook?.displayName ?? null,
-    last_modified: p.lastModifiedDateTime ?? null,
-  }));
+  const sections = ((await sectionsRes.json()).value ?? []) as OneNoteSection[];
+
+  const perSection = await Promise.all(
+    sections
+      // Ids come from Graph, never from the caller, but the id is concatenated
+      // into a URL below so it is checked like any other untrusted value.
+      .filter((s) => typeof s.id === "string" && /^[A-Za-z0-9!._~-]{1,300}$/.test(s.id))
+      .map(async (section) => {
+        const res = await graphGet(
+          `/me/onenote/sections/${section.id}/pages` +
+            "?$select=id,title,lastModifiedDateTime&$top=100",
+          token,
+        );
+        const pages = ((await res.json()).value ?? []) as OneNotePage[];
+        return pages.map((p) => ({
+          id: p.id,
+          title: p.title ?? "(untitled)",
+          section: section.displayName ?? null,
+          // Additive field: older installed copies ignore it, so /v1/ stays intact.
+          notebook: section.parentNotebook?.displayName ?? null,
+          last_modified: p.lastModifiedDateTime ?? null,
+        }));
+      }),
+  );
+
+  // Newest first, matching the order the single-call version happened to
+  // return; pages with no timestamp sort last rather than jumping to the top.
+  const notes = perSection
+    .flat()
+    .sort((a, b) => (b.last_modified ?? "").localeCompare(a.last_modified ?? ""));
   return { notes };
 }
 
