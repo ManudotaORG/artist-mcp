@@ -13,6 +13,7 @@ const cleanLine = (value) =>
   value
     .replace(/^[-*+]\s+/, '')
     .replace(/^\d+[.)]\s+/, '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
     .replace(/\s*\([a-f0-9]{7,40}\)\s*$/i, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -122,7 +123,8 @@ const formatReleaseNotes = ({ title, body, url = RELEASES_URL }) => {
         .map((item) => `• ${escapeHtml(item)}`)
         .join('\n')}`,
   );
-  const header = `🎼 <b>artist-mcp ${escapeHtml(title)}</b>`;
+  const displayTitle = title.replace(/^artist-mcp:\s*/i, '');
+  const header = `🎼 <b>artist-mcp ${escapeHtml(displayTitle)}</b>`;
   const footer = `<a href="${escapeHtml(url)}">View release</a>`;
   return paginate(header, sections, footer);
 };

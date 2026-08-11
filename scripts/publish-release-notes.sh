@@ -18,12 +18,13 @@ release_body="$(jq -r '.body // ""' <<<"$release_json")"
 release_url="$(jq -r '.html_url' <<<"$release_json")"
 messages="$(node scripts/format-release-notes.mjs "$release_title" "$release_body" "$release_url")"
 
-while IFS= read -r message; do
-  curl --fail --silent --show-error \
+while IFS= read -r encoded_message; do
+  message="$(jq -r '.' <<<"$encoded_message")"
+  curl --fail-with-body --silent --show-error \
     --request POST \
     --url "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
     --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
     --data-urlencode "parse_mode=HTML" \
     --data-urlencode "disable_web_page_preview=true" \
     --data-urlencode "text=${message}" >/dev/null
-done < <(jq -r '.[]' <<<"$messages")
+done < <(jq -c '.[]' <<<"$messages")

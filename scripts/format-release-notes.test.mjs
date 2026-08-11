@@ -16,6 +16,17 @@ test('formats grouped release notes for Telegram HTML', () => {
   assert.match(message, /View release/);
 });
 
+test('normalizes Release Please titles and commit links', () => {
+  const [message] = formatReleaseNotes({
+    title: 'artist-mcp: v0.2.0',
+    body: '## Bug Fixes\n- Fix publishing ([315b229](https://example.com/commit))',
+  });
+
+  assert.match(message, /<b>artist-mcp v0\.2\.0<\/b>/);
+  assert.match(message, /• Fix publishing/);
+  assert.doesNotMatch(message, /315b229|example\.com\/commit/);
+});
+
 test('deduplicates equivalent release bullets', () => {
   const entries = parseReleaseBody(
     '## Features\n- Add agent installer (#12)\n- Add agent installer (#13)\n',
