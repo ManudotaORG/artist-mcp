@@ -16,11 +16,36 @@ const runServer = async () => {
         process.exit(1);
     }
     const server = new McpServer({ name: "artist-notes", version: serverVersion });
-    server.tool("list_agent_workflows", "List the read-only artist roles, project types, and policies available at runtime. Load the Orchestrator before handling a project.", {}, async () => {
+    server.tool("list_agent_workflows", "List the read-only artist roles, project types, and policies available " +
+        "at runtime. The project-type playbooks are returned in full, because " +
+        "choosing between them is the decision a summary cannot support. Load " +
+        "the Orchestrator before handling a project.", {}, async () => {
         try {
             const entries = await listAgentWorkflows();
-            const lines = entries.map((entry) => `- ${entry.id}: ${entry.name} — ${entry.description}`);
-            return { content: [{ type: "text", text: lines.join("\n") }] };
+            // A one-line summary is enough to pick a role to load, but not to
+            // classify a page: the rules that separate one project type from
+            // another live in the body of the file. Ship those in full so the
+            // choice is never made from a summary.
+            const projectTypes = entries.filter((entry) => entry.kind === "project-type");
+            const rest = entries.filter((entry) => entry.kind !== "project-type");
+            const loaded = await Promise.all(projectTypes.map(async (entry) => {
+                try {
+                    const { content } = await loadAgentWorkflow(entry.id);
+                    return `## ${entry.id}\n\n${content.trim()}`;
+                }
+                catch {
+                    return `## ${entry.id}: ${entry.name} — ${entry.description}`;
+                }
+            }));
+            const summary = rest.map((entry) => `- ${entry.id}: ${entry.name} — ${entry.description}`);
+            const text = [
+                "# Roles and policies (load by id when needed)",
+                summary.join("\n"),
+                "",
+                "# Project types (full text — choose from the evidence on the page)",
+                loaded.join("\n\n"),
+            ].join("\n");
+            return { content: [{ type: "text", text }] };
         }
         catch (err) {
             return errorResult(err);
