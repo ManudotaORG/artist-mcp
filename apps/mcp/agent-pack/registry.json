@@ -31,7 +31,7 @@
       "name": "Rehearsal",
       "description": "One OneNote page describing one rehearsal or a defined rehearsal period.",
       "file": ".artist/project-types/REHEARSAL.md",
-      "sha256": "4e1de55e2bbee3f163ae1915e1d42b0c706f7cc3abe18bf9ca0cd14ff2c3f979"
+      "sha256": "90476f9e5c91252bc772cc3a0408a5fb42d23124795da15272be65472d14e386"
     },
     {
       "id": "project-type:studio-session",
