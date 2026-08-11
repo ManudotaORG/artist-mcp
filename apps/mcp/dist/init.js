@@ -3,7 +3,7 @@ import { stdin, stdout } from "node:process";
 import { call, GraphError } from "./client.js";
 import { configPath, ENTRY_NAME, readConfig, writeConfig } from "./config.js";
 const PACKAGE = "@manudota/artist-mcp";
-export async function runInit() {
+export const runInit = async () => {
     const rl = createInterface({ input: stdin, output: stdout });
     let key;
     try {
@@ -38,8 +38,8 @@ export async function runInit() {
     await writeConfig(path, config);
     console.log(`\nConnected. Wrote "${ENTRY_NAME}" to ${path}`);
     console.log("Restart Claude Desktop — it doesn't reload its config on its own.");
-}
-export async function runUninstall() {
+};
+export const runUninstall = async () => {
     const path = configPath();
     const config = await readConfig(path);
     const servers = (config.mcpServers ?? {});
@@ -52,4 +52,4 @@ export async function runUninstall() {
     await writeConfig(path, config);
     console.log(`Removed "${ENTRY_NAME}" from ${path}`);
     console.log("Restart Claude Desktop to apply.");
-}
+};

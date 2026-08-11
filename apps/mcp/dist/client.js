@@ -7,9 +7,9 @@
  */
 const DEFAULT_ENDPOINT = "https://zxiemadwrkcoovvpscfb.supabase.co/functions/v1/graph";
 /** Overridable for testing; the baked-in default is what shipped copies use. */
-export function endpoint() {
+export const endpoint = () => {
     return process.env.ARTIST_MCP_ENDPOINT ?? DEFAULT_ENDPOINT;
-}
+};
 export class GraphError extends Error {
     reconnectNeeded;
     constructor(message, reconnectNeeded) {
@@ -18,7 +18,7 @@ export class GraphError extends Error {
         this.name = "GraphError";
     }
 }
-export async function call(op, key, params = {}) {
+export const call = async (op, key, params = {}) => {
     let res;
     try {
         res = await fetch(endpoint(), {
@@ -43,4 +43,4 @@ export async function call(op, key, params = {}) {
         throw new GraphError(detail, body.reconnect_needed === true);
     }
     return body;
-}
+};

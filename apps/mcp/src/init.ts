@@ -5,7 +5,7 @@ import { configPath, ENTRY_NAME, readConfig, writeConfig } from "./config.js";
 
 const PACKAGE = "@manudota/artist-mcp";
 
-export async function runInit(): Promise<void> {
+export const runInit = async (): Promise<void> => {
   const rl = createInterface({ input: stdin, output: stdout });
   let key: string;
   try {
@@ -45,9 +45,9 @@ export async function runInit(): Promise<void> {
 
   console.log(`\nConnected. Wrote "${ENTRY_NAME}" to ${path}`);
   console.log("Restart Claude Desktop — it doesn't reload its config on its own.");
-}
+};
 
-export async function runUninstall(): Promise<void> {
+export const runUninstall = async (): Promise<void> => {
   const path = configPath();
   const config = await readConfig(path);
   const servers = (config.mcpServers ?? {}) as Record<string, unknown>;
@@ -63,4 +63,4 @@ export async function runUninstall(): Promise<void> {
 
   console.log(`Removed "${ENTRY_NAME}" from ${path}`);
   console.log("Restart Claude Desktop to apply.");
-}
+};

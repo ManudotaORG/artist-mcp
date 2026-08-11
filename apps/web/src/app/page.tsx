@@ -70,6 +70,41 @@ const Workflow = () => (
   </section>
 );
 
+const RoleHandoff = () => (
+  <section className="border-b border-signal-cyan py-10">
+    <Typography as="h2" variant="sectionTitle" color="yellow">
+      ONE ITEM, NOT TWO
+    </Typography>
+    <Typography className="mt-4">
+      The Orchestrator finds one useful gap and asks before continuing. For a concert, that could be
+      missing instrument transport on 14 September.
+    </Typography>
+    <ol className="mt-6 grid gap-px bg-signal-cyan sm:grid-cols-2 lg:grid-cols-3">
+      {[
+        ['ORCHESTRATOR', 'Offers one next action and waits for the musician to say yes.'],
+        ['REGISTRAR', 'Finds the relevant contact in the current OneNote page.'],
+        ['ENVOY', 'Drafts the outreach in chat. It never sends it.'],
+        ['AUDITOR', 'Checks the current draft against dates and facts, then asks for corrections.'],
+        ['MUSICIAN', 'Reads, edits, and sends the final message personally.'],
+        ['JANITOR', 'Names the completed and expired items the musician may clear.'],
+      ].map(([role, copy]) => (
+        <li key={role} className="min-h-36 bg-background p-4">
+          <Typography variant="label" color="cyan">
+            {role}
+          </Typography>
+          <Typography variant="small" className="mt-4">
+            {copy}
+          </Typography>
+        </li>
+      ))}
+    </ol>
+    <Typography variant="small" color="muted" className="mt-4">
+      These are temporary roles in one chat flow—not claims, queues, locks, review infrastructure,
+      or background workers.
+    </Typography>
+  </section>
+);
+
 const PublicHome = () => (
   <>
     <section id="home" className="grid gap-8 py-10 lg:grid-cols-[1.3fr_0.7fr] lg:py-16">
@@ -95,6 +130,7 @@ const PublicHome = () => (
       </aside>
     </section>
     <Workflow />
+    <RoleHandoff />
     <section className="grid gap-8 py-10 lg:grid-cols-2">
       <div>
         <Typography as="h2" variant="sectionTitle" color="yellow">
@@ -102,8 +138,11 @@ const PublicHome = () => (
         </Typography>
         <ul className="mt-4 grid grid-cols-2 gap-2 font-mono text-sm">
           {projects.map((project) => (
-            <li key={project}>
-              <span className="text-signal-cyan">■</span> {project}
+            <li key={project} className="flex items-center gap-2">
+              <span aria-hidden className="size-2 bg-signal-cyan" />
+              <Typography as="span" variant="small">
+                {project}
+              </Typography>
             </li>
           ))}
         </ul>
@@ -120,27 +159,33 @@ const PublicHome = () => (
       </div>
     </section>
     <section id="install" className="grid gap-px bg-signal-cyan lg:grid-cols-2">
-      <div className="bg-background p-5">
+      <div className="min-w-0 bg-background p-5">
         <Typography as="h2" variant="sectionTitle" color="yellow">
           CLAUDE DESKTOP
         </Typography>
         <Typography variant="small" className="mt-3">
-          Run the installer, paste your connection key, then restart Claude Desktop.
+          Install the MCP, then add the workflow Markdown to the project where you want the roles.
         </Typography>
-        <code className="mt-5 block border border-foreground p-3 font-mono text-sm text-signal-cyan">
-          npx @manudota/artist-mcp init
-        </code>
+        <pre className="mt-5 whitespace-pre-wrap break-all border border-foreground p-3 font-mono text-sm text-signal-cyan">
+          <code>{`npx @manudota/artist-mcp init
+npx @manudota/artist-mcp agents install`}</code>
+        </pre>
       </div>
-      <div className="bg-background p-5">
+      <div className="min-w-0 bg-background p-5">
         <Typography as="h2" variant="sectionTitle" color="yellow">
           CODEX
         </Typography>
         <Typography variant="small" className="mt-3">
-          Add the same MCP package with your key in the Codex MCP configuration.
+          Enter the key in a hidden prompt, register the MCP, then install the same workflow pack.
         </Typography>
-        <code className="mt-5 block border border-foreground p-3 font-mono text-sm text-signal-cyan">
-          codex mcp add artist-notes …
-        </code>
+        <pre className="mt-5 whitespace-pre-wrap break-all border border-foreground p-3 font-mono text-sm text-signal-cyan">
+          <code>{`read -s ARTIST_MCP_KEY
+codex mcp add artist-notes \\
+  --env ARTIST_MCP_KEY="$ARTIST_MCP_KEY" \\
+  -- npx -y @manudota/artist-mcp
+unset ARTIST_MCP_KEY
+npx @manudota/artist-mcp agents install`}</code>
+        </pre>
       </div>
     </section>
     <section id="read-only" className="border-b border-signal-cyan py-10">
@@ -148,21 +193,27 @@ const PublicHome = () => (
         READ-ONLY BY DESIGN
       </Typography>
       <div className="mt-5 grid gap-4 font-mono text-sm sm:grid-cols-3">
-        <p>
-          <span className="text-signal-green">READ LIVE</span>
+        <Typography as="div" variant="small">
+          <Typography as="span" variant="label" color="green">
+            READ LIVE
+          </Typography>
           <br />
           No copied project database.
-        </p>
-        <p>
-          <span className="text-signal-green">HUMAN REVIEWS</span>
+        </Typography>
+        <Typography as="div" variant="small">
+          <Typography as="span" variant="label" color="green">
+            HUMAN DECIDES
+          </Typography>
           <br />
           Results stay in your chat.
-        </p>
-        <p>
-          <span className="text-signal-red">NEVER SENDS</span>
+        </Typography>
+        <Typography as="div" variant="small">
+          <Typography as="span" variant="label" color="red">
+            NEVER SENDS
+          </Typography>
           <br />
           No notes, messages, or calendars are changed.
-        </p>
+        </Typography>
       </div>
     </section>
   </>
@@ -217,13 +268,19 @@ const Dashboard = ({ connection, hasKey, email, connected, error }: DashboardPro
     <KeyPanel hasKey={hasKey} />
     <section className="border-t border-signal-cyan pt-5">
       <Typography as="h2" variant="sectionTitle" color="yellow">
-        INSTALL CLIENT
+        INSTALL CLAUDE DESKTOP
       </Typography>
       <Typography variant="small" className="mt-3">
         CLAUDE DESKTOP
       </Typography>
       <code className="mt-2 block border border-foreground p-3 font-mono text-sm text-signal-cyan">
         npx @manudota/artist-mcp init
+      </code>
+      <Typography variant="small" className="mt-5">
+        INSTALL WORKFLOW MARKDOWN IN THIS PROJECT
+      </Typography>
+      <code className="mt-2 block border border-foreground p-3 font-mono text-sm text-signal-cyan">
+        npx @manudota/artist-mcp agents install
       </code>
       <Typography variant="small" className="mt-5">
         VERIFY: ASK “LIST MY ONENOTE NOTES.”

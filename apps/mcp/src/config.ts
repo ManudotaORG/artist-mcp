@@ -7,7 +7,7 @@ import { dirname } from "node:path";
 
 export const ENTRY_NAME = "artist-notes";
 
-export function configPath(): string {
+export const configPath = (): string => {
   const home = homedir();
   switch (platform()) {
     case "darwin":
@@ -26,7 +26,7 @@ export function configPath(): string {
           "Install on macOS or Windows.",
       );
   }
-}
+};
 
 type Config = {
   mcpServers?: Record<string, unknown>;
@@ -34,7 +34,7 @@ type Config = {
 };
 
 /** Missing file is not an error — it's the first-install case. */
-export async function readConfig(path: string): Promise<Config> {
+export const readConfig = async (path: string): Promise<Config> => {
   let raw: string;
   try {
     raw = await readFile(path, "utf8");
@@ -51,9 +51,9 @@ export async function readConfig(path: string): Promise<Config> {
         "refusing to overwrite a file that may hold your other MCP servers.",
     );
   }
-}
+};
 
-export async function writeConfig(path: string, config: Config): Promise<void> {
+export const writeConfig = async (path: string, config: Config): Promise<void> => {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(config, null, 2)}\n`, "utf8");
-}
+};

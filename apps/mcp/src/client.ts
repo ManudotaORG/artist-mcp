@@ -10,9 +10,9 @@ const DEFAULT_ENDPOINT =
   "https://zxiemadwrkcoovvpscfb.supabase.co/functions/v1/graph";
 
 /** Overridable for testing; the baked-in default is what shipped copies use. */
-export function endpoint(): string {
+export const endpoint = (): string => {
   return process.env.ARTIST_MCP_ENDPOINT ?? DEFAULT_ENDPOINT;
-}
+};
 
 export type Operation = "list_notes" | "read_note" | "verify";
 
@@ -26,11 +26,11 @@ export class GraphError extends Error {
   }
 }
 
-export async function call<T>(
+export const call = async <T>(
   op: Operation,
   key: string,
   params: Record<string, unknown> = {},
-): Promise<T> {
+): Promise<T> => {
   let res: Response;
   try {
     res = await fetch(endpoint(), {
@@ -62,4 +62,4 @@ export async function call<T>(
   }
 
   return body as T;
-}
+};

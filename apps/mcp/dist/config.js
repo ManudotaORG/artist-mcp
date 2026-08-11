@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 export const ENTRY_NAME = "artist-notes";
-export function configPath() {
+export const configPath = () => {
     const home = homedir();
     switch (platform()) {
         case "darwin":
@@ -17,9 +17,9 @@ export function configPath() {
             throw new Error(`Claude Desktop has no config location on ${platform()}. ` +
                 "Install on macOS or Windows.");
     }
-}
+};
 /** Missing file is not an error — it's the first-install case. */
-export async function readConfig(path) {
+export const readConfig = async (path) => {
     let raw;
     try {
         raw = await readFile(path, "utf8");
@@ -38,8 +38,8 @@ export async function readConfig(path) {
         throw new Error(`${path} is not valid JSON. Fix or move it, then run init again — ` +
             "refusing to overwrite a file that may hold your other MCP servers.");
     }
-}
-export async function writeConfig(path, config) {
+};
+export const writeConfig = async (path, config) => {
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, `${JSON.stringify(config, null, 2)}\n`, "utf8");
-}
+};
