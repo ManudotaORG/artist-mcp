@@ -49,3 +49,6 @@ next-env.d.ts
 
 # graphify derived output (regenerate with /graphify .)
 graphify-out/
+
+# disposable, agent-owned working memory installed by the artist workflow pack
+.artist/local/

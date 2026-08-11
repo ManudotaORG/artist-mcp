@@ -1,6 +1,6 @@
 # MVP brief
 
-Build one thing: a multi-tenant web app where a user connects their Microsoft account, plus a Claude MCP server — published to npm — that can then read that user's OneNote notes. Nothing else. If you find yourself building something that isn't in this document, stop.
+Build one thing: a multi-tenant web app where a user connects their Microsoft account, plus an MCP server — published to npm — that can read that user's OneNote notes and apply read-only musician workflow playbooks. One OneNote page is one working unit, and every result stays in Claude or Codex chat.
 
 (This line originally said OneDrive. The confirmation question at the bottom was answered "OneNote notebooks" — see the note there.)
 
@@ -200,6 +200,7 @@ One package, one `bin` entry, three modes.
 - [x] `uninstall` → removes the entry from the Claude config
 - [x] Tool: `list_notes` — OneNote pages, with title, section, modified date
 - [x] Tool: `read_note` — takes a note id (not a path; OneNote pages are addressed by id), returns text content
+- [x] Tools: `list_agent_workflows`, `load_agent_workflow` — discover and load checksummed Markdown roles and project types, with a bundled offline fallback
 - [x] Verified: no Graph calls made locally, no Microsoft token or service role key ever on the client — driven with a real MCP client over stdio: both tools listed, `list_notes` returned 6 pages, `read_note` 2,358 chars, malformed id rejected
 
 OneNote's Graph endpoints return transient 503/504 often — roughly one call in
@@ -244,9 +245,17 @@ Run this end to end. Every box ticked, or it isn't done.
 
 Step 6 is not optional. It's both the multi-tenancy test and the proof that distribution works from a clean machine.
 
+## Read-only workflow layer
+
+- [x] Installable Markdown pack with Orchestrator, Archivist, Registrar, Project Manager, Envoy, Auditor, and Janitor roles
+- [x] Starter project types: Concert, Large Concert, Studio Session, and Rehearsal
+- [x] One OneNote page treated as one working unit
+- [x] Registry generated during package build with SHA-256 checksums
+- [x] Results shown only in chat; no write, send, sync, calendar, or background execution capability
+
 ## Not in scope
 
-No agents. No project types. No calendar. No Google. No scheduled jobs. No teams or organisations. No billing. No web app deployment. No CI. No tests beyond the acceptance test above. No custom design. No error handling beyond showing "reconnect needed" when a refresh fails.
+No autonomous agent processes. No OneNote writes. No message sending. No calendar. No Google. No scheduled jobs. No teams or organisations. No billing. No web app deployment. No copying or synchronizing source data. No workflow state in Supabase.
 
 ## Known gaps — deferred, not forgotten
 

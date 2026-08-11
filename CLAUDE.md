@@ -8,8 +8,10 @@ starting work.** It is the source of truth for scope and for what is actually
 done — a ticked box means done *and verified*, and blocked items say why.
 Update it as you go rather than at the end.
 
-Scope is deliberately narrow. If you find yourself building something the brief
-doesn't list, stop.
+Scope is deliberately narrow. The read-only workflow layer is defined in
+`apps/mcp/agent-pack`: one OneNote page is one working unit, Markdown roles and
+project types are loaded at runtime, and every result stays in chat. If you find
+yourself adding writes, sends, synchronization, or another data source, stop.
 
 ## Layout
 
@@ -39,3 +41,5 @@ docs/           the brief
   writing code there.
 - **`apps/mcp` must not import from other workspace packages** — it ships to npm
   standalone.
+- **Workflow Markdown is executable policy.** Preserve the read-only boundary,
+  regenerate `agent-pack/registry.json`, and verify checksums when it changes.

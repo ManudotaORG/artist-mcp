@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { listAgentWorkflows, loadAgentWorkflow } from "./agents.js";
 import { call, GraphError } from "./client.js";
 
 type NoteSummary = {
@@ -10,7 +11,15 @@ type NoteSummary = {
   last_modified: string | null;
 };
 
-export async function runServer(): Promise<void> {
+const serverVersion = '0.1.0'; // x-release-please-version
+
+const errorResult = (err: unknown) => {
+  const message =
+    err instanceof GraphError ? err.message : `Unexpected error: ${err}`;
+  return { content: [{ type: "text" as const, text: message }], isError: true };
+};
+
+const runServer = async (): Promise<void> => {
   const key = process.env.ARTIST_MCP_KEY;
   if (!key) {
     // stderr, not stdout — stdout is the protocol channel.
@@ -20,7 +29,45 @@ export async function runServer(): Promise<void> {
     process.exit(1);
   }
 
-  const server = new McpServer({ name: "artist-notes", version: "0.1.0" });
+  const server = new McpServer({ name: "artist-notes", version: serverVersion });
+
+  server.tool(
+    "list_agent_workflows",
+    "List the read-only artist roles, project types, and policies available at runtime. Load the Orchestrator before handling a project.",
+    {},
+    async () => {
+      try {
+        const entries = await listAgentWorkflows();
+        const lines = entries.map(
+          (entry) => `- ${entry.id}: ${entry.name} — ${entry.description}`,
+        );
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  server.tool(
+    "load_agent_workflow",
+    "Load one checksummed role, project-type, or policy playbook. This only returns instructions; it never changes OneNote or another service.",
+    { workflow_id: z.string().describe("An id returned by list_agent_workflows") },
+    async ({ workflow_id }) => {
+      try {
+        const workflow = await loadAgentWorkflow(workflow_id);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `# ${workflow.name}\n\n${workflow.content}`,
+            },
+          ],
+        };
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
 
   server.tool(
     "list_notes",
@@ -64,10 +111,6 @@ export async function runServer(): Promise<void> {
   );
 
   await server.connect(new StdioServerTransport());
-}
+};
 
-function errorResult(err: unknown) {
-  const message =
-    err instanceof GraphError ? err.message : `Unexpected error: ${err}`;
-  return { content: [{ type: "text" as const, text: message }], isError: true };
-}
+export { runServer };

@@ -1,0 +1,62 @@
+# Releases, environments, and artist workflows
+
+## GitHub environments
+
+CI runs pull requests in `staging` and pushes to `main` in `production`. Store
+environment-specific Actions variables and secrets in the matching GitHub
+environment. Protect `main` and require the `Lint and build` check before merge.
+
+## Automatic npm releases
+
+Release Please tracks `apps/mcp`. Conventional commits on `main` update a
+release pull request; merging it creates the GitHub release and publishes
+`@manudota/artist-mcp` from `.github/workflows/release.yml`.
+
+In the npm package settings, configure a trusted publisher with:
+
+- Organization or user: `ManudotaORG`
+- Repository: `artist-mcp`
+- Workflow: `.github/workflows/release.yml`
+- Environment: `production`
+
+No `NPM_TOKEN` is needed. The workflow authenticates with GitHub OIDC.
+
+## Read-only artist workflow pack
+
+Install the bundled MVP pack in the current repository:
+
+```bash
+npx @manudota/artist-mcp agents install
+```
+
+It adds a root `AGENTS.md`, seven narrow roles, four starter project types, and
+the local-state policy under `.artist/`. Installation is idempotent. A
+differing root `AGENTS.md` is kept; the command explains how to reference
+`.artist/` manually. Differing workflow files stop the install before anything
+is written.
+
+The roles are Orchestrator, Archivist, Registrar, Project Manager, Envoy,
+Auditor, and Janitor. The starter project types are Concert, Large Concert,
+Studio Session, and Rehearsal.
+
+One OneNote page is one working unit. The pack can read that page and produce a
+recommendation, plan, draft, audit, or cleanup summary in chat. It cannot write
+to OneNote, send outreach, edit calendars, or persist project state.
+
+Agents may optionally keep small, disposable working context in
+`.artist/local/`, which is gitignored. They choose the smallest useful local
+format, but may not store secrets, copy source systems, or turn local files into
+claims, queues, locks, reviews, or other coordination infrastructure. The
+backend never stores this local state.
+
+## Runtime registry
+
+The MCP server exposes `list_agent_workflows` and `load_agent_workflow`. The
+registry is generated from the Markdown files during package build and each
+entry includes a SHA-256 checksum. At runtime the server checks GitHub for the
+current registry and falls back to the bundled copy if GitHub is unavailable.
+This lets merged Markdown changes update behavior without changing the Supabase
+backend or copying the artist's OneNote data.
+
+Set `ARTIST_MCP_REGISTRY_URL` only when testing a different registry. The
+default points at this repository's `main` branch.

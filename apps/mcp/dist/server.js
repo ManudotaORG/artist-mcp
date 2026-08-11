@@ -1,15 +1,47 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { listAgentWorkflows, loadAgentWorkflow } from "./agents.js";
 import { call, GraphError } from "./client.js";
-export async function runServer() {
+const serverVersion = '0.1.0'; // x-release-please-version
+const errorResult = (err) => {
+    const message = err instanceof GraphError ? err.message : `Unexpected error: ${err}`;
+    return { content: [{ type: "text", text: message }], isError: true };
+};
+const runServer = async () => {
     const key = process.env.ARTIST_MCP_KEY;
     if (!key) {
         // stderr, not stdout — stdout is the protocol channel.
         console.error("ARTIST_MCP_KEY is not set. Run `npx @manudota/artist-mcp init` to configure.");
         process.exit(1);
     }
-    const server = new McpServer({ name: "artist-notes", version: "0.1.0" });
+    const server = new McpServer({ name: "artist-notes", version: serverVersion });
+    server.tool("list_agent_workflows", "List the read-only artist roles, project types, and policies available at runtime. Load the Orchestrator before handling a project.", {}, async () => {
+        try {
+            const entries = await listAgentWorkflows();
+            const lines = entries.map((entry) => `- ${entry.id}: ${entry.name} — ${entry.description}`);
+            return { content: [{ type: "text", text: lines.join("\n") }] };
+        }
+        catch (err) {
+            return errorResult(err);
+        }
+    });
+    server.tool("load_agent_workflow", "Load one checksummed role, project-type, or policy playbook. This only returns instructions; it never changes OneNote or another service.", { workflow_id: z.string().describe("An id returned by list_agent_workflows") }, async ({ workflow_id }) => {
+        try {
+            const workflow = await loadAgentWorkflow(workflow_id);
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: `# ${workflow.name}\n\n${workflow.content}`,
+                    },
+                ],
+            };
+        }
+        catch (err) {
+            return errorResult(err);
+        }
+    });
     server.tool("list_notes", "List the user's OneNote pages, with title, section and last modified date.", {}, async () => {
         try {
             const { notes } = await call("list_notes", key);
@@ -33,8 +65,5 @@ export async function runServer() {
         }
     });
     await server.connect(new StdioServerTransport());
-}
-function errorResult(err) {
-    const message = err instanceof GraphError ? err.message : `Unexpected error: ${err}`;
-    return { content: [{ type: "text", text: message }], isError: true };
-}
+};
+export { runServer };

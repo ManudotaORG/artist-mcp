@@ -7,7 +7,8 @@
     "artist-mcp": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "agent-pack"
   ],
   "engines": {
     "node": ">=20"
@@ -16,7 +17,8 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && chmod +x dist/index.js",
+    "build": "node scripts/build-agent-registry.mjs && tsc -p tsconfig.json && chmod +x dist/index.js",
+    "test": "pnpm run build && node --test test/*.test.mjs",
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {

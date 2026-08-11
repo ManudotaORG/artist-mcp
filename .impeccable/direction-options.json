@@ -1,0 +1,69 @@
+{
+  "title": "Choose artist-mcp's visual world",
+  "question": "Choose the world that should carry the public landing page and connection dashboard.",
+  "options": [
+    {
+      "id": "signal-ledger",
+      "label": "Signal-flow ledger",
+      "kicker": "THE ROLL",
+      "lineage": "studio patch bays, channel sheets, and touring show books",
+      "thesis": "Live OneNote context travels through a legible signal path and exits as one human-reviewed result.",
+      "palette": ["#11130f", "#eff0e8", "#b7ff2a", "#ff6b35"],
+      "materials": ["matte equipment enamel", "routing tape", "pencil-marked session paper"],
+      "viewport": "A wide routing field connects one project page to selected roles and a single chat result beside the real sign-in action.",
+      "risk": "Can feel like generic audio software unless the workflow remains more prominent than the controls.",
+      "sketch": ".impeccable/sketches/signal-ledger.webp"
+    },
+    {
+      "id": "star-atlas",
+      "label": "Project star atlas",
+      "lineage": "celestial charts and observing indexes",
+      "thesis": "Each OneNote project is a bright anchor and the relevant roles form a temporary constellation around it.",
+      "case": "Strong artist identification and elegant context mapping; slightly less direct at explaining installation.",
+      "palette": ["#081426", "#f2f1df", "#ff5f45", "#81a6c8"],
+      "materials": ["night-chart ink", "coordinate paper", "red observation light"],
+      "viewport": "A project constellation occupies the first viewport while the sign-in action sits in the chart index.",
+      "risk": "Atmosphere can outrun product clarity if labels become decorative.",
+      "sketch": ".impeccable/sketches/star-atlas.webp",
+      "hero": "https://impeccable.style/worlds/cards/notation-diagram-systems-star-atlas-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/notation-diagram-systems-star-atlas.webp"
+    },
+    {
+      "id": "teletext",
+      "label": "Artist teletext",
+      "lineage": "broadcast teletext magazines and numbered service pages",
+      "thesis": "The product becomes an immediate, keyboard-legible service for projects, roles, setup, and connection state.",
+      "case": "Best raw product clarity and strong interface grammar; weaker connection to contemporary artist practice.",
+      "palette": ["#050505", "#f4f4f0", "#00e5ff", "#ffe600"],
+      "materials": ["broadcast phosphor", "block mosaic", "fixed character cells"],
+      "viewport": "A 40-column service page demonstrates READ, COORDINATE, and RETURN beside a three-digit setup index.",
+      "risk": "The rigid character grid can constrain long setup copy and accessibility zoom.",
+      "sketch": ".impeccable/sketches/teletext.webp",
+      "hero": "https://impeccable.style/worlds/cards/broadcast-programming-teletext-service-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/broadcast-programming-teletext-service.webp"
+    },
+    {
+      "id": "akari",
+      "label": "Backstage lantern",
+      "lineage": "washi light sculptures and folding bamboo structures",
+      "thesis": "Complex project administration folds flat until the artist asks, then opens into one warm, useful volume.",
+      "case": "Welcoming and distinctive, but fuses poorly with dense connection and installation states.",
+      "palette": ["#f4ead5", "#28231e", "#d94a32", "#b99a70"],
+      "materials": ["washi paper", "bamboo ribs", "vermilion stamp ink"],
+      "viewport": "A luminous folded workflow opens beside the sign-in form while inactive capabilities remain thin outlines.",
+      "risk": "Soft material language may undersell the precision and trust boundary of the product.",
+      "sketch": ".impeccable/sketches/akari.webp",
+      "hero": "https://impeccable.style/worlds/cards/paper-folds-pleats-deployable-akari-light-sculpture-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/paper-folds-pleats-deployable-akari-light-sculpture.webp"
+    }
+  ],
+  "reroll": true,
+  "canon": true,
+  "canonCard": {
+    "label": "The category standard",
+    "thesis": "A polished SaaS landing page and settings dashboard, executed at full craft.",
+    "viewport": "Headline, product explanation, sign-in action, feature proof, and a conventional authenticated settings panel.",
+    "sketch": ".impeccable/sketches/canon.webp"
+  },
+  "steer": true
+}
