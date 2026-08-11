@@ -13,7 +13,6 @@ permissions:
 
 jobs:
   notify:
-    if: vars.TELEGRAM_PATCH_NOTES_ENABLED == 'true'
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -21,6 +20,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Send formatted patch notes
+        if: vars.TELEGRAM_PATCH_NOTES_ENABLED == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
