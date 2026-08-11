@@ -7,6 +7,11 @@ Start with `role:orchestrator`. It selects one useful next action, not a task
 dump. Load the matching project type and only the narrow roles needed to finish
 that action.
 
+Load `policy:intake` first when the musician points at a notebook rather than a
+page, or when the pages are unstructured and no working unit has been agreed.
+Intake surveys, classifies, and proposes templates; it ends as soon as one
+working unit is chosen.
+
 Load `policy:local-state` before persisting agent-owned working context. Local
 state is optional, disposable, and confined to `.artist/local/`. It is not a
 coordination, claims, review, concurrency, or maintenance system.

@@ -2,6 +2,14 @@
   "schemaVersion": 1,
   "entries": [
     {
+      "id": "policy:intake",
+      "kind": "policy",
+      "name": "Intake",
+      "description": "Turn an unorganized notebook into working units without inventing anything.",
+      "file": ".artist/policies/INTAKE.md",
+      "sha256": "e7bd4ef36baf2469f33b9de46706b2649d4a9217744df89f10a4f7d586c68da2"
+    },
+    {
       "id": "policy:local-state",
       "kind": "policy",
       "name": "Local State",
@@ -79,7 +87,7 @@
       "name": "Orchestrator",
       "description": "Turn the user's request and live OneNote evidence into one useful next action.",
       "file": ".artist/roles/ORCHESTRATOR.md",
-      "sha256": "1f56a9998e138a1ad44dc578f1fa86be7d4a91bae7b56707c6d05f720b01425e"
+      "sha256": "829f0aedab80cc78243d3d967fd5bc9eac7bd6462ee05ebf691297450d6f25be"
     },
     {
       "id": "role:project-manager",
