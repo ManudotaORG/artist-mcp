@@ -3,7 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { listAgentWorkflows, loadAgentWorkflow } from "./agents.js";
 import { call, GraphError } from "./client.js";
-const serverVersion = '0.3.0'; // x-release-please-version
+const serverVersion = '0.4.0'; // x-release-please-version
 const errorResult = (err) => {
     const message = err instanceof GraphError ? err.message : `Unexpected error: ${err}`;
     return { content: [{ type: "text", text: message }], isError: true };
@@ -42,13 +42,18 @@ const runServer = async () => {
             return errorResult(err);
         }
     });
-    server.tool("list_notes", "List the user's OneNote pages, with title, section and last modified date.", {}, async () => {
+    server.tool("list_notes", "List the user's OneNote pages, with title, notebook, section and last " +
+        "modified date. Pages from every notebook are returned; ask the user " +
+        "which notebook to work in rather than assuming.", {}, async () => {
         try {
             const { notes } = await call("list_notes", key);
             if (notes.length === 0) {
                 return { content: [{ type: "text", text: "No notes found." }] };
             }
-            const lines = notes.map((n) => `- ${n.title}${n.section ? ` (${n.section})` : ""} — modified ${n.last_modified ?? "unknown"}\n  id: ${n.id}`);
+            const lines = notes.map((n) => {
+                const location = [n.notebook, n.section].filter(Boolean).join(" / ");
+                return `- ${n.title}${location ? ` (${location})` : ""} — modified ${n.last_modified ?? "unknown"}\n  id: ${n.id}`;
+            });
             return { content: [{ type: "text", text: lines.join("\n") }] };
         }
         catch (err) {

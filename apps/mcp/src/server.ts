@@ -8,6 +8,8 @@ type NoteSummary = {
   id: string;
   title: string;
   section: string | null;
+  /** Absent from responses served by an older edge function. */
+  notebook?: string | null;
   last_modified: string | null;
 };
 
@@ -71,7 +73,9 @@ const runServer = async (): Promise<void> => {
 
   server.tool(
     "list_notes",
-    "List the user's OneNote pages, with title, section and last modified date.",
+    "List the user's OneNote pages, with title, notebook, section and last " +
+      "modified date. Pages from every notebook are returned; ask the user " +
+      "which notebook to work in rather than assuming.",
     {},
     async () => {
       try {
@@ -79,12 +83,12 @@ const runServer = async (): Promise<void> => {
         if (notes.length === 0) {
           return { content: [{ type: "text", text: "No notes found." }] };
         }
-        const lines = notes.map(
-          (n) =>
-            `- ${n.title}${n.section ? ` (${n.section})` : ""} — modified ${
-              n.last_modified ?? "unknown"
-            }\n  id: ${n.id}`,
-        );
+        const lines = notes.map((n) => {
+          const location = [n.notebook, n.section].filter(Boolean).join(" / ");
+          return `- ${n.title}${location ? ` (${location})` : ""} — modified ${
+            n.last_modified ?? "unknown"
+          }\n  id: ${n.id}`;
+        });
         return { content: [{ type: "text", text: lines.join("\n") }] };
       } catch (err) {
         return errorResult(err);

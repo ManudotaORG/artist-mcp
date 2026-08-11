@@ -195,12 +195,14 @@ type OneNotePage = {
   title: string;
   lastModifiedDateTime: string;
   parentSection?: { displayName?: string };
+  parentNotebook?: { displayName?: string };
 };
 
 async function listNotes(token: string) {
   const res = await graphGet(
     "/me/onenote/pages?$select=id,title,lastModifiedDateTime" +
-      "&$expand=parentSection($select=displayName)&$top=100",
+      "&$expand=parentSection($select=displayName)," +
+      "parentNotebook($select=displayName)&$top=100",
     token,
   );
   const body = await res.json();
@@ -208,6 +210,8 @@ async function listNotes(token: string) {
     id: p.id,
     title: p.title ?? "(untitled)",
     section: p.parentSection?.displayName ?? null,
+    // Additive field: older installed copies ignore it, so /v1/ stays intact.
+    notebook: p.parentNotebook?.displayName ?? null,
     last_modified: p.lastModifiedDateTime ?? null,
   }));
   return { notes };
