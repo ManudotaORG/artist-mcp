@@ -96,25 +96,24 @@ pnpm --filter @manudota/artist-mcp pack
 
 Inspect the tarball contents before publishing. The package must ship only the
 required `dist` and `agent-pack` files, keep the executable shebang, target Node
-20 or newer, and publish publicly. The npm trusted publisher must match
-`ManudotaORG/artist-mcp`, `.github/workflows/release.yml`, and the `production`
-GitHub environment.
+20 or newer, and publish publicly. npm permits one trusted publisher per
+package. It must match `ManudotaORG/artist-mcp`, workflow filename `release.yml`,
+allow `npm publish`, and leave npm's environment field blank. The workflow
+binds its stable job to GitHub `production` and its snapshot job to `staging`.
 
 Every push explicitly promoted to the `staging` branch publishes a unique
-prerelease through `.github/workflows/publish-staging.yml` under the npm
-`staging` dist-tag. This is separate from stable `latest` publication. Configure
-the staging workflow and `staging` GitHub environment as a second npm trusted
-publisher before the first snapshot.
+prerelease through the staging job in `.github/workflows/release.yml` under the
+npm `staging` dist-tag. This remains separate from stable `latest` publication.
 
 Keep the staging environment variable `NPM_STAGING_PUBLISH_ENABLED` unset until
-that trusted publisher exists. Set it to `true` only after npm has the exact
-staging workflow mapping. Validation remains active while publication is gated.
+the shared trusted publisher exists. Set it to `true` only after npm has the
+exact `release.yml` mapping. Validation remains active while publication is gated.
 The staging publication job runs the MCP package tests only; website validation
 belongs to CI and the Vercel deployment job, avoiding a duplicate web build.
 
 An npm `404` during an OIDC publish usually means the package's trusted
-publisher does not exactly match the repository, workflow filename, and GitHub
-environment above. It does not mean the tarball is missing.
+publisher does not exactly match the repository or workflow filename above. It
+does not mean the tarball is missing.
 
 After publishing, test from a clean temporary directory:
 

@@ -32,25 +32,20 @@ Manual runs update or inspect the Release Please state but never republish an
 existing stable npm version; stable publication requires a newly created
 release.
 
-In the npm package settings, configure a trusted publisher with:
+Because npm supports one trusted publisher per package, both channels publish
+from one branch-aware workflow. In the npm package settings, configure:
 
 - Organization or user: `ManudotaORG`
 - Repository: `artist-mcp`
-- Workflow: `.github/workflows/release.yml`
-- Environment: `production`
+- Workflow filename: `release.yml`
+- Environment: leave blank so both branch-gated jobs can exchange OIDC tokens
+- Allowed action: `npm publish`
 
-Add a second trusted publisher for staging:
-
-- Organization or user: `ManudotaORG`
-- Repository: `artist-mcp`
-- Workflow: `.github/workflows/publish-staging.yml`
-- Environment: `staging`
-
-Until that second mapping exists, leave the `NPM_STAGING_PUBLISH_ENABLED`
-variable unset in the `staging` GitHub environment. The workflow still builds,
-tests, and versions the snapshot without producing a false-red publish job.
-After npm accepts the mapping, set the variable to `true`; staging pushes then
-publish normally.
+The jobs still use distinct GitHub environments: `main` uses `production` and
+publishes `latest`; `staging` uses `staging` and publishes a unique prerelease
+to the `staging` dist-tag. Leave `NPM_STAGING_PUBLISH_ENABLED` unset until the
+npm mapping is installed, then set it to `true` in the GitHub `staging`
+environment.
 
 No `NPM_TOKEN` is needed. The workflow authenticates with GitHub OIDC.
 

@@ -2,14 +2,31 @@ name: Release and publish MCP package
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
+    paths:
+      - 'apps/mcp/**'
+      - 'scripts/format-release-notes.mjs'
+      - 'scripts/format-release-notes.test.mjs'
+      - 'scripts/publish-release-notes.sh'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+      - 'release-please-config.json'
+      - '.release-please-manifest.json'
+      - '.github/workflows/release.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: publish-mcp-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/staging' }}
+
 jobs:
   release-please:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -25,7 +42,7 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  publish:
+  publish-production:
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
@@ -70,3 +87,48 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: ./scripts/publish-release-notes.sh "$RELEASE_TAG"
+
+  publish-staging:
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Update npm for trusted publishing
+        run: npm install --global npm@latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test MCP package
+        run: pnpm --filter @manudota/artist-mcp test
+
+      - name: Create unique staging version
+        working-directory: apps/mcp
+        run: node scripts/set-staging-version.mjs "$GITHUB_RUN_NUMBER"
+
+      - name: Publish staging dist-tag
+        if: vars.NPM_STAGING_PUBLISH_ENABLED == 'true'
+        working-directory: apps/mcp
+        run: npm publish --tag staging --provenance --access public
+
+      - name: Report disabled staging publication
+        if: vars.NPM_STAGING_PUBLISH_ENABLED != 'true'
+        run: |
+          echo "Staging package verified but not published."
+          echo "Enable NPM_STAGING_PUBLISH_ENABLED after release.yml is trusted by npm."
