@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v0.2.0...artist-mcp-v0.3.0) (2026-08-11)
+
+
+### Features
+
+* add environment-specific install paths ([fe25b2b](https://github.com/ManudotaORG/artist-mcp/commit/fe25b2bbdadce8f2b6ac01e91f08a0c5062bf9d7))
+
 ## [0.2.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v0.1.0...artist-mcp-v0.2.0) (2026-08-11)
 
 
