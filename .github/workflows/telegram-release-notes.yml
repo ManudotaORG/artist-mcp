@@ -17,7 +17,7 @@ jobs:
     environment: production
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Send formatted patch notes
         if: vars.TELEGRAM_PATCH_NOTES_ENABLED == 'true'
