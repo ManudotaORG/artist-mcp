@@ -31,7 +31,7 @@
       "name": "Large Concert or Festival",
       "description": "One OneNote page for a concert whose evidence shows additional production complexity, such as a large audience, multiple artists, outdoor staging, security, ticketing, volunteers, or substantial technical dependencies.",
       "file": ".artist/project-types/LARGE_CONCERT.md",
-      "sha256": "7d9811604cf1f2ff5222de650996be4d465d7e5872beb55e89ca1d2bda64eb51"
+      "sha256": "6402757af7821c1184744225f2109f9ea41e21da67d9503d306ad394a2ebb5e5"
     },
     {
       "id": "project-type:rehearsal",
