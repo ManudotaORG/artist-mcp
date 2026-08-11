@@ -164,6 +164,8 @@ Dependabot opens grouped weekly npm and GitHub Actions updates against
 `staging`, where PR CI runs without creating a Vercel preview deployment. After
 reviewing and merging a dependency update, synchronize that commit into
 `release` before the next production promotion so branch history stays aligned.
+Automatic npm major-version PRs are disabled; handle breaking upgrades as
+planned migration work.
 
 The npm package uses a separate branch-aware release workflow:
 
