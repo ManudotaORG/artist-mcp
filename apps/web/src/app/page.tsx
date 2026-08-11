@@ -1,5 +1,6 @@
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Typography } from '@/components/ui/Typography';
+import { getDeploymentMetadata } from '@/lib/deployment';
 import { supabaseServer } from '@/lib/supabase/server';
 import { signOut } from './actions';
 import { KeyPanel } from './key-panel';
@@ -301,6 +302,7 @@ const Home = async ({ searchParams }: HomeProps) => {
         supabase.from('mcp_keys').select('last_used_at').maybeSingle(),
       ])
     : [{ data: null }, { data: null }];
+  const deployment = getDeploymentMetadata();
 
   return (
     <div className="mx-auto w-full max-w-[1440px] px-4 py-4 sm:px-6 lg:px-8">
@@ -316,10 +318,45 @@ const Home = async ({ searchParams }: HomeProps) => {
       ) : (
         <PublicHome />
       )}
-      <footer className="flex flex-wrap justify-between gap-3 bg-signal-blue px-3 py-2 font-mono text-xs font-bold text-white">
-        <span>ARTIST-MCP</span>
-        <span>ONENOTE → CLAUDE / CODEX</span>
-        <span>READ-ONLY</span>
+      <footer className="flex flex-wrap items-center justify-between gap-3 bg-signal-blue px-3 py-2 text-white">
+        <Typography as="span" variant="label" className="text-white">
+          ARTIST-MCP
+        </Typography>
+        <Typography as="span" variant="label" className="text-white">
+          ONENOTE → CLAUDE / CODEX
+        </Typography>
+        <div className="flex flex-wrap items-center gap-3">
+          {deployment?.environment === 'staging' ? (
+            <Typography
+              as="span"
+              variant="label"
+              className="bg-signal-yellow px-2 py-1 text-background"
+            >
+              STAGING
+            </Typography>
+          ) : null}
+          {deployment?.environment === 'production' ? (
+            <>
+              <Typography as="span" variant="label" className="text-white">
+                V{deployment.version}
+              </Typography>
+              <a
+                href="https://github.com/ManudotaORG/artist-mcp/releases"
+                className="font-mono text-xs font-bold underline-offset-4 hover:text-signal-yellow hover:underline"
+              >
+                PATCH NOTES
+              </a>
+            </>
+          ) : null}
+          {deployment ? (
+            <Typography as="span" variant="label" className="text-white">
+              {deployment.commit}
+            </Typography>
+          ) : null}
+          <Typography as="span" variant="label" className="text-white">
+            READ-ONLY
+          </Typography>
+        </div>
       </footer>
     </div>
   );

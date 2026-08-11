@@ -43,5 +43,13 @@ jobs:
         run: node scripts/set-staging-version.mjs "$GITHUB_RUN_NUMBER"
 
       - name: Publish staging dist-tag
+        if: vars.NPM_STAGING_PUBLISH_ENABLED == 'true'
         working-directory: apps/mcp
         run: npm publish --tag staging --provenance --access public
+
+      - name: Report disabled staging publication
+        if: vars.NPM_STAGING_PUBLISH_ENABLED != 'true'
+        run: |
+          echo "Staging package verified but not published."
+          echo "Add the npm trusted publisher for .github/workflows/publish-staging.yml"
+          echo "with environment staging, then set NPM_STAGING_PUBLISH_ENABLED=true."
