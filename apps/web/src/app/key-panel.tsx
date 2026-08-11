@@ -8,9 +8,10 @@ import { createKey, revokeKey } from './actions';
 
 type KeyPanelProps = {
   hasKey: boolean;
+  canGenerate: boolean;
 };
 
-const KeyPanel = ({ hasKey }: KeyPanelProps) => {
+const KeyPanel = ({ hasKey, canGenerate }: KeyPanelProps) => {
   const [key, setKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -53,7 +54,7 @@ const KeyPanel = ({ hasKey }: KeyPanelProps) => {
         </Typography>
       )}
       <div className="mt-4 flex flex-wrap gap-3">
-        <Button onClick={generate} disabled={pending}>
+        <Button onClick={generate} disabled={pending || !canGenerate}>
           {pending ? 'WORKING…' : hasKey || key ? 'GENERATE NEW KEY' : 'GENERATE KEY'}
         </Button>
         {hasKey || key ? (
@@ -63,7 +64,7 @@ const KeyPanel = ({ hasKey }: KeyPanelProps) => {
         ) : null}
       </div>
       {error ? (
-        <Typography variant="small" color="red" className="mt-3">
+        <Typography variant="small" color="red" className="mt-3" aria-live="polite">
           ERROR: {error}
         </Typography>
       ) : null}

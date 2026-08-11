@@ -292,7 +292,7 @@ const Dashboard = ({
     {error ? <Typography color="red">ERROR: {error}</Typography> : null}
     {connected ? <Typography color="green">MICROSOFT CONNECTED.</Typography> : null}
     <MicrosoftConnectionPanel connection={connection} />
-    <KeyPanel hasKey={hasKey} />
+    <KeyPanel hasKey={hasKey} canGenerate={Boolean(connection)} />
     <section className="border-t border-signal-cyan pt-5">
       <Typography as="h2" variant="sectionTitle" color="yellow">
         INSTALL CLAUDE DESKTOP

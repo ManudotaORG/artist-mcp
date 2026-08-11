@@ -159,8 +159,9 @@ This is also the final empirical proof of multi-tenant isolation.
 
 Known deferred improvements, not current MVP blockers:
 
-- Verify the new in-app Microsoft disconnect flow after its database migration
-  is applied; it atomically removes the refresh token and all MCP keys.
+- The in-app Microsoft disconnect flow atomically removes the refresh token and
+  all MCP keys; its permissions and mutation were verified in staging with a
+  rollback-only authenticated fixture.
 - Replace the in-isolate rate limiter with shared abuse protection.
 - Support multiple independently revocable connection keys per user.
 
