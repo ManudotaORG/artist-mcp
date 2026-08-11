@@ -31,7 +31,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Vercel CLI
-        run: npm install --global vercel@48.0.0
+        run: npm install --global vercel@58.9.1
 
       - name: Pull target environment
         run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"

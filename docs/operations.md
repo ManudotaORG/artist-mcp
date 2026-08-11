@@ -106,6 +106,10 @@ prerelease through `.github/workflows/publish-staging.yml` under the npm
 the staging workflow and `staging` GitHub environment as a second npm trusted
 publisher before the first snapshot.
 
+An npm `404` during an OIDC publish usually means the package's trusted
+publisher does not exactly match the repository, workflow filename, and GitHub
+environment above. It does not mean the tarball is missing.
+
 After publishing, test from a clean temporary directory:
 
 ```bash
