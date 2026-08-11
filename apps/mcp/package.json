@@ -2,6 +2,10 @@
   "name": "@manudota/artist-mcp",
   "version": "0.1.0",
   "description": "MCP server that reads your OneNote notes, via a hosted connection.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ManudotaORG/artist-mcp"
+  },
   "type": "module",
   "bin": {
     "artist-mcp": "dist/index.js"
