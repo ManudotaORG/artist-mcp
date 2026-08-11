@@ -10,6 +10,19 @@ build` check before merge.
 
 ## Automatic npm releases
 
+The npm package has two branch-backed channels:
+
+- `staging` publishes a unique prerelease such as
+  `0.1.1-staging.123` with the npm dist-tag `staging`.
+- `main` is managed by Release Please and publishes stable releases with the
+  npm dist-tag `latest`.
+
+Install an explicitly promoted staging snapshot with:
+
+```bash
+npx @manudota/artist-mcp@staging agents install
+```
+
 Release Please tracks `apps/mcp`. Conventional commits on `main` update a
 release pull request; merging it creates the GitHub release and publishes
 `@manudota/artist-mcp` from `.github/workflows/release.yml`.
@@ -20,6 +33,13 @@ In the npm package settings, configure a trusted publisher with:
 - Repository: `artist-mcp`
 - Workflow: `.github/workflows/release.yml`
 - Environment: `production`
+
+Add a second trusted publisher for staging:
+
+- Organization or user: `ManudotaORG`
+- Repository: `artist-mcp`
+- Workflow: `.github/workflows/publish-staging.yml`
+- Environment: `staging`
 
 No `NPM_TOKEN` is needed. The workflow authenticates with GitHub OIDC.
 

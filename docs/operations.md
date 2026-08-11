@@ -100,6 +100,12 @@ required `dist` and `agent-pack` files, keep the executable shebang, target Node
 `ManudotaORG/artist-mcp`, `.github/workflows/release.yml`, and the `production`
 GitHub environment.
 
+Every push explicitly promoted to the `staging` branch publishes a unique
+prerelease through `.github/workflows/publish-staging.yml` under the npm
+`staging` dist-tag. This is separate from stable `latest` publication. Configure
+the staging workflow and `staging` GitHub environment as a second npm trusted
+publisher before the first snapshot.
+
 After publishing, test from a clean temporary directory:
 
 ```bash

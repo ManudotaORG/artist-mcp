@@ -57,4 +57,4 @@ jobs:
 
       - name: Publish to npm
         working-directory: apps/mcp
-        run: npm publish --provenance --access public
+        run: npm publish --tag latest --provenance --access public
