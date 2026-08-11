@@ -74,16 +74,70 @@ const runServer = async (): Promise<void> => {
   server.tool(
     "list_notes",
     "List the user's OneNote pages, with title, notebook, section and last " +
-      "modified date. Pages from every notebook are returned; ask the user " +
-      "which notebook to work in rather than assuming.",
-    {},
-    async () => {
+      "modified date. Takes an optional notebook name. When the account holds " +
+      "more than one notebook and none is given, this returns the list of " +
+      "notebooks instead of any pages, so the user can say which one to work " +
+      "in.",
+    {
+      notebook: z
+        .string()
+        .optional()
+        .describe(
+          "Name of the notebook to list, exactly as returned by a previous " +
+            "call. Omit only when the user has not chosen one yet.",
+        ),
+    },
+    async ({ notebook }) => {
       try {
         const { notes } = await call<{ notes: NoteSummary[] }>("list_notes", key);
         if (notes.length === 0) {
           return { content: [{ type: "text", text: "No notes found." }] };
         }
-        const lines = notes.map((n) => {
+
+        const names = [...new Set(notes.map((n) => n.notebook ?? "(unnamed notebook)"))];
+
+        // Handing back every page across every notebook invites work on the
+        // wrong one. With a choice to be made and nothing chosen, the pages
+        // are withheld until the user has actually made it.
+        if (!notebook && names.length > 1) {
+          const counts = names.map((name) => {
+            const total = notes.filter(
+              (n) => (n.notebook ?? "(unnamed notebook)") === name,
+            ).length;
+            return `- ${name} — ${total} page${total === 1 ? "" : "s"}`;
+          });
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `This account has ${names.length} notebooks:\n${counts.join("\n")}\n\n` +
+                  "Ask the user which notebook to work in, then call list_notes " +
+                  "again with that name. Do not guess, and do not work across " +
+                  "notebooks unless the user asks for it.",
+              },
+            ],
+          };
+        }
+
+        const wanted = notebook?.trim().toLowerCase();
+        const selected = wanted
+          ? notes.filter((n) => (n.notebook ?? "").trim().toLowerCase() === wanted)
+          : notes;
+
+        if (wanted && selected.length === 0) {
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `No notebook named "${notebook}". Available: ${names.join(", ")}.`,
+              },
+            ],
+          };
+        }
+
+        const lines = selected.map((n) => {
           const location = [n.notebook, n.section].filter(Boolean).join(" / ");
           return `- ${n.title}${location ? ` (${location})` : ""} — modified ${
             n.last_modified ?? "unknown"
