@@ -84,28 +84,70 @@ const ServiceHeader = () => (
   </header>
 );
 
+const workflowSteps = [
+  {
+    step: '01',
+    title: 'POINT IT AT THE MESS',
+    prompt: 'List my notes and tell me what you can see.',
+    result:
+      'An agent shortlists your pages by title, section, and date, then reads them. No structure required — half-written pages, loose notes, and inconsistent headings are the normal starting point.',
+  },
+  {
+    step: '02',
+    title: 'MATCH EACH PAGE TO A PLAYBOOK',
+    prompt: 'Which playbook does each of these pages call for?',
+    result:
+      'It proposes the appropriate playbook for each page, based on what the page actually says rather than what its title claims — and tells you plainly when a page is too thin to call.',
+  },
+  {
+    step: '03',
+    title: 'BUILD THE TEMPLATES YOU ACTUALLY NEED',
+    prompt: 'Build the templates these pages need.',
+    result:
+      'It drafts a small set of blank, reusable page templates covering the kinds of work it found — not one per page, and not one per playbook. Two related project types can share a single shape; the tool still picks the right playbook per page from the actual data. You paste each template into OneNote once.',
+  },
+  {
+    step: '04',
+    title: 'CLOSE THE GAPS, ONE AT A TIME',
+    prompt: 'Move the recital page onto its template and tell me what is missing.',
+    result:
+      'It puts your existing notes under the right headings, then names the empty fields and the conflicts — two different dates for the same event, a venue with no contact — and asks about one at a time. Missing data stays marked unknown until you say otherwise.',
+  },
+];
+
 const Workflow = () => (
   <section id="workflow" className="border-y border-signal-cyan py-7">
     <Typography as="h2" variant="sectionTitle" color="yellow">
-      ONE LIVE WORKFLOW
+      FROM UNORGANIZED NOTES TO A WORKING PAGE
     </Typography>
-    <div className="mt-6 grid gap-px bg-signal-cyan md:grid-cols-4">
-      {[
-        ['ONENOTE PAGE', 'Choose one project page as the working unit.'],
-        ['SELECTED ROLES', 'Load only the playbooks needed for this request.'],
-        ['CHECKED RESULT', 'Audit names, dates, contacts, and claims against the page.'],
-        ['YOUR CHAT', 'Return one recommendation, plan, audit, or draft for your decision.'],
-      ].map(([title, copy]) => (
-        <div key={title} className="min-h-44 bg-background p-4">
-          <Typography variant="label" color="cyan">
-            {title}
+    <Typography className="mt-4">
+      You do not need a tidy notebook to start. Once the MCP is installed, type the highlighted
+      lines into Claude Desktop or Codex and work through your existing pages as they are.
+    </Typography>
+    <ol className="mt-6 grid gap-px bg-signal-cyan">
+      {workflowSteps.map(({ step, title, prompt, result }) => (
+        <li key={step} className="grid gap-3 bg-background p-4 sm:grid-cols-[3rem_1fr] sm:gap-5">
+          <Typography as="span" variant="sectionTitle" color="cyan" aria-hidden>
+            {step}
           </Typography>
-          <Typography variant="small" className="mt-5">
-            {copy}
-          </Typography>
-        </div>
+          <div className="min-w-0">
+            <Typography variant="label" color="yellow">
+              {title}
+            </Typography>
+            <p className="mt-3 border-l-2 border-signal-cyan pl-3 font-mono text-sm break-words text-signal-cyan">
+              {prompt}
+            </p>
+            <Typography variant="small" className="mt-3">
+              {result}
+            </Typography>
+          </div>
+        </li>
       ))}
-    </div>
+    </ol>
+    <Typography variant="small" color="muted" className="mt-4">
+      Every template and correction is proposed in chat for you to paste — the tool reads your
+      OneNote pages and never edits them.
+    </Typography>
   </section>
 );
 
@@ -115,17 +157,24 @@ const RoleHandoff = () => (
       ONE ITEM, NOT TWO
     </Typography>
     <Typography className="mt-4">
-      The Orchestrator finds one useful gap and asks before continuing. For a concert, that could be
-      missing instrument transport on 14 September.
+      Once the spring recital page is in shape, this is how it gets worked. The Orchestrator finds
+      one useful gap — no instrument transport for 14 September — and asks before continuing. These
+      roles hand the same page to each other, one step at a time.
     </Typography>
     <ol className="mt-6 grid gap-px bg-signal-cyan sm:grid-cols-2 lg:grid-cols-3">
       {[
-        ['ORCHESTRATOR', 'Offers one next action and waits for the musician to say yes.'],
-        ['REGISTRAR', 'Finds the relevant contact in the current OneNote page.'],
-        ['ENVOY', 'Drafts the outreach in chat. It never sends it.'],
-        ['AUDITOR', 'Checks the current draft against dates and facts, then asks for corrections.'],
-        ['MUSICIAN', 'Reads, edits, and sends the final message personally.'],
-        ['JANITOR', 'Names the completed and expired items the musician may clear.'],
+        [
+          'ORCHESTRATOR',
+          'Offers one next action — draft the transport request? — and waits for you to say yes.',
+        ],
+        ['REGISTRAR', 'Finds the hire company already named on the recital page.'],
+        ['ENVOY', 'Drafts the transport request in chat. It never sends it.'],
+        [
+          'AUDITOR',
+          'Checks that draft against the 14 September date on the page, then asks for corrections.',
+        ],
+        ['MUSICIAN', 'You read, edit, and send the final message personally.'],
+        ['JANITOR', 'Names the recital tasks that are done or expired, for you to clear.'],
       ].map(([role, copy]) => (
         <li key={role} className="min-h-36 bg-background p-4">
           <Typography variant="label" color="cyan">
