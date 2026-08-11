@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v0.3.0...artist-mcp-v0.4.0) (2026-08-11)
+
+
+### Features
+
+* add Microsoft disconnect flow ([a1fe598](https://github.com/ManudotaORG/artist-mcp/commit/a1fe598f2bbc3a631573394346bcacc1e0e0f205))
+
 ## [0.3.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v0.2.0...artist-mcp-v0.3.0) (2026-08-11)
 
 
