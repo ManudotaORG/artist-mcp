@@ -11,7 +11,7 @@ type NoteSummary = {
   last_modified: string | null;
 };
 
-const serverVersion = '0.2.0'; // x-release-please-version
+const serverVersion = '0.3.0'; // x-release-please-version
 
 const errorResult = (err: unknown) => {
   const message =
