@@ -104,14 +104,14 @@ const workflowSteps = [
     title: 'BUILD THE TEMPLATES YOU ACTUALLY NEED',
     prompt: 'Build the templates these pages need.',
     result:
-      'It drafts a small set of blank, reusable page templates covering the kinds of work it found — not one per page, and not one per playbook. Two related project types can share a single shape; the tool still picks the right playbook per page from the actual data. You paste each template into OneNote once.',
+      'It drafts a small set of blank, reusable page templates — one for each kind of work it found, with every field left UNKNOWN so gaps stay visible instead of being invented. You paste each into OneNote once and reuse it.',
   },
   {
     step: '04',
     title: 'CLOSE THE GAPS, ONE AT A TIME',
-    prompt: 'Move the recital page onto its template and tell me what is missing.',
+    prompt: 'Move my messiest page onto its template and tell me what is missing.',
     result:
-      'It puts your existing notes under the right headings, then names the empty fields and the conflicts — two different dates for the same event, a venue with no contact — and asks about one at a time. Missing data stays marked unknown until you say otherwise.',
+      'It puts your existing notes under the right headings, pulling in related pages, then names the empty fields and the conflicts — two different dates for the same event, a venue with no contact — and tells you which one is worth doing first.',
   },
 ];
 
