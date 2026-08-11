@@ -3,7 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { listAgentWorkflows, loadAgentWorkflow } from "./agents.js";
 import { call, GraphError } from "./client.js";
-const serverVersion = '0.2.0'; // x-release-please-version
+const serverVersion = '0.3.0'; // x-release-please-version
 const errorResult = (err) => {
     const message = err instanceof GraphError ? err.message : `Unexpected error: ${err}`;
     return { content: [{ type: "text", text: message }], isError: true };

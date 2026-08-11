@@ -261,11 +261,11 @@ No autonomous agent processes. No OneNote writes. No message sending. No calenda
 
 Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
 
-1. **No way to disconnect Microsoft.** The page offers Reconnect but nothing
-   deletes the `connections` row, so a user cannot revoke Microsoft access from
-   the app — only at Microsoft's end, or by deleting the row directly. Revoking
-   the connection key stops MCP access but leaves the refresh token stored.
-   This is the one users will expect to find and won't.
+1. **Microsoft disconnect implemented; live verification pending.** The
+   dashboard now exposes a confirmed disconnect action backed by
+   `disconnect_microsoft()`, which atomically deletes the user's encrypted
+   Microsoft refresh token and every MCP key. Apply the migration in staging
+   and production, then verify the signed-in flow before marking this closed.
 
 2. **Rate limiter can't limit unauthenticated callers.** It keys on the sha256
    of the presented key, so garbage keys get a fresh bucket every request. Keys

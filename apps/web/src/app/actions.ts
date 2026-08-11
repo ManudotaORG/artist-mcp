@@ -71,3 +71,18 @@ export const revokeKey = async (): Promise<{ error?: string }> => {
   revalidatePath('/');
   return {};
 };
+
+/** Removes the Microsoft token and revokes every MCP key in one transaction. */
+export const disconnectMicrosoft = async (): Promise<{ error?: string }> => {
+  const supabase = await supabaseServer();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: 'Sign in first.' };
+
+  const { error } = await supabase.rpc('disconnect_microsoft');
+  if (error) return { error: 'Could not disconnect Microsoft. Try again.' };
+
+  revalidatePath('/');
+  return {};
+};

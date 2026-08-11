@@ -1,9 +1,10 @@
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import { Typography } from '@/components/ui/Typography';
 import { getDeploymentMetadata } from '@/lib/deployment';
 import { supabaseServer } from '@/lib/supabase/server';
 import { signOut } from './actions';
 import { KeyPanel } from './key-panel';
+import { MicrosoftConnectionPanel } from './microsoft-connection-panel';
 import { SignInForm } from './sign-in-form';
 
 type HomeProps = {
@@ -290,25 +291,7 @@ const Dashboard = ({
     </div>
     {error ? <Typography color="red">ERROR: {error}</Typography> : null}
     {connected ? <Typography color="green">MICROSOFT CONNECTED.</Typography> : null}
-    <section className="border-t border-signal-cyan pt-5">
-      <Typography as="h2" variant="sectionTitle" color="yellow">
-        MICROSOFT / ONENOTE
-      </Typography>
-      <Typography variant="small" className="mt-3">
-        {connection
-          ? `STATUS: CONNECTED · LAST UPDATED ${new Date(connection.updated_at).toLocaleString()}`
-          : 'STATUS: NOT CONNECTED'}
-      </Typography>
-      <a
-        href="/api/auth/microsoft"
-        className={buttonVariants({
-          variant: connection ? 'outline' : 'default',
-          className: 'mt-4',
-        })}
-      >
-        {connection ? 'RECONNECT MICROSOFT' : 'CONNECT MICROSOFT'}
-      </a>
-    </section>
+    <MicrosoftConnectionPanel connection={connection} />
     <KeyPanel hasKey={hasKey} />
     <section className="border-t border-signal-cyan pt-5">
       <Typography as="h2" variant="sectionTitle" color="yellow">
