@@ -28,6 +28,7 @@ The project has three parts:
 - [Infrastructure and maintainer handoff for Manu](docs/manu-handoff.md)
 - [Operate, publish, and rotate credentials](docs/operations.md)
 - [MVP scope, verification record, and remaining roadmap](docs/mvp-brief.md)
+- [Final two-user acceptance test](docs/two-user-acceptance.md)
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
 

@@ -241,9 +241,13 @@ Run this end to end. Every box ticked, or it isn't done.
 - [x] 3. Copy the connection key, run `npx @manudota/artist-mcp init`, paste it, restart Claude
 - [x] 4. Ask Claude Desktop to list the OneNote notes — it does
 - [x] 5. Ask it to read one — it does (full page: milestones, tasks, musician table)
-- [ ] 6. A second user, on a different machine, installs from npm with their own key and sees only their own notes
+- [ ] 6. A second user, on a different machine, installs from npm with their
+  own key and sees only their own notes — run and record
+  [the two-user acceptance test](two-user-acceptance.md)
 
-Step 6 is not optional. It's both the multi-tenancy test and the proof that distribution works from a clean machine.
+Step 6 is not optional. It's both the multi-tenancy test and the proof that
+distribution works from a clean machine. A rollback-only database fixture is
+useful security evidence but does not replace this real Microsoft/OneNote test.
 
 ## Read-only workflow layer
 

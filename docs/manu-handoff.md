@@ -157,6 +157,11 @@ machine: that user must sign in, connect their own Microsoft account, install
 from npm with their own key, and prove they see only their own OneNote pages.
 This is also the final empirical proof of multi-tenant isolation.
 
+Use the [two-user acceptance runbook](two-user-acceptance.md). It includes a
+clean-machine install, a cross-account negative page read, a privacy-safe
+evidence template, and cleanup. Do not put page IDs, note titles, keys, tokens,
+or note content into the repository.
+
 Known deferred improvements, not current MVP blockers:
 
 - The in-app Microsoft disconnect flow atomically removes the refresh token and
@@ -176,3 +181,4 @@ review system without an explicit product decision.
 - [Release and agent systems](releases-and-agents.md)
 - [MVP brief and verification record](mvp-brief.md)
 - [Installation guide](installation.md)
+- [Two-user acceptance test](two-user-acceptance.md)
