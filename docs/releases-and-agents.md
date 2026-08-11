@@ -2,9 +2,11 @@
 
 ## GitHub environments
 
-CI runs pull requests in `staging` and pushes to `main` in `production`. Store
-environment-specific Actions variables and secrets in the matching GitHub
-environment. Protect `main` and require the `Lint and build` check before merge.
+CI runs for pull requests and pushes to `release`, `staging`, and `main`. CI
+does not bind to a deployment environment and receives no runtime secrets.
+Store environment-specific deployment secrets in the matching `staging` or
+`production` GitHub environment. Protect `main` and require the `Lint and
+build` check before merge.
 
 ## Automatic npm releases
 

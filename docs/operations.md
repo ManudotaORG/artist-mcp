@@ -51,6 +51,18 @@ Auth redirect allowlist.
 
 ## Supabase changes
 
+Supabase uses one production project and one permanent, data-less staging
+branch:
+
+- Production: `zxiemadwrkcoovvpscfb`
+- Staging: `cakkwvxwlkdfzqjbvrpa`, mapped to Git branch `staging`
+
+Auth URLs are configuration-as-code in `supabase/config.toml` under the
+`production` and `staging` remotes. Edge Function secrets remain
+branch-specific and must be installed separately in both environments. Do not
+enable automatic ephemeral/PR branches; this project has only production and
+the permanent staging branch.
+
 Discover the installed CLI command shape with `supabase --help` before use.
 Review migrations and function diffs, run the security advisors, and verify the
 result against the linked hosted project.
@@ -69,7 +81,12 @@ Important invariants:
 
 ## Publish the MCP package
 
-From a clean worktree:
+Release Please owns production versioning. Conventional commits merged to
+`main` update its release PR; merging that PR creates the GitHub release and
+the `release.yml` workflow publishes through npm trusted publishing and GitHub
+OIDC. Do not publish production versions manually from a maintainer laptop.
+
+Before merging the release PR, verify from a clean worktree:
 
 ```bash
 pnpm build
@@ -78,18 +95,22 @@ pnpm --filter @manudota/artist-mcp pack
 ```
 
 Inspect the tarball contents before publishing. The package must ship only the
-required `dist` files, keep the executable shebang, target Node 20 or newer, and
-publish publicly. Bump the package version intentionally, then publish using the
-npm account's required MFA flow.
+required `dist` and `agent-pack` files, keep the executable shebang, target Node
+20 or newer, and publish publicly. The npm trusted publisher must match
+`ManudotaORG/artist-mcp`, `.github/workflows/release.yml`, and the `production`
+GitHub environment.
 
 After publishing, test from a clean temporary directory:
 
 ```bash
 npx @manudota/artist-mcp init
+npx @manudota/artist-mcp agents install
 ```
 
-Verify both MCP tools with a real client. Registry metadata can lag immediately
-after publication; package access status is the authoritative initial signal.
+Verify the four MCP tools (`list_notes`, `read_note`,
+`list_agent_workflows`, and `load_agent_workflow`) with a real client. Registry
+metadata can lag immediately after publication; package access status is the
+authoritative initial signal.
 
 ## Acceptance test
 

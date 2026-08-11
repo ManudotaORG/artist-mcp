@@ -1,5 +1,28 @@
 project_id = "zxiemadwrkcoovvpscfb"
 
+# Local Auth defaults. Hosted environments override these below so redirects
+# stay deterministic and never depend on dashboard-only configuration.
+[auth]
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/**"]
+
+[remotes.production]
+project_id = "zxiemadwrkcoovvpscfb"
+
+[remotes.production.auth]
+site_url = "https://artist-mcp.vercel.app"
+additional_redirect_urls = [
+  "https://artist-mcp.vercel.app/**",
+  "http://localhost:3000/**",
+]
+
+[remotes.staging]
+project_id = "cakkwvxwlkdfzqjbvrpa"
+
+[remotes.staging.auth]
+site_url = "https://artist-mcp-staging.vercel.app"
+additional_redirect_urls = ["https://artist-mcp-staging.vercel.app/**"]
+
 [functions.graph]
 # The caller presents a connection key, not a Supabase JWT, so the platform's
 # JWT gate would reject every request before our code ran. Authentication is
