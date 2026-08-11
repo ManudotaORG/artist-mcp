@@ -21,6 +21,43 @@ const roles = [
 ];
 const projects = ['Concert', 'Large Concert', 'Studio Session', 'Rehearsal'];
 
+type InstallChannel = 'local' | 'staging' | 'production';
+
+const getPackageSpecifier = (channel: InstallChannel) =>
+  channel === 'staging' ? '@manudota/artist-mcp@staging' : '@manudota/artist-mcp';
+
+const getClaudeCommands = (channel: InstallChannel) => {
+  if (channel === 'local') {
+    return `pnpm --filter @manudota/artist-mcp build
+node apps/mcp/dist/index.js init --local
+node apps/mcp/dist/index.js agents install`;
+  }
+
+  const packageSpecifier = getPackageSpecifier(channel);
+  return `npx ${packageSpecifier} init
+npx ${packageSpecifier} agents install`;
+};
+
+const getCodexCommands = (channel: InstallChannel) => {
+  if (channel === 'local') {
+    return `pnpm --filter @manudota/artist-mcp build
+read -s ARTIST_MCP_KEY
+codex mcp add artist-notes \\
+  --env ARTIST_MCP_KEY="$ARTIST_MCP_KEY" \\
+  -- node "$PWD/apps/mcp/dist/index.js"
+unset ARTIST_MCP_KEY
+node apps/mcp/dist/index.js agents install`;
+  }
+
+  const packageSpecifier = getPackageSpecifier(channel);
+  return `read -s ARTIST_MCP_KEY
+codex mcp add artist-notes \\
+  --env ARTIST_MCP_KEY="$ARTIST_MCP_KEY" \\
+  -- npx -y ${packageSpecifier}
+unset ARTIST_MCP_KEY
+npx ${packageSpecifier} agents install`;
+};
+
 const ServiceHeader = () => (
   <header className="border-b border-signal-cyan pb-3">
     <div className="flex items-end justify-between gap-4">
@@ -106,7 +143,11 @@ const RoleHandoff = () => (
   </section>
 );
 
-const PublicHome = () => (
+type PublicHomeProps = {
+  installChannel: InstallChannel;
+};
+
+const PublicHome = ({ installChannel }: PublicHomeProps) => (
   <>
     <section id="home" className="grid gap-8 py-10 lg:grid-cols-[1.3fr_0.7fr] lg:py-16">
       <div className="animate-tune-in">
@@ -168,8 +209,7 @@ const PublicHome = () => (
           Install the MCP, then add the workflow Markdown to the project where you want the roles.
         </Typography>
         <pre className="mt-5 whitespace-pre-wrap break-all border border-foreground p-3 font-mono text-sm text-signal-cyan">
-          <code>{`npx @manudota/artist-mcp init
-npx @manudota/artist-mcp agents install`}</code>
+          <code>{getClaudeCommands(installChannel)}</code>
         </pre>
       </div>
       <div className="min-w-0 bg-background p-5">
@@ -180,12 +220,7 @@ npx @manudota/artist-mcp agents install`}</code>
           Enter the key in a hidden prompt, register the MCP, then install the same workflow pack.
         </Typography>
         <pre className="mt-5 whitespace-pre-wrap break-all border border-foreground p-3 font-mono text-sm text-signal-cyan">
-          <code>{`read -s ARTIST_MCP_KEY
-codex mcp add artist-notes \\
-  --env ARTIST_MCP_KEY="$ARTIST_MCP_KEY" \\
-  -- npx -y @manudota/artist-mcp
-unset ARTIST_MCP_KEY
-npx @manudota/artist-mcp agents install`}</code>
+          <code>{getCodexCommands(installChannel)}</code>
         </pre>
       </div>
     </section>
@@ -226,9 +261,17 @@ type DashboardProps = {
   email?: string;
   connected: boolean;
   error?: string;
+  installChannel: InstallChannel;
 };
 
-const Dashboard = ({ connection, hasKey, email, connected, error }: DashboardProps) => (
+const Dashboard = ({
+  connection,
+  hasKey,
+  email,
+  connected,
+  error,
+  installChannel,
+}: DashboardProps) => (
   <main className="grid gap-8 py-10">
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div>
@@ -275,13 +318,15 @@ const Dashboard = ({ connection, hasKey, email, connected, error }: DashboardPro
         CLAUDE DESKTOP
       </Typography>
       <code className="mt-2 block border border-foreground p-3 font-mono text-sm text-signal-cyan">
-        npx @manudota/artist-mcp init
+        {getClaudeCommands(installChannel).split('\n').slice(0, -1).join('\n')}
       </code>
       <Typography variant="small" className="mt-5">
         INSTALL WORKFLOW MARKDOWN IN THIS PROJECT
       </Typography>
       <code className="mt-2 block border border-foreground p-3 font-mono text-sm text-signal-cyan">
-        npx @manudota/artist-mcp agents install
+        {installChannel === 'local'
+          ? 'node apps/mcp/dist/index.js agents install'
+          : `npx ${getPackageSpecifier(installChannel)} agents install`}
       </code>
       <Typography variant="small" className="mt-5">
         VERIFY: ASK “LIST MY ONENOTE NOTES.”
@@ -303,6 +348,7 @@ const Home = async ({ searchParams }: HomeProps) => {
       ])
     : [{ data: null }, { data: null }];
   const deployment = getDeploymentMetadata();
+  const installChannel: InstallChannel = deployment?.environment ?? 'local';
 
   return (
     <div className="mx-auto w-full max-w-[1440px] px-4 py-4 sm:px-6 lg:px-8">
@@ -314,9 +360,10 @@ const Home = async ({ searchParams }: HomeProps) => {
           email={user.email}
           connected={Boolean(connected)}
           error={error}
+          installChannel={installChannel}
         />
       ) : (
-        <PublicHome />
+        <PublicHome installChannel={installChannel} />
       )}
       <footer className="flex flex-wrap items-center justify-between gap-3 bg-signal-blue px-3 py-2 text-white">
         <Typography as="span" variant="label" className="text-white">

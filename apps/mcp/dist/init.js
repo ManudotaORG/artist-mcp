@@ -1,9 +1,22 @@
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
+import { fileURLToPath } from "node:url";
 import { call, GraphError } from "./client.js";
 import { configPath, ENTRY_NAME, readConfig, writeConfig } from "./config.js";
 const PACKAGE = "@manudota/artist-mcp";
-export const runInit = async () => {
+const LOCAL_ENTRY = fileURLToPath(new URL("./index.js", import.meta.url));
+const createServerEntry = ({ key, local = false }) => local
+    ? {
+        command: process.execPath,
+        args: [LOCAL_ENTRY],
+        env: { ARTIST_MCP_KEY: key },
+    }
+    : {
+        command: "npx",
+        args: ["-y", PACKAGE],
+        env: { ARTIST_MCP_KEY: key },
+    };
+export const runInit = async ({ local = false } = {}) => {
     const rl = createInterface({ input: stdin, output: stdout });
     let key;
     try {
@@ -29,16 +42,16 @@ export const runInit = async () => {
     const path = configPath();
     const config = await readConfig(path);
     const servers = (config.mcpServers ?? {});
-    servers[ENTRY_NAME] = {
-        command: "npx",
-        args: ["-y", PACKAGE],
-        env: { ARTIST_MCP_KEY: key },
-    };
+    servers[ENTRY_NAME] = createServerEntry({ key, local });
     config.mcpServers = servers;
     await writeConfig(path, config);
     console.log(`\nConnected. Wrote "${ENTRY_NAME}" to ${path}`);
+    if (local) {
+        console.log(`Using local build: ${LOCAL_ENTRY}`);
+    }
     console.log("Restart Claude Desktop — it doesn't reload its config on its own.");
 };
+export { createServerEntry };
 export const runUninstall = async () => {
     const path = configPath();
     const config = await readConfig(path);

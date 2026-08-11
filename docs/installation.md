@@ -37,6 +37,20 @@ previous key and disconnects any client using it.
 
 ## 3. Install in a client
 
+Choose the channel that matches the website you used:
+
+| Website | Package command |
+| --- | --- |
+| <https://artist-mcp.vercel.app> | `@manudota/artist-mcp` |
+| <https://artist-mcp-staging.vercel.app> | `@manudota/artist-mcp@staging` |
+| <http://localhost:3000> from this checkout | `node apps/mcp/dist/index.js` |
+
+The examples below use production. On staging, add `@staging` to every npm
+package reference. Maintainers running local source should first run
+`pnpm --filter @manudota/artist-mcp build`; Claude Desktop can then use
+`node apps/mcp/dist/index.js init --local`, while Codex can register the
+absolute `$PWD/apps/mcp/dist/index.js` path.
+
 ### Claude Desktop
 
 Run:

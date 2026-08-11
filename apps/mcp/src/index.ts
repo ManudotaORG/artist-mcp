@@ -12,7 +12,10 @@ try {
       await runServer();
       break;
     case 'init':
-      await runInit();
+      if (process.argv[3] && process.argv[3] !== '--local') {
+        throw new Error('Usage: artist-mcp init [--local]');
+      }
+      await runInit({ local: process.argv[3] === '--local' });
       break;
     case 'uninstall':
       await runUninstall();
@@ -27,7 +30,8 @@ try {
       console.error(
         `Unknown command "${mode}".\n\n` +
           '  artist-mcp            run the MCP server over stdio\n' +
-          '  artist-mcp init       connect this machine to your notes\n' +
+          '  artist-mcp init [--local]\n' +
+          '                       connect this machine to your notes\n' +
           '  artist-mcp agents install [directory]\n' +
           '                       install the notes-analysis agent pack\n' +
           '  artist-mcp uninstall  remove the Claude Desktop entry\n',
