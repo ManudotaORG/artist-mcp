@@ -27,6 +27,7 @@ export const GET = async () => {
   url.searchParams.set('redirect_uri', process.env.MS_REDIRECT_URI!);
   url.searchParams.set('response_mode', 'query');
   url.searchParams.set('scope', SCOPES);
+  url.searchParams.set('prompt', 'login');
   url.searchParams.set('state', state);
   url.searchParams.set('code_challenge', codeChallenge(verifier));
   url.searchParams.set('code_challenge_method', 'S256');
