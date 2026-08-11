@@ -92,9 +92,9 @@ deploy.
 Dependabot groups npm production dependencies, npm development dependencies,
 and GitHub Actions updates into weekly PRs targeting `staging`. Limits are kept
 small to reduce notification noise and Actions usage. A merged dependency update
-must be synchronized back into `release` before production promotion. npm major
-versions are ignored automatically and should be upgraded through an explicit
-migration instead.
+must be synchronized back into `release` before production promotion. npm and
+GitHub Actions major versions are ignored automatically and should be upgraded
+through an explicit migration instead.
 
 The npm staging and stable channels share `.github/workflows/release.yml` so
 they can use npm's single trusted-publisher mapping:
