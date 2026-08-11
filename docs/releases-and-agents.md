@@ -3,12 +3,15 @@
 ## GitHub environments
 
 CI runs for pull requests and pushes to `release` and `main`. Staging receives
-only commits already validated on `release`; its npm workflow retests the MCP
-package and its Vercel workflow builds the web app, so a third full monorepo CI
-run would duplicate both. CI does not bind to a deployment environment and receives no runtime secrets.
-Store environment-specific deployment secrets in the matching `staging` or
-`production` GitHub environment. Protect `main` and require the `Lint and
-build` check before merge.
+only commits already validated on `release`; its npm workflow retests only the
+MCP package. Vercel's native Git integration builds the website from `staging`,
+so GitHub Actions does not duplicate that build. CI does not bind to a
+deployment environment and receives no runtime secrets. Protect `main` and
+require the `Lint and build` check before merge.
+
+The production and staging Vercel projects are both connected to this GitHub
+repository. Production tracks only `main`, staging tracks only `staging`, and
+Preview branch tracking is disabled on both projects.
 
 ## Automatic npm releases
 

@@ -16,7 +16,7 @@ const getDeploymentMetadata = (): DeploymentMetadata | null => {
 
   return {
     environment,
-    commit: process.env.GIT_COMMIT_SHA?.slice(0, 7) ?? 'unknown',
+    commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'unknown',
     version: mcpPackage.version,
   };
 };

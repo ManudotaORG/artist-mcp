@@ -31,18 +31,23 @@ remains the data authorization boundary.
 
 ## Web deployment
 
-The web app uses two Vercel projects and no automatic preview deployments:
+The web app uses two Vercel projects connected directly to
+`ManudotaORG/artist-mcp` through the Vercel GitHub App:
 
-- `artist-mcp` deploys the GitHub `main` branch through the `production` environment.
-- `artist-mcp-staging` deploys the GitHub `staging` branch through the `staging` environment.
+- `artist-mcp` tracks only `main` as its production branch.
+- `artist-mcp-staging` tracks only `staging` as its production branch.
 
-`apps/web/vercel.json` disables Vercel Git auto-deployments. The
-`deploy-web.yml` workflow builds and deploys only these two stable targets. Both
-are public; staging has no password or deployment-protection gate.
+Preview branch tracking is disabled in both projects, so `release`, pull
+requests, and every unassigned branch create no Vercel deployment. Vercel's
+native Git integration owns web deployment; GitHub Actions does not build or
+deploy the website. Both stable targets are public, and staging has no password
+or deployment-protection gate.
 
-Each GitHub environment needs `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and its own
-`VERCEL_PROJECT_ID`. Runtime application variables live in the corresponding
-Vercel project, not GitHub Actions.
+Runtime application variables live in each Vercel project's Production
+environment. Set `DEPLOY_ENV=production` in `artist-mcp` and
+`DEPLOY_ENV=staging` in `artist-mcp-staging`. The footer reads the commit from
+Vercel's `VERCEL_GIT_COMMIT_SHA` system variable. No Vercel token or project ID
+is required in GitHub Actions.
 
 Production uses `https://artist-mcp.vercel.app`; staging uses
 `https://artist-mcp-staging.vercel.app`. Add each `/api/auth/microsoft/callback`
@@ -108,8 +113,9 @@ npm `staging` dist-tag. This remains separate from stable `latest` publication.
 Keep the staging environment variable `NPM_STAGING_PUBLISH_ENABLED` unset until
 the shared trusted publisher exists. Set it to `true` only after npm has the
 exact `release.yml` mapping. Validation remains active while publication is gated.
-The staging publication job runs the MCP package tests only; website validation
-belongs to CI and the Vercel deployment job, avoiding a duplicate web build.
+The staging publication job runs the MCP package tests only. Website validation
+belongs to CI; Vercel performs the deployment build, avoiding a duplicate web
+build in GitHub Actions.
 
 An npm `404` during an OIDC publish usually means the package's trusted
 publisher does not exactly match the repository or workflow filename above. It
