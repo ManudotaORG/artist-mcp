@@ -2,8 +2,10 @@
 
 ## GitHub environments
 
-CI runs for pull requests and pushes to `release`, `staging`, and `main`. CI
-does not bind to a deployment environment and receives no runtime secrets.
+CI runs for pull requests and pushes to `release` and `main`. Staging receives
+only commits already validated on `release`; its npm workflow retests the MCP
+package and its Vercel workflow builds the web app, so a third full monorepo CI
+run would duplicate both. CI does not bind to a deployment environment and receives no runtime secrets.
 Store environment-specific deployment secrets in the matching `staging` or
 `production` GitHub environment. Protect `main` and require the `Lint and
 build` check before merge.
@@ -26,6 +28,9 @@ npx @manudota/artist-mcp@staging agents install
 Release Please tracks `apps/mcp`. Conventional commits on `main` update a
 release pull request; merging it creates the GitHub release and publishes
 `@manudota/artist-mcp` from `.github/workflows/release.yml`.
+Manual runs update or inspect the Release Please state but never republish an
+existing stable npm version; stable publication requires a newly created
+release.
 
 In the npm package settings, configure a trusted publisher with:
 
@@ -48,6 +53,29 @@ After npm accepts the mapping, set the variable to `true`; staging pushes then
 publish normally.
 
 No `NPM_TOKEN` is needed. The workflow authenticates with GitHub OIDC.
+
+## Production patch notes
+
+Production releases can announce themselves through Telegram after the stable
+npm package publishes. The formatter groups conventional Release Please notes,
+removes duplicate bullets, escapes Telegram HTML, and splits messages below the
+Telegram message limit. Staging snapshots never send patch notes.
+
+Create a Telegram bot with BotFather, add it to the destination chat, and store
+these secrets in the GitHub `production` environment:
+
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
+
+After both secrets are present, set the production environment variable
+`TELEGRAM_PATCH_NOTES_ENABLED=true`. The stable release workflow sends notes
+after npm publication. To resend an existing release, run the **Send production
+patch notes** workflow with its tag. Leave the variable unset while configuring
+the bot so releases and manual runs cannot fail or send partial messages.
+
+The implementation lives in `scripts/format-release-notes.mjs` and
+`scripts/publish-release-notes.sh`. Formatter behavior is covered by the root
+test suite.
 
 ## Read-only artist workflow pack
 

@@ -109,6 +109,8 @@ publisher before the first snapshot.
 Keep the staging environment variable `NPM_STAGING_PUBLISH_ENABLED` unset until
 that trusted publisher exists. Set it to `true` only after npm has the exact
 staging workflow mapping. Validation remains active while publication is gated.
+The staging publication job runs the MCP package tests only; website validation
+belongs to CI and the Vercel deployment job, avoiding a duplicate web build.
 
 An npm `404` during an OIDC publish usually means the package's trusted
 publisher does not exactly match the repository, workflow filename, and GitHub
@@ -120,6 +122,13 @@ After publishing, test from a clean temporary directory:
 npx @manudota/artist-mcp init
 npx @manudota/artist-mcp agents install
 ```
+
+If production Telegram patch notes are enabled, the release workflow fetches
+the newly created GitHub release, formats and deduplicates its notes, then sends
+them only after the npm `latest` publication succeeds. Telegram credentials are
+scoped to the `production` GitHub environment. Use the manual
+`telegram-release-notes.yml` workflow to retry a specific existing tag without
+republishing npm.
 
 Verify the four MCP tools (`list_notes`, `read_note`,
 `list_agent_workflows`, and `load_agent_workflow`) with a real client. Registry

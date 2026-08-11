@@ -3,6 +3,14 @@ name: Deploy web
 on:
   push:
     branches: [main, staging]
+    paths:
+      - 'apps/web/**'
+      - 'apps/mcp/package.json'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+      - '.github/workflows/deploy-web.yml'
   workflow_dispatch:
 
 concurrency:

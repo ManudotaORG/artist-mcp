@@ -1,0 +1,28 @@
+name: Send production patch notes
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing production release tag; blank uses the latest release
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    if: vars.TELEGRAM_PATCH_NOTES_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Send formatted patch notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: ./scripts/publish-release-notes.sh "${{ inputs.tag }}"

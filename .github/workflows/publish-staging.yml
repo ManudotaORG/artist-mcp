@@ -3,7 +3,18 @@ name: Publish MCP staging snapshot
 on:
   push:
     branches: [staging]
+    paths:
+      - 'apps/mcp/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+      - '.github/workflows/publish-staging.yml'
   workflow_dispatch:
+
+concurrency:
+  group: publish-mcp-staging
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -36,7 +47,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Test
-        run: pnpm test
+        run: pnpm --filter @manudota/artist-mcp test
 
       - name: Create unique staging version
         working-directory: apps/mcp

@@ -9,7 +9,7 @@
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
-    "test": "pnpm lint && pnpm build && pnpm --filter @manudota/artist-mcp test",
+    "test": "pnpm lint && node --test scripts/*.test.mjs && pnpm build && pnpm --filter @manudota/artist-mcp test",
     "prepare": "husky"
   },
   "devDependencies": {
