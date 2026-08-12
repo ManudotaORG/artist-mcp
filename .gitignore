@@ -52,3 +52,6 @@ graphify-out/
 
 # disposable, agent-owned working memory installed by the artist workflow pack
 .artist/local/
+
+# local-only test fixtures (messy OneNote test notebook source)
+test-fixtures/
