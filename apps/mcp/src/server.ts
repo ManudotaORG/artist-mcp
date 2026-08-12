@@ -351,12 +351,11 @@ const runServer = async (): Promise<void> => {
     },
     async ({ query, time_min, time_max, calendar_id }) => {
       try {
-        const { events } = await call<{ events: EventSummary[] }>("list_events", key, {
-          query,
-          time_min,
-          time_max,
-          calendar_id,
-        });
+        const { events, omitted_occurrences } = await call<{
+          events: EventSummary[];
+          omitted_occurrences?: number;
+        }>("list_events", key, { query, time_min, time_max, calendar_id });
+
         if (events.length === 0) {
           return {
             content: [{ type: "text", text: "No events in that window." }],
@@ -367,7 +366,14 @@ const runServer = async (): Promise<void> => {
           const repeats = e.recurring ? " (recurring)" : "";
           return `- ${e.summary} — ${when(e)}${where}${repeats}\n  id: ${e.id}`;
         });
-        return { content: [{ type: "text", text: lines.join("\n") }] };
+
+        // Said plainly, because "nothing else is booked" and "the rest was one
+        // repeating rehearsal" are different answers about a diary.
+        const note = omitted_occurrences
+          ? `\n\n${omitted_occurrences} further occurrences of repeating events were omitted. ` +
+            "Narrow the window with time_min and time_max to see them."
+          : "";
+        return { content: [{ type: "text", text: `${lines.join("\n")}${note}` }] };
       } catch (err) {
         return errorResult(err);
       }

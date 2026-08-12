@@ -567,6 +567,43 @@ function shapeEvent(e: CalendarEvent) {
   };
 }
 
+/** Events returned per call, and how many occurrences of one series may fill it. */
+const PAGE = 25;
+const MAX_PER_SERIES = 3;
+
+/**
+ * Keep at most `limit` occurrences of any one recurring series.
+ *
+ * A weekly rehearsal expands to dozens of instances and, ordered by start time,
+ * crowds every other event out of the page: a real calendar returned 23
+ * rehearsals and two other events. The first few occurrences answer "when does
+ * this recur"; the rest push out the concert the page is actually about.
+ *
+ * Non-recurring events are never thinned, and the count of what was dropped is
+ * returned so the caller can say so rather than implying an empty diary.
+ */
+function thinRecurring(
+  events: CalendarEvent[],
+  limit: number,
+): { kept: CalendarEvent[]; omitted: number } {
+  const seen = new Map<string, number>();
+  const kept: CalendarEvent[] = [];
+  let omitted = 0;
+
+  for (const e of events) {
+    const series = e.recurringEventId;
+    if (!series) {
+      kept.push(e);
+      continue;
+    }
+    const n = (seen.get(series) ?? 0) + 1;
+    seen.set(series, n);
+    if (n <= limit) kept.push(e);
+    else omitted += 1;
+  }
+  return { kept, omitted };
+}
+
 /**
  * List events in a window, earliest first.
  *
@@ -603,7 +640,11 @@ async function listEvents(
   const params = new URLSearchParams({
     singleEvents: "true",
     orderBy: "startTime",
-    maxResults: "25",
+    // Fetched wide and thinned below. A weekly series expands to ~50 instances
+    // a year, so asking for exactly the number to be returned means one
+    // rehearsal fills the whole page and a concert three months out is never
+    // seen at all.
+    maxResults: "100",
     timeMin: iso(rawTimeMin, new Date(now - 7 * 86_400_000).toISOString()),
     timeMax: iso(rawTimeMax, new Date(now + 365 * 86_400_000).toISOString()),
   });
@@ -620,11 +661,15 @@ async function listEvents(
   // Expanding a series also yields its cancelled instances. A cancelled
   // occurrence is not evidence that something is happening, so it is dropped
   // here — read_event still reports the status if one is asked for by id.
-  const events = items
-    .filter((e) => e.status !== "cancelled")
-    .map(shapeEvent);
+  const live = items.filter((e) => e.status !== "cancelled");
 
-  return { events };
+  const { kept, omitted } = thinRecurring(live, MAX_PER_SERIES);
+  return {
+    events: kept.slice(0, PAGE).map(shapeEvent),
+    // Stated rather than silent: "nothing else is booked" and "the rest of the
+    // page was rehearsals" are different answers about a musician's diary.
+    omitted_occurrences: omitted + Math.max(0, kept.length - PAGE),
+  };
 }
 
 async function readEvent(token: string, rawEventId: unknown, rawCalendarId: unknown) {
@@ -753,4 +798,4 @@ if (import.meta.main) {
 
 // Exported for tests only. These are the parts with no network and no auth:
 // pure transformations where a bug is silent rather than loud.
-export { decodeBody, extractText, htmlToText, eventTime, shapeEvent };
+export { decodeBody, extractText, htmlToText, eventTime, shapeEvent, thinRecurring };

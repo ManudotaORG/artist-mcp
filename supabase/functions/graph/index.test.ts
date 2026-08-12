@@ -14,6 +14,7 @@ import {
   extractText,
   htmlToText,
   shapeEvent,
+  thinRecurring,
 } from "./index.ts";
 
 /** Encode as Gmail does: base64url, padding stripped. */
@@ -177,4 +178,42 @@ Deno.test("shapeEvent carries the time zone from whichever end has one", () => {
 
 Deno.test("shapeEvent preserves status so a cancelled event reads as cancelled", () => {
   assertEquals(shapeEvent({ id: "a", status: "cancelled" }).status, "cancelled");
+});
+
+Deno.test("thinRecurring caps one series without touching single events", () => {
+  // The shape a real calendar produced: a weekly rehearsal expanded to 50
+  // occurrences and pushed every other event off the page.
+  const events = [
+    { id: "concert", start: { dateTime: "2026-08-14T15:00:00Z" } },
+    ...Array.from({ length: 50 }, (_, i) => ({
+      id: `r_${i}`,
+      recurringEventId: "rehearsal",
+      start: { dateTime: `2026-09-${String((i % 28) + 1).padStart(2, "0")}T14:00:00Z` },
+    })),
+    { id: "tour", start: { date: "2026-08-20" } },
+  ];
+
+  const { kept, omitted } = thinRecurring(events, 3);
+  assertEquals(omitted, 47);
+  assertEquals(kept.filter((e) => e.recurringEventId).length, 3);
+  // Both one-off events survive, which is the point of the exercise.
+  assertEquals(kept.some((e) => e.id === "concert"), true);
+  assertEquals(kept.some((e) => e.id === "tour"), true);
+});
+
+Deno.test("thinRecurring counts each series separately", () => {
+  const events = [
+    ...Array.from({ length: 5 }, (_, i) => ({ id: `a${i}`, recurringEventId: "a" })),
+    ...Array.from({ length: 5 }, (_, i) => ({ id: `b${i}`, recurringEventId: "b" })),
+  ];
+  const { kept, omitted } = thinRecurring(events, 2);
+  assertEquals(kept.length, 4);
+  assertEquals(omitted, 6);
+});
+
+Deno.test("thinRecurring leaves a calendar of one-offs alone", () => {
+  const events = Array.from({ length: 10 }, (_, i) => ({ id: `x${i}` }));
+  const { kept, omitted } = thinRecurring(events, 3);
+  assertEquals(kept.length, 10);
+  assertEquals(omitted, 0);
 });
