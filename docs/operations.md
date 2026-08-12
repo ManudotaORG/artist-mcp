@@ -18,12 +18,12 @@ personal MFA recovery material.
 
 ## Secret inventory
 
-| Secret | Stored in | Rotation impact |
-| --- | --- | --- |
-| Supabase server key | Web runtime | Update every web environment |
-| Microsoft client secret | Web runtime and Edge Function | Update both before deleting the old credential |
-| Token encryption key | Web runtime and Edge Function | Existing encrypted refresh tokens depend on it; plan a data migration or reconnect users |
-| Connection key | User client and hashed database row | Generate a replacement and reinstall each affected client |
+| Secret                  | Stored in                           | Rotation impact                                                                          |
+| ----------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------- |
+| Supabase server key     | Web runtime                         | Update every web environment                                                             |
+| Microsoft client secret | Web runtime and Edge Function       | Update both before deleting the old credential                                           |
+| Token encryption key    | Web runtime and Edge Function       | Existing encrypted refresh tokens depend on it; plan a data migration or reconnect users |
+| Connection key          | User client and hashed database row | Generate a replacement and reinstall each affected client                                |
 
 Public or publishable Supabase browser keys identify the application but do not
 grant service-role access. They are intentionally exposed to the browser; RLS
@@ -48,6 +48,22 @@ environment. Set `DEPLOY_ENV=production` in `artist-mcp` and
 `DEPLOY_ENV=staging` in `artist-mcp-staging`. The footer reads the commit from
 Vercel's `VERCEL_GIT_COMMIT_SHA` system variable. No Vercel token or project ID
 is required in GitHub Actions.
+
+Keep this environment matrix exact; never copy the production Supabase values
+into staging:
+
+| Setting                    | Production                                                  | Staging                                                             |
+| -------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------- |
+| `DEPLOY_ENV`               | `production`                                                | `staging`                                                           |
+| `NEXT_PUBLIC_SITE_URL`     | `https://artist-mcp.vercel.app`                             | `https://artist-mcp-staging.vercel.app`                             |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://zxiemadwrkcoovvpscfb.supabase.co`                  | `https://cakkwvxwlkdfzqjbvrpa.supabase.co`                          |
+| `MS_REDIRECT_URI`          | `https://artist-mcp.vercel.app/api/auth/microsoft/callback` | `https://artist-mcp-staging.vercel.app/api/auth/microsoft/callback` |
+| npm MCP default            | production Graph function                                   | staging Graph function for `-staging.*` versions                    |
+
+Both Vercel projects also require their matching Supabase browser key and
+service-role key plus `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, and
+`TOKEN_ENCRYPTION_KEY`. `NEXT_PUBLIC_SITE_URL` is mandatory in hosted builds;
+only local development may fall back to `http://localhost:3000`.
 
 Production uses `https://artist-mcp.vercel.app`; staging uses
 `https://artist-mcp-staging.vercel.app`. Add each `/api/auth/microsoft/callback`
@@ -137,8 +153,10 @@ republishing npm.
 
 Verify the four MCP tools (`list_notes`, `read_note`,
 `list_agent_workflows`, and `load_agent_workflow`) with a real client. Registry
-metadata can lag immediately after publication; package access status is the
-authoritative initial signal.
+and playbook content come from the installed npm package by default, preserving
+the version selected by the user. `ARTIST_MCP_REGISTRY_URL` and
+`ARTIST_MCP_ENDPOINT` are development/testing overrides, not publishing-job or
+end-user requirements.
 
 ## Acceptance test
 

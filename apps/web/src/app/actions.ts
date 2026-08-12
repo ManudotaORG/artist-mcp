@@ -3,9 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { connectionKey, hashKey } from '@/lib/crypto';
+import { getSiteUrl } from '@/lib/siteUrl';
 import { supabaseAdmin, supabaseServer } from '@/lib/supabase/server';
-
-const siteUrl = () => process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
 
 export const signIn = async (_prev: unknown, formData: FormData) => {
   const email = String(formData.get('email') ?? '').trim();
@@ -14,7 +13,7 @@ export const signIn = async (_prev: unknown, formData: FormData) => {
   const supabase = await supabaseServer();
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: `${siteUrl()}/auth/confirm` },
+    options: { emailRedirectTo: `${getSiteUrl()}/auth/confirm` },
   });
 
   if (error) return { error: error.message };

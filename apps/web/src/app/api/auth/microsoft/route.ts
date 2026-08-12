@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { codeChallenge, codeVerifier, stateToken } from '@/lib/crypto';
+import { getSiteUrl } from '@/lib/siteUrl';
 import { supabaseServer } from '@/lib/supabase/server';
 
 const AUTHORIZE = 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize';
@@ -13,10 +14,7 @@ export const GET = async () => {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user)
-    return NextResponse.redirect(
-      new URL('/', process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'),
-    );
+  if (!user) return NextResponse.redirect(new URL('/', getSiteUrl()));
 
   const verifier = codeVerifier();
   const state = stateToken();

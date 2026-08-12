@@ -5,16 +5,26 @@
  * Microsoft credentials. No Graph call is ever made from this machine, and the
  * connection key is the only secret that lives here.
  */
+import { createRequire } from 'node:module';
 
-const DEFAULT_ENDPOINT =
-  "https://zxiemadwrkcoovvpscfb.supabase.co/functions/v1/graph";
+const require = createRequire(import.meta.url);
+const { version: packageVersion } = require('../package.json') as { version: string };
 
-/** Overridable for testing; the baked-in default is what shipped copies use. */
-export const endpoint = (): string => {
-  return process.env.ARTIST_MCP_ENDPOINT ?? DEFAULT_ENDPOINT;
+const PRODUCTION_ENDPOINT = 'https://zxiemadwrkcoovvpscfb.supabase.co/functions/v1/graph';
+const STAGING_ENDPOINT = 'https://cakkwvxwlkdfzqjbvrpa.supabase.co/functions/v1/graph';
+
+const defaultEndpoint = (version: string): string => {
+  return version.includes('-staging.') ? STAGING_ENDPOINT : PRODUCTION_ENDPOINT;
 };
 
-export type Operation = "list_notes" | "read_note" | "verify";
+/** Overridable for development; shipped copies select the service matching their npm version. */
+export const endpoint = (): string => {
+  return process.env.ARTIST_MCP_ENDPOINT ?? defaultEndpoint(packageVersion);
+};
+
+export { defaultEndpoint };
+
+export type Operation = 'list_notes' | 'read_note' | 'verify';
 
 export class GraphError extends Error {
   constructor(
@@ -22,7 +32,7 @@ export class GraphError extends Error {
     readonly reconnectNeeded: boolean,
   ) {
     super(message);
-    this.name = "GraphError";
+    this.name = 'GraphError';
   }
 }
 
@@ -34,9 +44,9 @@ export const call = async <T>(
   let res: Response;
   try {
     res = await fetch(endpoint(), {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "content-type": "application/json",
+        'content-type': 'application/json',
         authorization: `Bearer ${key}`,
       },
       body: JSON.stringify({ op, ...params }),
@@ -47,8 +57,8 @@ export const call = async <T>(
 
   if (res.status === 401 || res.status === 403) {
     throw new GraphError(
-      "Reconnect needed — this connection key is no longer valid. " +
-        "Sign in to the web app and generate a new one.",
+      'Reconnect needed — this connection key is no longer valid. ' +
+        'Sign in to the web app and generate a new one.',
       true,
     );
   }
@@ -56,8 +66,7 @@ export const call = async <T>(
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
 
   if (!res.ok) {
-    const detail =
-      typeof body.error === "string" ? body.error : `HTTP ${res.status}`;
+    const detail = typeof body.error === 'string' ? body.error : `HTTP ${res.status}`;
     throw new GraphError(detail, body.reconnect_needed === true);
   }
 

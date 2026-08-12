@@ -13,7 +13,6 @@ project_id = "zxiemadwrkcoovvpscfb"
 site_url = "https://artist-mcp.vercel.app"
 additional_redirect_urls = [
   "https://artist-mcp.vercel.app/**",
-  "http://localhost:3000/**",
 ]
 
 [remotes.staging]

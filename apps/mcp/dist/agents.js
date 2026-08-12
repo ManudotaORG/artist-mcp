@@ -3,7 +3,6 @@ import { access, copyFile, mkdir, readFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const packRoot = fileURLToPath(new URL('../agent-pack/', import.meta.url));
-const defaultRegistryUrl = 'https://raw.githubusercontent.com/ManudotaORG/artist-mcp/main/apps/mcp/agent-pack/registry.json';
 const exists = async (path) => {
     try {
         await access(path);
@@ -47,7 +46,11 @@ const readBundledRegistry = async () => {
     return parseRegistry(JSON.parse(raw));
 };
 const fetchRemoteRegistry = async () => {
-    const url = new URL(process.env.ARTIST_MCP_REGISTRY_URL ?? defaultRegistryUrl);
+    const registryUrl = process.env.ARTIST_MCP_REGISTRY_URL;
+    if (!registryUrl) {
+        throw new Error('ARTIST_MCP_REGISTRY_URL is not configured.');
+    }
+    const url = new URL(registryUrl);
     const response = await fetch(url, { signal: AbortSignal.timeout(3_000) });
     if (!response.ok) {
         throw new Error(`Agent registry returned HTTP ${response.status}.`);
@@ -55,6 +58,9 @@ const fetchRemoteRegistry = async () => {
     return { registry: parseRegistry(await response.json()), url };
 };
 const listAgentWorkflows = async () => {
+    if (!process.env.ARTIST_MCP_REGISTRY_URL) {
+        return (await readBundledRegistry()).entries;
+    }
     try {
         return (await fetchRemoteRegistry()).registry.entries;
     }
@@ -79,6 +85,9 @@ const loadBundledWorkflow = async (id) => {
     return { ...entry, content };
 };
 const loadAgentWorkflow = async (id) => {
+    if (!process.env.ARTIST_MCP_REGISTRY_URL) {
+        return loadBundledWorkflow(id);
+    }
     try {
         const { registry, url } = await fetchRemoteRegistry();
         const entry = registry.entries.find((item) => item.id === id);

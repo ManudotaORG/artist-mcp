@@ -107,10 +107,10 @@ backend never stores this local state.
 
 The MCP server exposes `list_agent_workflows` and `load_agent_workflow`. The
 registry is generated from the Markdown files during package build and each
-entry includes a SHA-256 checksum. At runtime the server checks GitHub for the
-current registry and falls back to the bundled copy if GitHub is unavailable.
-This lets merged Markdown changes update behavior without changing the Supabase
-backend or copying the artist's OneNote data.
+entry includes a SHA-256 checksum. At runtime the server reads the registry and
+Markdown bundled with the installed npm version. This keeps stable, staging,
+older, and local package versions isolated from later playbook changes.
 
-Set `ARTIST_MCP_REGISTRY_URL` only when testing a different registry. The
-default points at this repository's `main` branch.
+Set `ARTIST_MCP_REGISTRY_URL` only when explicitly testing a remote registry.
+Remote Markdown paths resolve relative to that registry URL, and failures fall
+back to the installed bundle.
