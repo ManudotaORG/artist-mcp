@@ -11,7 +11,13 @@ Update it as you go rather than at the end.
 Scope is deliberately narrow. The read-only workflow layer is defined in
 `apps/mcp/agent-pack`: one OneNote page is one working unit, Markdown roles and
 project types are loaded at runtime, and every result stays in chat. If you find
-yourself adding writes, sends, synchronization, or another data source, stop.
+yourself adding writes, sends, or synchronization, stop.
+
+Sources are read-only and deliberately few. OneNote holds the working unit;
+Gmail is **supporting evidence only** — it corroborates or fills gaps in a page
+and is never itself a working unit. That asymmetry is the whole reason a second
+source did not dissolve the one-page-one-unit rule that every role and playbook
+depends on. Adding a third source means re-deciding it, not repeating it.
 
 ## Layout
 

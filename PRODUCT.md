@@ -25,11 +25,14 @@ Users move between live performance, studio work, and practical production admin
 ## Capabilities and Constraints
 
 - Microsoft OAuth with `Notes.Read`, `offline_access`, and `User.Read`.
+- Google OAuth with `gmail.readonly`, offline access, as a separate and optional connection.
 - One OneNote page is one working unit.
 - Read-only OneNote page listing and reading.
+- Read-only Gmail search and message reading, as supporting evidence for a OneNote working unit. An email thread is never itself a working unit.
+- Either connection stands alone: a user may connect OneNote, Gmail, or both, and disconnecting one leaves the other working.
 - Checksummed runtime registry of seven roles and four starter project types.
 - Results appear only in chat.
-- No OneNote writes, message sending, calendar editing, background jobs, synchronization, or workflow state in Supabase.
+- No OneNote or Gmail writes, message sending, replying, drafting, labelling, calendar editing, background jobs, synchronization, or workflow state in Supabase.
 - The existing authentication, connection-key, Claude Desktop, and Codex installation flows must remain functional.
 
 ## Brand Commitments

@@ -142,6 +142,68 @@ const runServer = async () => {
             return errorResult(err);
         }
     });
+    server.tool("list_emails", "Search the user's Gmail and list matching messages, newest first, with " +
+        "subject, sender, date and snippet. Email is supporting evidence for a " +
+        "OneNote working unit — it corroborates or fills gaps in a page, and is " +
+        "never itself the working unit. Cite the subject and sender behind any " +
+        "fact taken from here, and never treat a hedged or forwarded value as " +
+        "settled. Requires a Google connection, which is separate from the " +
+        "Microsoft one.", {
+        query: z
+            .string()
+            .optional()
+            .describe("Gmail search syntax, e.g. 'from:promoter@venue.com after:2026/01/01' " +
+            "or 'subject:contract'. Omit to list the most recent messages."),
+    }, async ({ query }) => {
+        try {
+            const { emails } = await call("list_emails", key, { query });
+            if (emails.length === 0) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: query
+                                ? `No messages match ${query}.`
+                                : "No messages found.",
+                        },
+                    ],
+                };
+            }
+            const lines = emails.map((e) => {
+                const who = e.from ?? "unknown sender";
+                const when = e.date ?? "unknown date";
+                const snippet = e.snippet ? `\n  ${e.snippet}` : "";
+                return `- ${e.subject} — ${who} — ${when}${snippet}\n  id: ${e.id}`;
+            });
+            return { content: [{ type: "text", text: lines.join("\n") }] };
+        }
+        catch (err) {
+            return errorResult(err);
+        }
+    });
+    server.tool("read_email", "Read one Gmail message in full, including its body. Takes the id from " +
+        "list_emails. Read-only: this never sends, replies, drafts, labels, or " +
+        "deletes anything.", {
+        email_id: z
+            .string()
+            .describe("The id of the message, as returned by list_emails"),
+    }, async ({ email_id }) => {
+        try {
+            const mail = await call("read_email", key, { email_id });
+            const head = [
+                `# ${mail.subject}`,
+                "",
+                `From: ${mail.from ?? "unknown"}`,
+                `To: ${mail.to ?? "unknown"}`,
+                ...(mail.cc ? [`Cc: ${mail.cc}`] : []),
+                `Date: ${mail.date ?? "unknown"}`,
+            ].join("\n");
+            return { content: [{ type: "text", text: `${head}\n\n${mail.text}` }] };
+        }
+        catch (err) {
+            return errorResult(err);
+        }
+    });
     await server.connect(new StdioServerTransport());
 };
 export { runServer };

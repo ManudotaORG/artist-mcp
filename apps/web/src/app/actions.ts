@@ -71,16 +71,27 @@ export const revokeKey = async (): Promise<{ error?: string }> => {
   return {};
 };
 
-/** Removes the Microsoft token and revokes every MCP key in one transaction. */
-export const disconnectMicrosoft = async (): Promise<{ error?: string }> => {
+/**
+ * Removes one provider's token, and revokes every MCP key only when it was the
+ * last connection — a key addresses whichever providers remain, so dropping
+ * Gmail must not revoke the key that still reaches OneNote. The atomicity of
+ * both deletes lives in the function, so the account cannot land half
+ * disconnected.
+ */
+export const disconnectProvider = async (
+  provider: 'microsoft' | 'google',
+): Promise<{ error?: string }> => {
   const supabase = await supabaseServer();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: 'Sign in first.' };
 
-  const { error } = await supabase.rpc('disconnect_microsoft');
-  if (error) return { error: 'Could not disconnect Microsoft. Try again.' };
+  const { error } = await supabase.rpc('disconnect_provider', { p_provider: provider });
+  if (error) {
+    const label = provider === 'google' ? 'Gmail' : 'Microsoft';
+    return { error: `Could not disconnect ${label}. Try again.` };
+  }
 
   revalidatePath('/');
   return {};

@@ -2,8 +2,8 @@
  * The only network surface this package has.
  *
  * Everything goes through one POST to the edge function, which holds the
- * Microsoft credentials. No Graph call is ever made from this machine, and the
- * connection key is the only secret that lives here.
+ * Microsoft and Google credentials. No call to either provider is ever made
+ * from this machine, and the connection key is the only secret that lives here.
  */
 import { createRequire } from 'node:module';
 
@@ -24,7 +24,12 @@ export const endpoint = (): string => {
 
 export { defaultEndpoint };
 
-export type Operation = 'list_notes' | 'read_note' | 'verify';
+export type Operation =
+  | 'list_notes'
+  | 'read_note'
+  | 'list_emails'
+  | 'read_email'
+  | 'verify';
 
 export class GraphError extends Error {
   constructor(
