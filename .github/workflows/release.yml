@@ -89,7 +89,11 @@ jobs:
         run: ./scripts/publish-release-notes.sh "$RELEASE_TAG"
 
   publish-staging:
-    if: github.ref == 'refs/heads/staging'
+    needs: [release-please, publish-production]
+    if: >-
+      always() &&
+      (github.ref == 'refs/heads/staging' ||
+      (github.ref == 'refs/heads/main' && needs.publish-production.result == 'success'))
     runs-on: ubuntu-latest
     environment: staging
     permissions:
@@ -98,6 +102,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref == 'refs/heads/main' && 'staging' || github.sha }}
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -115,12 +121,27 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Test MCP package
-        run: pnpm --filter @manudota/artist-mcp test
+      - name: Align staging with the latest stable version
+        working-directory: apps/mcp
+        run: |
+          stable_version="$(npm view @manudota/artist-mcp@latest version)"
+          if [[ ! "$stable_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Unexpected latest version: $stable_version"
+            exit 1
+          fi
+          npm pkg set version="$stable_version"
 
       - name: Create unique staging version
         working-directory: apps/mcp
-        run: node scripts/set-staging-version.mjs "$GITHUB_RUN_NUMBER"
+        run: |
+          build_id="$GITHUB_RUN_NUMBER"
+          if [[ "$GITHUB_RUN_ATTEMPT" != '1' ]]; then
+            build_id="$build_id.$GITHUB_RUN_ATTEMPT"
+          fi
+          node scripts/set-staging-version.mjs "$build_id"
+
+      - name: Test staging package
+        run: pnpm --filter @manudota/artist-mcp test
 
       - name: Publish staging dist-tag
         if: vars.NPM_STAGING_PUBLISH_ENABLED == 'true'

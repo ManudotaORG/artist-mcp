@@ -107,6 +107,11 @@ Release Please owns production versioning. Conventional commits merged to
 the `release.yml` workflow publishes through npm trusted publishing and GitHub
 OIDC. Do not publish production versions manually from a maintainer laptop.
 
+Protect `main` and `staging` with the `Lint and build` status check. Promote
+through pull requests so neither environment can receive an unvalidated direct
+push. `release` remains the integration branch and validates its pushes without
+requiring pull requests targeting it.
+
 Before merging the release PR, verify from a clean worktree:
 
 ```bash
@@ -125,6 +130,11 @@ binds its stable job to GitHub `production` and its snapshot job to `staging`.
 Every push explicitly promoted to the `staging` branch publishes a unique
 prerelease through the staging job in `.github/workflows/release.yml` under the
 npm `staging` dist-tag. This remains separate from stable `latest` publication.
+A successful stable publication also runs that job against the staging branch,
+using npm `latest` as its version base. This guarantees that releasing `0.5.0`
+advances staging to `0.5.1-staging.<run>` without a manual metadata-sync push.
+Retried workflow runs append the attempt number to avoid republishing an
+immutable npm version.
 
 Keep the staging environment variable `NPM_STAGING_PUBLISH_ENABLED` unset until
 the shared trusted publisher exists. Set it to `true` only after npm has the
