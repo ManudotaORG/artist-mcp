@@ -28,7 +28,15 @@ for (const path of files) {
       : 'policy';
   const slug = path.split('/').at(-1).replace(/\.md$/, '').toLowerCase().replaceAll('_', '-');
   const heading = content.match(/^#\s+(.+)$/m)?.[1] ?? slug;
-  const description = content.split('\n').find((line) => line.trim() && !line.startsWith('#')) ?? heading;
+  // These files are hard-wrapped, so taking the first line yielded half a
+  // sentence — and that fragment is what a model sees when it browses the
+  // registry without loading anything. Take the whole first paragraph and
+  // unwrap it.
+  const paragraph = content
+    .split('\n\n')
+    .map((block) => block.trim())
+    .find((block) => block && !block.startsWith('#'));
+  const description = paragraph ? paragraph.replace(/\s*\n\s*/g, ' ') : heading;
   entries.push({
     id: `${kind}:${slug}`,
     kind,

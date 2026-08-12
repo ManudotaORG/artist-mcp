@@ -17,3 +17,10 @@ Choose one action on the critical path rather than listing every open task.
 Do not classify a project as large from budget or audience alone. Use the page's
 actual operational dependencies. Never infer permits, insurance, contracts, or
 supplier confirmation.
+
+An unresolved dependency is still a dependency. Classify from the situation the
+page describes, not from whether the work has been done: a concert sited
+outdoors carries staging and weather exposure even when no rain plan, permit,
+or power supply has been arranged yet. Absent arrangements make the playbook
+more useful, not less applicable. What must not be inferred is that the work is
+handled, not that it exists.

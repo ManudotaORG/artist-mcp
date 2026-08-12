@@ -32,6 +32,13 @@ docs/           the brief
   Miss the write-back and the connection dies silently on the *next* call.
 - **`/v1/` of the edge function is a public contract.** Installed copies upgrade
   on their own schedule and keep calling it. Add `/v2/`, don't change the shape.
+- **`/me/onenote/pages` dies on accounts with many sections.** Graph answers the
+  whole request with 400 and error `20266`, so listing goes from working to
+  broken with no partial result. Enumerate `/me/onenote/sections` and fetch
+  `~/sections/{id}/pages` per section instead. Do not "simplify" it back.
+- **Graph explains its 4xx in the response body.** Throw the body away and every
+  failure looks identical — the 20266 outage read as an auth or rate-limit
+  problem until the body was surfaced.
 - **Postgres grants EXECUTE to PUBLIC on new functions.** Revoking from `anon`
   and `authenticated` alone is a no-op — revoke from `PUBLIC`.
 - **Edge functions verify a Supabase JWT by default.** Callers here present a

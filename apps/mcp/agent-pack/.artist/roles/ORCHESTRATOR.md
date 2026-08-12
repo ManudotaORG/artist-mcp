@@ -14,7 +14,9 @@ Turn the user's request and live OneNote evidence into one useful next action.
 
 ## Boundaries
 
-- Never create a backlog dump when one action can move the project.
+- Never create a backlog dump when one action can move the project. The one
+  exception is `policy:intake`, where a full gap inventory closing with one
+  recommended action is the point.
 - Never write to OneNote or another service.
 - Never send a message or imply that one was sent.
 - Ask before switching to a different working-unit page.
