@@ -8,7 +8,8 @@
  * and will keep calling this shape indefinitely. Add /v2/ rather than changing
  * a field.
  *
- * Request:  { op: "list_notes" | "read_note" | "verify", note_id?: string }
+ * Request:  { op: "list_notes" | "read_note" | "list_emails" | "read_email"
+ *                 | "verify", note_id?: string, email_id?: string, query?: string }
  *           Authorization: Bearer <connection key>
  */
 
@@ -16,6 +17,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const MS_CLIENT_ID = Deno.env.get("MS_CLIENT_ID")!;
 const MS_CLIENT_SECRET = Deno.env.get("MS_CLIENT_SECRET")!;
+const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
+const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
 const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY")!;
 
 // Service role: the edge function resolves a key to a user and reads that
@@ -30,8 +33,33 @@ const GRAPH = "https://graph.microsoft.com/v1.0";
 const TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 const SCOPES = "Notes.Read offline_access User.Read";
 
-/** Only these three. Anything else is a 400 before any work happens. */
-const OPERATIONS = new Set(["list_notes", "read_note", "verify"]);
+const GMAIL = "https://gmail.googleapis.com/gmail/v1";
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+// Read-only, and deliberately only Gmail. Every additional scope widens the
+// consent screen and the blast radius of a leaked refresh token.
+const GOOGLE_SCOPES = "https://www.googleapis.com/auth/gmail.readonly";
+
+/**
+ * Anything not here is a 400 before any work happens.
+ *
+ * Adding operations is additive and safe for /v1/: an older installed copy
+ * never sends the new ops, and the shape of the existing four is untouched.
+ */
+const OPERATIONS = new Set([
+  "list_notes",
+  "read_note",
+  "list_emails",
+  "read_email",
+  "verify",
+]);
+
+/** Which connection each operation needs. `verify` needs none. */
+const PROVIDER_FOR: Record<string, "microsoft" | "google"> = {
+  list_notes: "microsoft",
+  read_note: "microsoft",
+  list_emails: "google",
+  read_email: "google",
+};
 
 // ------------------------------------------------------------------- helpers
 
@@ -102,29 +130,49 @@ function htmlToText(html: string): string {
 
 // ------------------------------------------------------------ token exchange
 
+type Provider = "microsoft" | "google";
+
+const PROVIDER_LABEL: Record<Provider, string> = {
+  microsoft: "Microsoft",
+  google: "Google",
+};
+
 /**
- * Microsoft rotates refresh tokens: every exchange returns a new one and
- * invalidates the old. The write-back below is not optional — miss it and the
- * connection dies silently after the first call.
+ * Exchange the stored refresh token for an access token.
+ *
+ * The two providers differ in one way that matters. Microsoft rotates refresh
+ * tokens — every exchange returns a new one and invalidates the old, so the
+ * write-back is not optional; miss it and the connection dies silently after
+ * the first call. Google returns no refresh token on an ordinary refresh and
+ * keeps the original valid, so there is normally nothing to write back.
+ *
+ * Writing back whatever comes returns therefore handles both: it is mandatory
+ * for Microsoft and a no-op for Google, rather than two divergent paths.
  */
-async function accessTokenFor(userId: string): Promise<string> {
+async function accessTokenFor(
+  userId: string,
+  provider: Provider,
+): Promise<string> {
+  const label = PROVIDER_LABEL[provider];
+
   const { data: refreshToken, error } = await db.rpc(
     "connection_refresh_token",
-    { p_user_id: userId, p_key: TOKEN_ENCRYPTION_KEY },
+    { p_user_id: userId, p_key: TOKEN_ENCRYPTION_KEY, p_provider: provider },
   );
   if (error || !refreshToken) {
-    throw new HttpError(403, "No Microsoft connection. Reconnect needed.", true);
+    throw new HttpError(403, `No ${label} connection. Reconnect needed.`, true);
   }
 
-  const res = await fetch(TOKEN_URL, {
+  const google = provider === "google";
+  const res = await fetch(google ? GOOGLE_TOKEN_URL : TOKEN_URL, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: MS_CLIENT_ID,
-      client_secret: MS_CLIENT_SECRET,
+      client_id: google ? GOOGLE_CLIENT_ID : MS_CLIENT_ID,
+      client_secret: google ? GOOGLE_CLIENT_SECRET : MS_CLIENT_SECRET,
       grant_type: "refresh_token",
       refresh_token: refreshToken,
-      scope: SCOPES,
+      scope: google ? GOOGLE_SCOPES : SCOPES,
     }),
   });
 
@@ -132,7 +180,7 @@ async function accessTokenFor(userId: string): Promise<string> {
   if (!res.ok) {
     throw new HttpError(
       403,
-      `Microsoft rejected the refresh token: ${body.error_description ?? res.status}. Reconnect needed.`,
+      `${label} rejected the refresh token: ${body.error_description ?? res.status}. Reconnect needed.`,
       true,
     );
   }
@@ -142,8 +190,9 @@ async function accessTokenFor(userId: string): Promise<string> {
       p_user_id: userId,
       p_refresh_token: body.refresh_token,
       p_key: TOKEN_ENCRYPTION_KEY,
+      p_provider: provider,
     });
-    // Failing to persist the rotated token means the next call will present a
+    // Failing to persist a rotated token means the next call will present a
     // dead one. Better to fail loudly now than to silently break later.
     if (writeBackError) {
       throw new HttpError(500, "Could not persist the rotated refresh token.", false);
@@ -168,10 +217,11 @@ class HttpError extends Error {
  * one call in three, so a read is retried briefly. Only 5xx and 429 are
  * retried — a 4xx is a real answer and retrying it would just be slower.
  */
-async function graphGet(path: string, token: string): Promise<Response> {
-  // Path is built here from a fixed set of literals below. Nothing from the
-  // caller is ever concatenated into a URL.
-  const url = `${GRAPH}${path}`;
+async function getWithRetry(
+  url: string,
+  token: string,
+  api: string,
+): Promise<Response> {
   const delays = [400, 1200];
 
   for (let attempt = 0; ; attempt++) {
@@ -182,16 +232,26 @@ async function graphGet(path: string, token: string): Promise<Response> {
 
     const retryable = res.status >= 500 || res.status === 429;
     if (!retryable || attempt >= delays.length) {
-      // Graph explains 4xx in the body. Without it every failure looks the
-      // same and the only debugging tool left is guesswork.
+      // Both APIs explain their 4xx in the body. Without it every failure looks
+      // the same and the only debugging tool left is guesswork.
       const detail = (await res.text().catch(() => "")).slice(0, 300);
       throw new HttpError(
         502,
-        `Microsoft Graph returned ${res.status}.${detail ? ` ${detail}` : ""}`,
+        `${api} returned ${res.status}.${detail ? ` ${detail}` : ""}`,
       );
     }
     await new Promise((r) => setTimeout(r, delays[attempt]));
   }
+}
+
+function graphGet(path: string, token: string): Promise<Response> {
+  // Path is built here from a fixed set of literals below. Nothing from the
+  // caller is ever concatenated into a URL.
+  return getWithRetry(`${GRAPH}${path}`, token, "Microsoft Graph");
+}
+
+function gmailGet(path: string, token: string): Promise<Response> {
+  return getWithRetry(`${GMAIL}${path}`, token, "Gmail");
 }
 
 // ---------------------------------------------------------------- operations
@@ -268,6 +328,148 @@ async function readNote(token: string, noteId: unknown) {
   return { title: title ?? "(untitled)", text: htmlToText(await content.text()) };
 }
 
+// --------------------------------------------------------------------- gmail
+
+type GmailHeader = { name?: string; value?: string };
+
+type GmailPart = {
+  mimeType?: string;
+  body?: { data?: string; size?: number };
+  parts?: GmailPart[];
+};
+
+type GmailMessage = {
+  id: string;
+  threadId?: string;
+  snippet?: string;
+  internalDate?: string;
+  payload?: GmailPart & { headers?: GmailHeader[] };
+};
+
+/** Gmail ids are opaque hex-ish strings; anything else never reaches a URL. */
+const GMAIL_ID = /^[A-Za-z0-9_-]{1,128}$/;
+
+function header(headers: GmailHeader[] | undefined, name: string): string | null {
+  const found = (headers ?? []).find(
+    (h) => (h.name ?? "").toLowerCase() === name.toLowerCase(),
+  );
+  return found?.value ?? null;
+}
+
+/**
+ * Gmail encodes bodies as base64url, which atob does not accept: it uses - and
+ * _ in place of + and /, and drops the padding. Translating before decoding is
+ * the whole difference between readable text and a throw.
+ */
+function decodeBody(data: string): string {
+  const padded = data.replace(/-/g, "+").replace(/_/g, "/");
+  const full = padded + "=".repeat((4 - (padded.length % 4)) % 4);
+  try {
+    // atob yields one byte per char; UTF-8 has to be reassembled from those
+    // bytes or every non-ASCII character arrives mojibaked.
+    const bytes = Uint8Array.from(atob(full), (c) => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Walk the MIME tree for something readable, preferring text/plain.
+ *
+ * A real message is rarely one part: it is usually multipart/alternative with
+ * plain and HTML siblings, often nested inside multipart/mixed alongside
+ * attachments. Taking payload.body directly works only for the simplest mails.
+ */
+function extractText(part: GmailPart | undefined): string {
+  if (!part) return "";
+
+  const plain: string[] = [];
+  const html: string[] = [];
+
+  const walk = (node: GmailPart) => {
+    const mime = (node.mimeType ?? "").toLowerCase();
+    const data = node.body?.data;
+    if (data) {
+      if (mime === "text/plain") plain.push(decodeBody(data));
+      else if (mime === "text/html") html.push(decodeBody(data));
+    }
+    for (const child of node.parts ?? []) walk(child);
+  };
+  walk(part);
+
+  if (plain.length > 0) return plain.join("\n").trim();
+  // htmlToText is written for OneNote but the job is identical here, and a
+  // second stripper would drift from this one.
+  if (html.length > 0) return htmlToText(html.join("\n"));
+  return "";
+}
+
+/**
+ * List recent messages, newest first.
+ *
+ * Gmail's list endpoint returns ids and nothing else, so each message needs a
+ * second metadata call to become a usable line. That is an N+1 by the API's
+ * design, which is why the page is small and the calls run together.
+ */
+async function listEmails(token: string, rawQuery: unknown) {
+  // Gmail search syntax is the user's own; it is sent as a query parameter,
+  // never interpolated into a path, and capped so it cannot become a URL bomb.
+  const query = typeof rawQuery === "string" ? rawQuery.slice(0, 500).trim() : "";
+
+  const params = new URLSearchParams({ maxResults: "25" });
+  if (query) params.set("q", query);
+
+  const listRes = await gmailGet(`/users/me/messages?${params}`, token);
+  const ids = (((await listRes.json()).messages ?? []) as GmailMessage[])
+    .map((m) => m.id)
+    .filter((id) => typeof id === "string" && GMAIL_ID.test(id));
+
+  const emails = await Promise.all(
+    ids.map(async (id) => {
+      const res = await gmailGet(
+        `/users/me/messages/${encodeURIComponent(id)}` +
+          "?format=metadata&metadataHeaders=Subject&metadataHeaders=From" +
+          "&metadataHeaders=To&metadataHeaders=Date",
+        token,
+      );
+      const msg = (await res.json()) as GmailMessage;
+      return {
+        id: msg.id,
+        thread_id: msg.threadId ?? null,
+        subject: header(msg.payload?.headers, "Subject") ?? "(no subject)",
+        from: header(msg.payload?.headers, "From"),
+        to: header(msg.payload?.headers, "To"),
+        date: header(msg.payload?.headers, "Date"),
+        snippet: msg.snippet ?? null,
+      };
+    }),
+  );
+
+  return { emails };
+}
+
+async function readEmail(token: string, emailId: unknown) {
+  if (typeof emailId !== "string" || !GMAIL_ID.test(emailId)) {
+    throw new HttpError(400, "email_id is missing or malformed.");
+  }
+  const id = encodeURIComponent(emailId);
+
+  const res = await gmailGet(`/users/me/messages/${id}?format=full`, token);
+  const msg = (await res.json()) as GmailMessage;
+
+  return {
+    id: msg.id,
+    thread_id: msg.threadId ?? null,
+    subject: header(msg.payload?.headers, "Subject") ?? "(no subject)",
+    from: header(msg.payload?.headers, "From"),
+    to: header(msg.payload?.headers, "To"),
+    cc: header(msg.payload?.headers, "Cc"),
+    date: header(msg.payload?.headers, "Date"),
+    text: extractText(msg.payload) || (msg.snippet ?? ""),
+  };
+}
+
 // -------------------------------------------------------------------- router
 
 /**
@@ -311,10 +513,25 @@ export const handleRequest = async (req: Request): Promise<Response> => {
 
     if (op === "verify") return json({ ok: true });
 
-    const token = await accessTokenFor(keyRow.user_id);
-    const result = op === "list_notes"
-      ? await listNotes(token)
-      : await readNote(token, body.note_id);
+    // The operation decides the provider, so a Gmail call never spends a
+    // Microsoft token and a missing Google connection is reported as such
+    // instead of surfacing as an unrelated Microsoft error.
+    const token = await accessTokenFor(keyRow.user_id, PROVIDER_FOR[op]);
+
+    let result: unknown;
+    switch (op) {
+      case "list_notes":
+        result = await listNotes(token);
+        break;
+      case "read_note":
+        result = await readNote(token, body.note_id);
+        break;
+      case "list_emails":
+        result = await listEmails(token, body.query);
+        break;
+      default:
+        result = await readEmail(token, body.email_id);
+    }
 
     return json(result);
   } catch (err) {
@@ -329,4 +546,13 @@ export const handleRequest = async (req: Request): Promise<Response> => {
   }
 };
 
-Deno.serve(handleRequest);
+// Guarded so the module can be imported by a test without binding a port.
+// Deno runs this as the entry point in production, where import.meta.main is
+// true, so the served behaviour is unchanged.
+if (import.meta.main) {
+  Deno.serve(handleRequest);
+}
+
+// Exported for tests only. These are the parts with no network and no auth:
+// pure transformations where a bug is silent rather than loud.
+export { decodeBody, extractText, htmlToText };

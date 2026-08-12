@@ -58,17 +58,35 @@ into staging:
 | `NEXT_PUBLIC_SITE_URL`     | `https://artist-mcp.vercel.app`                             | `https://artist-mcp-staging.vercel.app`                             |
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://zxiemadwrkcoovvpscfb.supabase.co`                  | `https://cakkwvxwlkdfzqjbvrpa.supabase.co`                          |
 | `MS_REDIRECT_URI`          | `https://artist-mcp.vercel.app/api/auth/microsoft/callback` | `https://artist-mcp-staging.vercel.app/api/auth/microsoft/callback` |
+| `GOOGLE_REDIRECT_URI`      | `https://artist-mcp.vercel.app/api/auth/google/callback`    | `https://artist-mcp-staging.vercel.app/api/auth/google/callback`    |
 | npm MCP default            | production Graph function                                   | staging Graph function for `-staging.*` versions                    |
 
 Both Vercel projects also require their matching Supabase browser key and
-service-role key plus `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, and
-`TOKEN_ENCRYPTION_KEY`. `NEXT_PUBLIC_SITE_URL` is mandatory in hosted builds;
-only local development may fall back to `http://localhost:3000`.
+service-role key plus `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`,
+`GOOGLE_CLIENT_SECRET`, and `TOKEN_ENCRYPTION_KEY`. `NEXT_PUBLIC_SITE_URL` is
+mandatory in hosted builds; only local development may fall back to
+`http://localhost:3000`.
+
+The Graph edge function needs `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in
+its own secrets as well as the web app's — it performs its own refresh-token
+exchange and shares nothing with Vercel.
 
 Production uses `https://artist-mcp.vercel.app`; staging uses
 `https://artist-mcp-staging.vercel.app`. Add each `/api/auth/microsoft/callback`
-URL to the Microsoft Entra app and each `/auth/confirm` origin to the Supabase
+URL to the Microsoft Entra app, each `/api/auth/google/callback` URL to the
+Google Cloud OAuth client, and each `/auth/confirm` origin to the Supabase
 Auth redirect allowlist.
+
+Gmail's `gmail.readonly` scope is restricted: Google requires app verification
+before users outside the test list can consent, and that review takes weeks.
+Add the intended users to the OAuth consent screen's test-user list to work
+before verification completes.
+
+Enable the **Gmail API** in the Google Cloud project itself, not just the scope
+on the consent screen. They are separate switches, and OAuth succeeds without
+the API: the consent screen appears, the refresh token stores, and the first
+read then fails with a 403 that names the project. Consenting is not evidence
+that the API is on.
 
 ## Supabase changes
 
