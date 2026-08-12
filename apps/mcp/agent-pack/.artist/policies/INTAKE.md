@@ -50,6 +50,12 @@ per page.
 - Add a field only when the playbook expects it or the surveyed pages show a
   recurring need with no home.
 - Present them in chat for the musician to paste into OneNote. Never write.
+- Present them as formatted text — real headings and a real table — never
+  inside a code block. A fenced template copies as literal `###` and pipe
+  characters and lands in OneNote as unreadable plain text, while formatted
+  text carries its structure across the clipboard. Do not offer the musician a
+  choice of format; a template exists to be pasted, and this is the form that
+  pastes.
 
 ## Gap inventory
 
