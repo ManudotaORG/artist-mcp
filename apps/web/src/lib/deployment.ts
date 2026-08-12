@@ -16,7 +16,7 @@ const getStagingVersion = async (): Promise<string> => {
   try {
     const response = await fetch(
       'https://registry.npmjs.org/-/package/@manudota%2Fartist-mcp/dist-tags',
-      { next: { revalidate: 60 } },
+      { cache: 'no-store' },
     );
     if (!response.ok) return 'unknown';
     const tags = (await response.json()) as NpmDistTags;
