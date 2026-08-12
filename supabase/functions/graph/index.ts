@@ -9,7 +9,9 @@
  * a field.
  *
  * Request:  { op: "list_notes" | "read_note" | "list_emails" | "read_email"
- *                 | "verify", note_id?: string, email_id?: string, query?: string }
+ *                 | "list_events" | "read_event" | "verify",
+ *              note_id?, email_id?, event_id?, calendar_id?, query?,
+ *              time_min?, time_max? }
  *           Authorization: Bearer <connection key>
  */
 
@@ -34,10 +36,16 @@ const TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 const SCOPES = "Notes.Read offline_access User.Read";
 
 const GMAIL = "https://gmail.googleapis.com/gmail/v1";
+const CALENDAR = "https://www.googleapis.com/calendar/v3";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
-// Read-only, and deliberately only Gmail. Every additional scope widens the
-// consent screen and the blast radius of a leaked refresh token.
-const GOOGLE_SCOPES = "https://www.googleapis.com/auth/gmail.readonly";
+// Read-only and deliberately narrow. Every additional scope widens the consent
+// screen and the blast radius of a leaked refresh token, so this must stay in
+// step with the web app's authorize call — a refresh that asks for more than
+// the grant carries is rejected.
+const GOOGLE_SCOPES = [
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/calendar.events.readonly",
+].join(" ");
 
 /**
  * Anything not here is a 400 before any work happens.
@@ -50,6 +58,8 @@ const OPERATIONS = new Set([
   "read_note",
   "list_emails",
   "read_email",
+  "list_events",
+  "read_event",
   "verify",
 ]);
 
@@ -59,6 +69,8 @@ const PROVIDER_FOR: Record<string, "microsoft" | "google"> = {
   read_note: "microsoft",
   list_emails: "google",
   read_email: "google",
+  list_events: "google",
+  read_event: "google",
 };
 
 // ------------------------------------------------------------------- helpers
@@ -235,6 +247,19 @@ async function getWithRetry(
       // Both APIs explain their 4xx in the body. Without it every failure looks
       // the same and the only debugging tool left is guesswork.
       const detail = (await res.text().catch(() => "")).slice(0, 300);
+
+      // A refresh token carries the scopes it was granted with, and adding a
+      // scope later does not widen it. A connection made before Calendar
+      // existed here therefore authenticates fine and is refused per-call, so
+      // this has to read as "reconnect", not as a broken integration.
+      if (res.status === 403 && /insufficient|ACCESS_TOKEN_SCOPE/i.test(detail)) {
+        throw new HttpError(
+          403,
+          `This connection predates ${api} access. Reconnect Google in the web app to grant it.`,
+          true,
+        );
+      }
+
       throw new HttpError(
         502,
         `${api} returned ${res.status}.${detail ? ` ${detail}` : ""}`,
@@ -252,6 +277,10 @@ function graphGet(path: string, token: string): Promise<Response> {
 
 function gmailGet(path: string, token: string): Promise<Response> {
   return getWithRetry(`${GMAIL}${path}`, token, "Gmail");
+}
+
+function calendarGet(path: string, token: string): Promise<Response> {
+  return getWithRetry(`${CALENDAR}${path}`, token, "Google Calendar");
 }
 
 // ---------------------------------------------------------------- operations
@@ -470,6 +499,163 @@ async function readEmail(token: string, emailId: unknown) {
   };
 }
 
+// ------------------------------------------------------------------ calendar
+
+type CalendarTime = { dateTime?: string; date?: string; timeZone?: string };
+
+type CalendarEvent = {
+  id: string;
+  status?: string;
+  summary?: string;
+  description?: string;
+  location?: string;
+  htmlLink?: string;
+  start?: CalendarTime;
+  end?: CalendarTime;
+  recurringEventId?: string;
+  attendees?: { email?: string; displayName?: string; responseStatus?: string }[];
+  organizer?: { email?: string; displayName?: string };
+};
+
+/**
+ * Calendar ids are `primary` or an email-shaped address. Checked because the
+ * value is a caller-supplied path segment.
+ */
+const CALENDAR_ID = /^[A-Za-z0-9._%+@#-]{1,320}$/;
+/** Event ids are base32hex-ish; recurring instances append `_<timestamp>`. */
+const EVENT_ID = /^[A-Za-z0-9_-]{1,1024}$/;
+
+/**
+ * Normalise a Calendar time into one shape.
+ *
+ * An event carries `dateTime` OR `date`, never both: timed events use the
+ * first, all-day events the second. Reading only `dateTime` therefore returns
+ * nothing for every all-day event, which is how a festival or a tour block is
+ * usually recorded — the failure is silent and looks like an empty calendar.
+ */
+function eventTime(t: CalendarTime | undefined): {
+  value: string | null;
+  all_day: boolean;
+  time_zone: string | null;
+} {
+  if (!t) return { value: null, all_day: false, time_zone: null };
+  if (t.date) return { value: t.date, all_day: true, time_zone: t.timeZone ?? null };
+  return { value: t.dateTime ?? null, all_day: false, time_zone: t.timeZone ?? null };
+}
+
+/**
+ * Events carry their own time zone, which need not be the musician's. Times are
+ * returned as the API states them and always paired with their zone, rather
+ * than rendered into an ambient local time that silently differs between
+ * whoever formats it.
+ */
+function shapeEvent(e: CalendarEvent) {
+  const start = eventTime(e.start);
+  const end = eventTime(e.end);
+  return {
+    id: e.id,
+    summary: e.summary ?? "(no title)",
+    status: e.status ?? null,
+    location: e.location ?? null,
+    start: start.value,
+    end: end.value,
+    all_day: start.all_day,
+    time_zone: start.time_zone ?? end.time_zone,
+    // Present only on an instance of a recurring series, which is worth saying:
+    // "every Tuesday" and "this Tuesday" are different claims about a page.
+    recurring: Boolean(e.recurringEventId),
+  };
+}
+
+/**
+ * List events in a window, earliest first.
+ *
+ * singleEvents=true is not optional. Without it the API returns recurrence
+ * *rules* rather than occurrences, so a weekly rehearsal appears once, at its
+ * first date, carrying an RRULE that reads as a single event on the wrong day.
+ * orderBy=startTime is only accepted alongside it.
+ */
+async function listEvents(
+  token: string,
+  rawCalendarId: unknown,
+  rawQuery: unknown,
+  rawTimeMin: unknown,
+  rawTimeMax: unknown,
+) {
+  const calendarId = typeof rawCalendarId === "string" && rawCalendarId.trim()
+    ? rawCalendarId.trim()
+    : "primary";
+  if (!CALENDAR_ID.test(calendarId)) {
+    throw new HttpError(400, "calendar_id is malformed.");
+  }
+
+  const iso = (v: unknown, fallback: string): string => {
+    if (typeof v !== "string" || !v.trim()) return fallback;
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) throw new HttpError(400, `Not a date: ${v}`);
+    return d.toISOString();
+  };
+
+  // Defaults lean recent-and-ahead: corroborating next month's concert is the
+  // common case, but a page about last week still needs its evidence, so the
+  // window opens slightly in the past rather than at now.
+  const now = Date.now();
+  const params = new URLSearchParams({
+    singleEvents: "true",
+    orderBy: "startTime",
+    maxResults: "25",
+    timeMin: iso(rawTimeMin, new Date(now - 7 * 86_400_000).toISOString()),
+    timeMax: iso(rawTimeMax, new Date(now + 365 * 86_400_000).toISOString()),
+  });
+  if (typeof rawQuery === "string" && rawQuery.trim()) {
+    params.set("q", rawQuery.slice(0, 500).trim());
+  }
+
+  const res = await calendarGet(
+    `/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
+    token,
+  );
+  const items = ((await res.json()).items ?? []) as CalendarEvent[];
+
+  // Expanding a series also yields its cancelled instances. A cancelled
+  // occurrence is not evidence that something is happening, so it is dropped
+  // here — read_event still reports the status if one is asked for by id.
+  const events = items
+    .filter((e) => e.status !== "cancelled")
+    .map(shapeEvent);
+
+  return { events };
+}
+
+async function readEvent(token: string, rawEventId: unknown, rawCalendarId: unknown) {
+  if (typeof rawEventId !== "string" || !EVENT_ID.test(rawEventId)) {
+    throw new HttpError(400, "event_id is missing or malformed.");
+  }
+  const calendarId = typeof rawCalendarId === "string" && rawCalendarId.trim()
+    ? rawCalendarId.trim()
+    : "primary";
+  if (!CALENDAR_ID.test(calendarId)) {
+    throw new HttpError(400, "calendar_id is malformed.");
+  }
+
+  const res = await calendarGet(
+    `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(rawEventId)}`,
+    token,
+  );
+  const e = (await res.json()) as CalendarEvent;
+
+  return {
+    ...shapeEvent(e),
+    description: e.description ?? null,
+    organizer: e.organizer?.email ?? e.organizer?.displayName ?? null,
+    attendees: (e.attendees ?? []).map((a) => ({
+      email: a.email ?? null,
+      name: a.displayName ?? null,
+      response: a.responseStatus ?? null,
+    })),
+  };
+}
+
 // -------------------------------------------------------------------- router
 
 /**
@@ -529,8 +715,20 @@ export const handleRequest = async (req: Request): Promise<Response> => {
       case "list_emails":
         result = await listEmails(token, body.query);
         break;
-      default:
+      case "read_email":
         result = await readEmail(token, body.email_id);
+        break;
+      case "list_events":
+        result = await listEvents(
+          token,
+          body.calendar_id,
+          body.query,
+          body.time_min,
+          body.time_max,
+        );
+        break;
+      default:
+        result = await readEvent(token, body.event_id, body.calendar_id);
     }
 
     return json(result);
@@ -555,4 +753,4 @@ if (import.meta.main) {
 
 // Exported for tests only. These are the parts with no network and no auth:
 // pure transformations where a bug is silent rather than loud.
-export { decodeBody, extractText, htmlToText };
+export { decodeBody, extractText, htmlToText, eventTime, shapeEvent };

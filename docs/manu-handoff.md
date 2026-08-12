@@ -19,11 +19,15 @@ Live surfaces:
 
 1. The web app signs a user in with Supabase magic link.
 2. Microsoft OAuth grants `Notes.Read`, `offline_access`, and `User.Read`.
-3. The server stores the encrypted Microsoft refresh token in Supabase.
+3. The server stores the encrypted refresh token in Supabase, one row per
+   provider. Microsoft and Google are independent: either may be connected
+   alone, and the accounts need not match.
 4. The user generates a one-time connection key; only its SHA-256 hash is stored.
 5. The local npm MCP sends the key to the hosted Supabase Graph Edge Function.
-6. The function resolves the user, rotates the Microsoft refresh token, and
-   performs only `verify`, `list_notes`, or `read_note` against Microsoft Graph.
+6. The function resolves the user, exchanges that provider's refresh token, and
+   performs only a whitelisted operation: `verify`, `list_notes` or `read_note`
+   against Microsoft Graph, and `list_emails`, `read_email`, `list_events` or
+   `read_event` against Google.
 7. Claude or Codex receives the result in chat. Artist content is never copied
    into Supabase and nothing is written back to OneNote.
 

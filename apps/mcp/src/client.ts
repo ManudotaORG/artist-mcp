@@ -29,6 +29,8 @@ export type Operation =
   | 'read_note'
   | 'list_emails'
   | 'read_email'
+  | 'list_events'
+  | 'read_event'
   | 'verify';
 
 export class GraphError extends Error {

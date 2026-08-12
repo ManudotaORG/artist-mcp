@@ -8,7 +8,13 @@
  * Run with: deno test supabase/functions/graph/index.test.ts
  */
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { decodeBody, extractText, htmlToText } from "./index.ts";
+import {
+  decodeBody,
+  eventTime,
+  extractText,
+  htmlToText,
+  shapeEvent,
+} from "./index.ts";
 
 /** Encode as Gmail does: base64url, padding stripped. */
 const gmailEncode = (text: string): string =>
@@ -107,4 +113,68 @@ Deno.test("extractText tolerates a missing payload", () => {
 Deno.test("htmlToText decodes the entities Gmail and OneNote both emit", () => {
   // Shared with the OneNote path deliberately; a second stripper would drift.
   assertEquals(htmlToText("<p>M&#252;ller &amp; Sons</p>"), "Müller & Sons");
+});
+
+// ------------------------------------------------------------ calendar shaping
+
+Deno.test("eventTime reads a timed event", () => {
+  assertEquals(
+    eventTime({ dateTime: "2026-09-14T19:30:00+02:00", timeZone: "Europe/Madrid" }),
+    { value: "2026-09-14T19:30:00+02:00", all_day: false, time_zone: "Europe/Madrid" },
+  );
+});
+
+Deno.test("eventTime reads an all-day event", () => {
+  // A festival or tour block arrives as `date`, never `dateTime`. Code that
+  // reads only dateTime returns null here and the event looks contentless.
+  assertEquals(
+    eventTime({ date: "2026-09-14" }),
+    { value: "2026-09-14", all_day: true, time_zone: null },
+  );
+});
+
+Deno.test("eventTime tolerates a missing time", () => {
+  assertEquals(eventTime(undefined), { value: null, all_day: false, time_zone: null });
+});
+
+Deno.test("shapeEvent keeps an all-day event's dates", () => {
+  const e = shapeEvent({
+    id: "abc",
+    summary: "Tour block",
+    start: { date: "2026-09-14" },
+    end: { date: "2026-09-18" },
+  });
+  assertEquals(e.start, "2026-09-14");
+  assertEquals(e.end, "2026-09-18");
+  assertEquals(e.all_day, true);
+});
+
+Deno.test("shapeEvent flags a recurring instance", () => {
+  // "every Tuesday" and "this Tuesday" are different claims about a page, so
+  // the distinction has to survive into the output.
+  const once = shapeEvent({ id: "a", start: { dateTime: "2026-09-14T10:00:00Z" } });
+  const series = shapeEvent({
+    id: "b_20260914T100000Z",
+    recurringEventId: "b",
+    start: { dateTime: "2026-09-14T10:00:00Z" },
+  });
+  assertEquals(once.recurring, false);
+  assertEquals(series.recurring, true);
+});
+
+Deno.test("shapeEvent falls back to a placeholder title", () => {
+  assertEquals(shapeEvent({ id: "a" }).summary, "(no title)");
+});
+
+Deno.test("shapeEvent carries the time zone from whichever end has one", () => {
+  const e = shapeEvent({
+    id: "a",
+    start: { dateTime: "2026-09-14T19:30:00+02:00" },
+    end: { dateTime: "2026-09-14T22:00:00+02:00", timeZone: "Europe/Madrid" },
+  });
+  assertEquals(e.time_zone, "Europe/Madrid");
+});
+
+Deno.test("shapeEvent preserves status so a cancelled event reads as cancelled", () => {
+  assertEquals(shapeEvent({ id: "a", status: "cancelled" }).status, "cancelled");
 });

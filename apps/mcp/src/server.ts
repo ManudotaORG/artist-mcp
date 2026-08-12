@@ -25,6 +25,32 @@ type EmailSummary = {
 
 type EmailBody = EmailSummary & { cc: string | null; text: string };
 
+type EventSummary = {
+  id: string;
+  summary: string;
+  status: string | null;
+  location: string | null;
+  start: string | null;
+  end: string | null;
+  all_day: boolean;
+  time_zone: string | null;
+  recurring: boolean;
+};
+
+type EventBody = EventSummary & {
+  description: string | null;
+  organizer: string | null;
+  attendees: { email: string | null; name: string | null; response: string | null }[];
+};
+
+/** Times are stated with their zone; the calendar's zone need not be the reader's. */
+const when = (e: EventSummary): string => {
+  if (!e.start) return 'no date';
+  if (e.all_day) return `${e.start}${e.end && e.end !== e.start ? ` → ${e.end}` : ''} (all day)`;
+  const zone = e.time_zone ? ` ${e.time_zone}` : '';
+  return `${e.start}${e.end ? ` → ${e.end}` : ''}${zone}`;
+};
+
 const serverVersion = '0.5.0'; // x-release-please-version
 
 const errorResult = (err: unknown) => {
@@ -290,6 +316,99 @@ const runServer = async (): Promise<void> => {
           `Date: ${mail.date ?? "unknown"}`,
         ].join("\n");
         return { content: [{ type: "text", text: `${head}\n\n${mail.text}` }] };
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  server.tool(
+    "list_events",
+    "List Google Calendar events in a time window, earliest first. Calendar is " +
+      "supporting evidence for a OneNote working unit — it corroborates or " +
+      "contradicts what a page claims about a date, venue or attendee, and is " +
+      "never itself the working unit. When a page and the calendar disagree, " +
+      "report both and name each source; do not pick a winner. Recurring " +
+      "occurrences are expanded and flagged, so 'every Tuesday' and 'this " +
+      "Tuesday' stay distinguishable. Requires a Google connection.",
+    {
+      query: z
+        .string()
+        .optional()
+        .describe("Free-text match against event fields, e.g. a venue or piece name"),
+      time_min: z
+        .string()
+        .optional()
+        .describe("ISO date or datetime for the start of the window. Defaults to 7 days ago."),
+      time_max: z
+        .string()
+        .optional()
+        .describe("ISO date or datetime for the end of the window. Defaults to a year ahead."),
+      calendar_id: z
+        .string()
+        .optional()
+        .describe("Calendar to read. Defaults to the user's primary calendar."),
+    },
+    async ({ query, time_min, time_max, calendar_id }) => {
+      try {
+        const { events } = await call<{ events: EventSummary[] }>("list_events", key, {
+          query,
+          time_min,
+          time_max,
+          calendar_id,
+        });
+        if (events.length === 0) {
+          return {
+            content: [{ type: "text", text: "No events in that window." }],
+          };
+        }
+        const lines = events.map((e) => {
+          const where = e.location ? ` — ${e.location}` : "";
+          const repeats = e.recurring ? " (recurring)" : "";
+          return `- ${e.summary} — ${when(e)}${where}${repeats}\n  id: ${e.id}`;
+        });
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  server.tool(
+    "read_event",
+    "Read one Google Calendar event in full, including description and " +
+      "attendees. Takes the id from list_events. Read-only: this never creates, " +
+      "edits, moves, or responds to anything.",
+    {
+      event_id: z.string().describe("The id of the event, as returned by list_events"),
+      calendar_id: z
+        .string()
+        .optional()
+        .describe("Calendar the event belongs to. Defaults to the primary calendar."),
+    },
+    async ({ event_id, calendar_id }) => {
+      try {
+        const e = await call<EventBody>("read_event", key, { event_id, calendar_id });
+        const head = [
+          `# ${e.summary}`,
+          "",
+          `When: ${when(e)}`,
+          `Where: ${e.location ?? "unknown"}`,
+          ...(e.status && e.status !== "confirmed" ? [`Status: ${e.status}`] : []),
+          ...(e.recurring ? ["Part of a recurring series"] : []),
+          `Organizer: ${e.organizer ?? "unknown"}`,
+          ...(e.attendees.length > 0
+            ? [
+                "Attendees:",
+                ...e.attendees.map(
+                  (a) => `  - ${a.name ?? a.email ?? "unknown"}${a.response ? ` (${a.response})` : ""}`,
+                ),
+              ]
+            : []),
+        ].join("\n");
+        return {
+          content: [{ type: "text", text: `${head}\n\n${e.description ?? ""}`.trimEnd() }],
+        };
       } catch (err) {
         return errorResult(err);
       }

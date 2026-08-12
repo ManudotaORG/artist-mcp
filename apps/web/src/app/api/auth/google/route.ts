@@ -5,9 +5,16 @@ import { supabaseServer } from '@/lib/supabase/server';
 
 const AUTHORIZE = 'https://accounts.google.com/o/oauth2/v2/auth';
 
-// Read-only, and only Gmail. Email is supporting evidence for a OneNote
-// working unit, so nothing here needs send, modify, or any other surface.
-const SCOPES = 'https://www.googleapis.com/auth/gmail.readonly';
+// Read-only. Both are supporting evidence for a OneNote working unit, so
+// nothing here needs send, modify, or any other surface.
+//
+// calendar.events.readonly rather than calendar.readonly: events are the
+// evidence, and the broader scope would also hand over calendar metadata,
+// sharing ACLs and settings that nothing here reads.
+const SCOPES = [
+  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/calendar.events.readonly',
+].join(' ');
 
 export const GET = async () => {
   const supabase = await supabaseServer();
