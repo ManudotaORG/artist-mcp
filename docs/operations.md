@@ -115,8 +115,14 @@ Important invariants:
 - The Graph function keeps `verify_jwt = false`; connection-key verification is
   performed inside the function.
 - Refresh-token rotation is written back on every Microsoft token exchange.
-- Callers select only `verify`, `list_notes`, or `read_note`; no arbitrary Graph
-  URL is accepted.
+- Callers select only `verify`, `list_notes`, `read_note`, `list_emails`, or
+  `read_email`; no arbitrary Graph or Gmail URL is accepted. Gmail search syntax
+  is passed as a query parameter, never interpolated into a path.
+- Migrations and Edge Functions deploy by hand, reviewed first. The Supabase
+  GitHub integration is deliberately not connected, so merging to `staging` or
+  `main` deploys the web app through Vercel and nothing else. Push with
+  `--db-url` for the branch you mean: the CLI is linked to production, so
+  `--linked` targets production whatever you intended.
 
 ## Publish the MCP package
 
