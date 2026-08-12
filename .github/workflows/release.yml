@@ -118,6 +118,16 @@ jobs:
       - name: Test MCP package
         run: pnpm --filter @manudota/artist-mcp test
 
+      - name: Align staging with the latest stable version
+        working-directory: apps/mcp
+        run: |
+          stable_version="$(npm view @manudota/artist-mcp@latest version)"
+          if [[ ! "$stable_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Unexpected latest version: $stable_version"
+            exit 1
+          fi
+          npm pkg set version="$stable_version"
+
       - name: Create unique staging version
         working-directory: apps/mcp
         run: node scripts/set-staging-version.mjs "$GITHUB_RUN_NUMBER"
