@@ -49,7 +49,26 @@ per page.
 - Leave every field UNKNOWN. A template carries structure, never data.
 - Add a field only when the playbook expects it or the surveyed pages show a
   recurring need with no home. Say which fields were added and why.
-- Present them in chat for the musician to paste into OneNote. Never write.
+- Never write to OneNote or any connected service. The musician pastes.
+
+### Delivery
+
+Hand over one file per template, each openable on its own, so the musician can
+paste one page at a time instead of selecting the right span out of a long
+message. Three templates run together in chat are one wall of text with
+invisible seams.
+
+- Produce each as a separate file the musician can open, preview, or download
+  from the conversation — a working copy, not a permanent addition to their
+  folder. Do not save into their project directory unless they ask, and do not
+  ask them where files should go.
+- Use self-contained HTML with visible table borders, one file per project
+  type, named for it. Bordered HTML tables carry their structure into OneNote
+  through the clipboard.
+- When the host cannot produce files, present the templates in chat instead,
+  formatted as below. Say which you did; never silently drop one for the other.
+- Do not restate a template's contents in chat once it is in a file, beyond
+  saying what each covers and what was added.
 
 ### Shape
 
