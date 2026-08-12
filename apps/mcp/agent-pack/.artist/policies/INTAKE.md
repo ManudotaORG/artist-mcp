@@ -48,14 +48,30 @@ per page.
 
 - Leave every field UNKNOWN. A template carries structure, never data.
 - Add a field only when the playbook expects it or the surveyed pages show a
-  recurring need with no home.
+  recurring need with no home. Say which fields were added and why.
 - Present them in chat for the musician to paste into OneNote. Never write.
-- Present them as formatted text — real headings and a real table — never
-  inside a code block. A fenced template copies as literal `###` and pipe
-  characters and lands in OneNote as unreadable plain text, while formatted
-  text carries its structure across the clipboard. Do not offer the musician a
-  choice of format; a template exists to be pasted, and this is the form that
-  pastes.
+
+### Shape
+
+A template is pasted before it is read, so it is built for the clipboard.
+
+- Present it as formatted text — real headings, real tables — never inside a
+  code block. A fenced template copies as literal `###` and pipe characters and
+  lands in OneNote as unreadable plain text. Do not offer the musician a choice
+  of format; a template exists to be pasted, and this is the form that pastes.
+- Each template stands alone. Where one project type extends another, repeat
+  the shared sections in full rather than writing "everything in the Concert
+  template, plus" — a template that points at another template cannot be
+  pasted as a page.
+- Put every field in a table rather than a loose list of bold labels. A
+  headline, budget, or settlement block becomes a two-column Field / Value
+  table; a free-text section becomes a single-cell table. Boundaries that are
+  visible in chat survive the paste.
+- Give roster tables — musicians, contacts, milestones, dependencies — two
+  blank UNKNOWN rows, so the row structure survives and the musician can see
+  where to type.
+- Separate consecutive templates clearly enough that the musician can tell
+  where one ends and the next begins.
 
 ## Gap inventory
 
