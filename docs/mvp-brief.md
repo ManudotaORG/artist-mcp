@@ -301,6 +301,20 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
    redirect URI, and the staging values in Vercel and the edge function; no code
    changes, since nothing hardcodes a client id.
 
+6. **Email is read one message at a time, never as a thread.** `list_emails`
+   returns a `thread_id` and nothing consumes it, so a negotiation has to be
+   reassembled from separate reads and only if the model thinks to look.
+
+   The failure is quiet and in the wrong direction: a fee, date, or lineup
+   agreed in the first message and revised three replies later reads as settled,
+   because the message carrying it looks complete on its own. Intake's rule is
+   to surface contradictions with both sources named — a half-read thread hides
+   the contradiction instead, which is worse than not reading the mail at all.
+
+   Deferred rather than dismissed. A `read_thread` operation is a small addition
+   on the same connection and scope; what needs deciding first is how a thread
+   is summarised without pouring quoted history into chat.
+
 ## Confirm before registering the Microsoft app
 
 Are the notes **OneNote notebooks** or **files in a OneDrive folder**? This brief assumes files. If it's OneNote the scope becomes `Notes.Read` and it's a different API — ask before registering, because changing scopes later means dragging users back through consent.
