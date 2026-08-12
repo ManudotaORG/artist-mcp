@@ -15,12 +15,30 @@ additional_redirect_urls = [
   "https://artist-mcp.vercel.app/**",
 ]
 
+[remotes.production.auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[remotes.production.auth.email]
+enable_confirmations = true
+max_frequency = "1m0s"
+otp_length = 8
+
 [remotes.staging]
 project_id = "cakkwvxwlkdfzqjbvrpa"
 
 [remotes.staging.auth]
 site_url = "https://artist-mcp-staging.vercel.app"
 additional_redirect_urls = ["https://artist-mcp-staging.vercel.app/**"]
+
+[remotes.staging.auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[remotes.staging.auth.email]
+enable_confirmations = true
+max_frequency = "1m0s"
+otp_length = 8
 
 [functions.graph]
 # The caller presents a connection key, not a Supabase JWT, so the platform's
