@@ -12,6 +12,9 @@ require the `Lint and build` check before merge.
 The production and staging Vercel projects are both connected to this GitHub
 repository. Production tracks only `main`, staging tracks only `staging`, and
 Preview branch tracking is disabled on both projects.
+The production footer shows the checked-in stable package version. The staging
+footer resolves the public npm `staging` dist-tag with a one-minute cache so it
+shows the exact published prerelease rather than stale branch metadata.
 
 ## Automatic npm releases
 
@@ -46,9 +49,13 @@ from one branch-aware workflow. In the npm package settings, configure:
 
 The jobs still use distinct GitHub environments: `main` uses `production` and
 publishes `latest`; `staging` uses `staging` and publishes a unique prerelease
-to the `staging` dist-tag. Leave `NPM_STAGING_PUBLISH_ENABLED` unset until the
-npm mapping is installed, then set it to `true` in the GitHub `staging`
-environment.
+to the `staging` dist-tag. The staging version is based on npm `latest`, not a
+possibly stale version committed on the staging branch. A successful production
+release automatically publishes the next staging prerelease from the staging
+branch; ordinary staging pushes do the same. Workflow retries append the run
+attempt so npm versions remain immutable. Leave `NPM_STAGING_PUBLISH_ENABLED`
+unset until the npm mapping is installed, then set it to `true` in the GitHub
+`staging` environment.
 
 No `NPM_TOKEN` is needed. The workflow authenticates with GitHub OIDC.
 

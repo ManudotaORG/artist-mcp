@@ -4,8 +4,8 @@ import { resolve } from 'node:path';
 const buildId = process.argv[2];
 const packagePath = resolve(process.argv[3] ?? 'package.json');
 
-if (!buildId || !/^[0-9]+$/.test(buildId)) {
-  throw new Error('Usage: set-staging-version <numeric-build-id> [package.json]');
+if (!buildId || !/^[0-9]+(?:\.[0-9]+)*$/.test(buildId)) {
+  throw new Error('Usage: set-staging-version <numeric-build-id[.attempt]> [package.json]');
 }
 
 const packageJson = JSON.parse(await readFile(packagePath, 'utf8'));
