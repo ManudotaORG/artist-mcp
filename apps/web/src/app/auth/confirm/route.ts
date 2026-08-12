@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { EmailOtpType } from '@supabase/supabase-js';
+import { getSiteUrl } from '@/lib/siteUrl';
 import { supabaseServer } from '@/lib/supabase/server';
 
 /**
@@ -13,7 +14,7 @@ import { supabaseServer } from '@/lib/supabase/server';
  */
 export const GET = async (request: NextRequest) => {
   const params = request.nextUrl.searchParams;
-  const base = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+  const base = getSiteUrl();
 
   const fail = (message: string) =>
     NextResponse.redirect(new URL(`/?error=${encodeURIComponent(message)}`, base));

@@ -49,15 +49,15 @@ cp apps/web/.env.example apps/web/.env.local
 
 Set every variable:
 
-| Variable | Runtime | Purpose |
-| --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Browser/server | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser/server | Public Supabase API key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server only | Privileged RPC calls |
-| `MS_CLIENT_ID` | Server only | Microsoft app identifier |
-| `MS_CLIENT_SECRET` | Server only | Microsoft OAuth code exchange |
-| `MS_REDIRECT_URI` | Server only | OAuth callback URL |
-| `TOKEN_ENCRYPTION_KEY` | Server only | Encrypt/decrypt refresh tokens |
+| Variable                        | Runtime        | Purpose                        |
+| ------------------------------- | -------------- | ------------------------------ |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Browser/server | Supabase project URL           |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser/server | Public Supabase API key        |
+| `SUPABASE_SERVICE_ROLE_KEY`     | Server only    | Privileged RPC calls           |
+| `MS_CLIENT_ID`                  | Server only    | Microsoft app identifier       |
+| `MS_CLIENT_SECRET`              | Server only    | Microsoft OAuth code exchange  |
+| `MS_REDIRECT_URI`               | Server only    | OAuth callback URL             |
+| `TOKEN_ENCRYPTION_KEY`          | Server only    | Encrypt/decrypt refresh tokens |
 
 Only the first two variables may use the `NEXT_PUBLIC_` prefix. Never commit
 `.env.local` or real values.
@@ -193,7 +193,9 @@ pnpm --filter @manudota/artist-mcp test
 ```
 
 The build regenerates `agent-pack/registry.json` with SHA-256 checksums. The
-runtime checks the registry on GitHub and falls back to the bundled copy.
+runtime uses the registry and playbooks bundled into the installed npm version.
+`ARTIST_MCP_REGISTRY_URL` is an explicit development/testing override; it must
+point to a registry whose Markdown files are resolvable relative to that URL.
 
 ## Coding conventions
 

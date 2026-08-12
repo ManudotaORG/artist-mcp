@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getSiteUrl } from '@/lib/siteUrl';
 import { supabaseAdmin, supabaseServer } from '@/lib/supabase/server';
 
 const TOKEN_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
 
 const home = (params: Record<string, string>) => {
-  const url = new URL('/', process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000');
+  const url = new URL('/', getSiteUrl());
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   return url;
 };
