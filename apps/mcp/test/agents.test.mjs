@@ -4,23 +4,39 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import test from 'node:test';
 
-import {
-  installAgentPack,
-  listAgentWorkflows,
-  loadAgentWorkflow,
-} from '../dist/agents.js';
+import { installAgentPack, listAgentWorkflows, loadAgentWorkflow } from '../dist/agents.js';
+
+test('uses bundled workflows without contacting GitHub by default', async () => {
+  delete process.env.ARTIST_MCP_REGISTRY_URL;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error('unexpected network request');
+  };
+  try {
+    const entries = await listAgentWorkflows();
+    assert.ok(entries.some((entry) => entry.id === 'role:orchestrator'));
+    const workflow = await loadAgentWorkflow('role:orchestrator');
+    assert.match(workflow.content, /working-unit page/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test('lists and loads checksummed workflows from the bundled fallback', async () => {
   process.env.ARTIST_MCP_REGISTRY_URL = 'http://127.0.0.1:1/registry.json';
-  const entries = await listAgentWorkflows();
-  assert.ok(entries.some((entry) => entry.id === 'role:orchestrator'));
-  assert.ok(entries.some((entry) => entry.id === 'project-type:concert'));
-  assert.ok(entries.some((entry) => entry.id === 'policy:local-state'));
-  const workflow = await loadAgentWorkflow('role:orchestrator');
-  assert.match(workflow.content, /working-unit page/);
-  const policy = await loadAgentWorkflow('policy:local-state');
-  assert.match(policy.content, /\.artist\/local\//);
-  assert.match(policy.content, /not an agent coordination protocol/);
+  try {
+    const entries = await listAgentWorkflows();
+    assert.ok(entries.some((entry) => entry.id === 'role:orchestrator'));
+    assert.ok(entries.some((entry) => entry.id === 'project-type:concert'));
+    assert.ok(entries.some((entry) => entry.id === 'policy:local-state'));
+    const workflow = await loadAgentWorkflow('role:orchestrator');
+    assert.match(workflow.content, /working-unit page/);
+    const policy = await loadAgentWorkflow('policy:local-state');
+    assert.match(policy.content, /\.artist\/local\//);
+    assert.match(policy.content, /not an agent coordination protocol/);
+  } finally {
+    delete process.env.ARTIST_MCP_REGISTRY_URL;
+  }
 });
 
 test('installs the read-only artist workflow pack idempotently', async () => {
