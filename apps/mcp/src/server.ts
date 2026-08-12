@@ -36,9 +36,10 @@ const runServer = async (): Promise<void> => {
   server.tool(
     "list_agent_workflows",
     "List the read-only artist roles, project types, and policies available " +
-      "at runtime. The project-type playbooks are returned in full, because " +
-      "choosing between them is the decision a summary cannot support. Load " +
-      "the Orchestrator before handling a project.",
+      "at runtime. The project-type playbooks and the intake policy are " +
+      "returned in full and are in force as returned — they govern the survey, " +
+      "the classification and any templates, and are not optional reading. " +
+      "Load the Orchestrator before handling a project.",
     {},
     async () => {
       try {
@@ -46,13 +47,18 @@ const runServer = async (): Promise<void> => {
 
         // A one-line summary is enough to pick a role to load, but not to
         // classify a page: the rules that separate one project type from
-        // another live in the body of the file. Ship those in full so the
-        // choice is never made from a summary.
-        const projectTypes = entries.filter((entry) => entry.kind === "project-type");
-        const rest = entries.filter((entry) => entry.kind !== "project-type");
+        // another live in the body of the file. Intake is here for the same
+        // reason — it governs the survey, the classification and the templates,
+        // all of which happen before anything would think to load a policy.
+        // A run that loaded nothing at all classified five pages and then
+        // offered to write template files, which intake forbids.
+        const alwaysInFull = (entry: (typeof entries)[number]) =>
+          entry.kind === "project-type" || entry.id === "policy:intake";
+        const upfront = entries.filter(alwaysInFull);
+        const rest = entries.filter((entry) => !alwaysInFull(entry));
 
         const loaded = await Promise.all(
-          projectTypes.map(async (entry) => {
+          upfront.map(async (entry) => {
             try {
               const { content } = await loadAgentWorkflow(entry.id);
               return `## ${entry.id}\n\n${content.trim()}`;
@@ -70,7 +76,7 @@ const runServer = async (): Promise<void> => {
           "# Roles and policies (load by id when needed)",
           summary.join("\n"),
           "",
-          "# Project types (full text — choose from the evidence on the page)",
+          "# In force now (full text — these govern the work before anything is loaded)",
           loaded.join("\n\n"),
         ].join("\n");
 
