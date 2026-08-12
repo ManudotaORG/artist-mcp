@@ -286,6 +286,21 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
 4. **One key per user.** Generating replaces the old, so two machines cannot
    hold separate keys.
 
+5. **One Google OAuth client serves every environment.** Local, staging, and
+   production all present the same `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`,
+   differing only in `GOOGLE_REDIRECT_URI`. This is the opposite of how the
+   Supabase and Microsoft credentials are handled, where the environment matrix
+   in [operations.md](operations.md) keeps production values out of staging, so
+   it is a deliberate exception rather than an oversight: a leaked staging
+   secret would be usable against production.
+
+   Accepted because `gmail.readonly` is a restricted scope, and a second client
+   means a second Google verification review — weeks of it — for an environment
+   that holds no real data. Split them before Gmail reaches production users,
+   not before it reaches staging. Splitting costs one new client, its own
+   redirect URI, and the staging values in Vercel and the edge function; no code
+   changes, since nothing hardcodes a client id.
+
 ## Confirm before registering the Microsoft app
 
 Are the notes **OneNote notebooks** or **files in a OneDrive folder**? This brief assumes files. If it's OneNote the scope becomes `Notes.Read` and it's a different API — ask before registering, because changing scopes later means dragging users back through consent.
