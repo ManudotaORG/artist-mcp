@@ -26,3 +26,17 @@ test('creates a unique next-patch staging version', async () => {
 test('rejects a non-numeric staging build id', async () => {
   await assert.rejects(run(process.execPath, [script, 'release']), /numeric-build-id/);
 });
+
+test('creates a unique staging version for a retried workflow run', async () => {
+  const fixture = await mkdtemp(resolve(tmpdir(), 'artist-staging-version-'));
+  const packagePath = resolve(fixture, 'package.json');
+  try {
+    await writeFile(packagePath, `${JSON.stringify({ version: '2.0.0' })}\n`);
+    const { stdout } = await run(process.execPath, [script, '418.2', packagePath]);
+    const packageJson = JSON.parse(await readFile(packagePath, 'utf8'));
+    assert.equal(stdout.trim(), '2.0.1-staging.418.2');
+    assert.equal(packageJson.version, '2.0.1-staging.418.2');
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});

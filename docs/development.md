@@ -152,9 +152,9 @@ new npm package.
 - Develop and commit on `release` using Conventional Commits.
 - Push early to `origin/release`; CI runs lint, tests, and builds there.
 - Pull-request CI runs only when the target is `staging` or `main`.
-- Promote a verified snapshot with `git push origin release:staging`.
-- After staging verification, promote the same commit with
-  `git push origin release:main`.
+- Promote a verified snapshot with a `release` → `staging` pull request.
+- After staging verification, promote the same snapshot with a `release` →
+  `main` pull request.
 
 Vercel is connected directly to GitHub. `artist-mcp-staging` tracks only
 `staging`; `artist-mcp` tracks only `main`. Preview branch tracking is disabled

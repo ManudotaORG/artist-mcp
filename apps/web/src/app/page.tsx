@@ -379,7 +379,7 @@ const Home = async ({ searchParams }: HomeProps) => {
         supabase.from('mcp_keys').select('last_used_at').maybeSingle(),
       ])
     : [{ data: null }, { data: null }];
-  const deployment = getDeploymentMetadata();
+  const deployment = await getDeploymentMetadata();
   const installChannel: InstallChannel = deployment?.environment ?? 'local';
 
   return (
@@ -415,17 +415,17 @@ const Home = async ({ searchParams }: HomeProps) => {
             </Typography>
           ) : null}
           {deployment?.environment === 'production' ? (
-            <>
-              <Typography as="span" variant="label" className="text-white">
-                V{deployment.version}
-              </Typography>
-              <a
-                href="https://github.com/ManudotaORG/artist-mcp/releases"
-                className="font-mono text-xs font-bold underline-offset-4 hover:text-signal-yellow hover:underline"
-              >
-                PATCH NOTES
-              </a>
-            </>
+            <a
+              href="https://github.com/ManudotaORG/artist-mcp/releases"
+              className="font-mono text-xs font-bold underline-offset-4 hover:text-signal-yellow hover:underline"
+            >
+              PATCH NOTES
+            </a>
+          ) : null}
+          {deployment ? (
+            <Typography as="span" variant="label" className="text-white">
+              V{deployment.version}
+            </Typography>
           ) : null}
           {deployment ? (
             <Typography as="span" variant="label" className="text-white">
