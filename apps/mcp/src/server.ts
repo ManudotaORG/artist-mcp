@@ -41,7 +41,10 @@ type AttachmentBody = {
   pages_total?: number;
   first_page?: number;
   pages_read?: number;
-  /** Page to pass as from_page to continue; null when the file is finished. */
+  /**
+   * Page to pass as from_page to continue. Null when the file is finished, and
+   * also when it is too large to page through — ask for specific pages then.
+   */
   next_from_page?: number | null;
   pages_without_text?: number[];
   /** Diagrams the text cannot describe, already downscaled and encoded. */
@@ -391,7 +394,9 @@ const runServer = async (): Promise<void> => {
   server.tool(
     "read_attachment",
     "Read the contents of one attachment on a Gmail message, using an id from " +
-      "read_email. PDFs are text-extracted, and diagrams — a stage plan, a " +
+      "read_email. Read one to answer a question, not to see everything in " +
+      "it: a long scan is pictures, and paging through all of it is neither " +
+      "possible nor useful. PDFs are text-extracted, and diagrams — a stage plan, a " +
       "floor plan — come back as images to look at, since the extracted text " +
       "does not describe them. Where a page could be neither read nor shown, " +
       "it is named as a gap rather than skipped quietly: never describe a " +
@@ -419,13 +424,25 @@ const runServer = async (): Promise<void> => {
           "Page to start at, for reading a long document or a scan across " +
             "several calls. Defaults to 1; the answer says what to pass next.",
         ),
+      page_count: z
+        .number()
+        .int()
+        .min(1)
+        .max(10)
+        .optional()
+        .describe(
+          "How many pages to read from from_page. For asking about pages " +
+            "someone already has reason to care about, e.g. \"the fee is " +
+            "around page 40\" — not for reading a long file faster.",
+        ),
     },
-    async ({ email_id, attachment_id, from_page }) => {
+    async ({ email_id, attachment_id, from_page, page_count }) => {
       try {
         const file = await call<AttachmentBody>("read_attachment", key, {
           email_id,
           attachment_id,
           from_page,
+          page_count,
         });
 
         const head = [

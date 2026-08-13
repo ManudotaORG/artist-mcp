@@ -124,7 +124,9 @@ needs a separate Google connection:
   read nor shown is named as a gap rather than skipped silently, and a file
   with no text layer is reported as page images. A long document or a scan is
   read in page ranges — each answer says which pages it covered and which page
-  to start from next.
+  to start from next, or, for a document too large to read in chat, says so
+  and asks which pages are wanted rather than inviting a walk that cannot
+  finish.
 - `list_events` — lists Google Calendar events in a time window, with recurring
   occurrences expanded and flagged.
 - `read_event` — accepts an id from `list_events` and returns description and

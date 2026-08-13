@@ -575,6 +575,103 @@ Deno.test("extractPdfContent walks a whole scan across successive calls", async 
   assertEquals(seen, [1, 2, 3, 4, 5, 6, 7, 8]);
 });
 
+Deno.test("extractPdfContent reads only the window it is given", async () => {
+  const pdf = minimalPdf([1, 2, 3, 4, 5].map((n) => page(`Clause ${n}`)));
+  const result = await extractPdfContent(pdf, 2, 2);
+
+  assertEquals(result.first_page, 2);
+  assertEquals(result.pages_read, 3);
+  assertEquals(result.next_from_page, 4);
+  assertStringIncludes(result.text, "Clause 2");
+  assertEquals(result.text.includes("Clause 4"), false);
+});
+
+Deno.test("extractPdfContent caps a window that asks for too much", async () => {
+  // Otherwise the window is a way to request an entire document in one call,
+  // which is the thing every other cap here exists to prevent.
+  const pdf = minimalPdf(
+    Array.from({ length: 30 }, (_, n) => page(`Clause ${n + 1}`)),
+  );
+  const result = await extractPdfContent(pdf, 1, 500);
+  assert(result.pages_read <= 10, `read ${result.pages_read} pages`);
+  assertEquals(result.next_from_page, result.pages_read + 1);
+});
+
+Deno.test("describeGaps declines to walk a scan too large to finish", () => {
+  // A hundred pages of pictures is about 150k tokens. Advertising the next
+  // page invites a walk that ends in a wall thirty calls later, so the answer
+  // states the scale and points at targeted pages instead.
+  const note = describeGaps(extraction({
+    text: "",
+    pages_total: 100,
+    first_page: 1,
+    pages_read: 3,
+    pages_without_text: [1, 2, 3],
+    pages_searched_for_images: 3,
+    next_from_page: 4,
+    images: [1, 2, 3].map((page) => ({
+      page,
+      width: 900,
+      height: 1200,
+      media_type: "image/png" as const,
+      data: "",
+    })),
+  }));
+  assertStringIncludes(note!, "100-page document of page images");
+  assertStringIncludes(note!, "150k tokens");
+  assertStringIncludes(note!, "do not page");
+  // The invitation to continue sequentially must not also be present.
+  assertEquals(note!.includes("calling again with from_page"), false);
+});
+
+Deno.test("describeGaps still offers the walk for a scan that can finish", () => {
+  const note = describeGaps(extraction({
+    text: "",
+    pages_total: 8,
+    first_page: 1,
+    pages_read: 3,
+    pages_without_text: [1, 2, 3],
+    pages_searched_for_images: 3,
+    next_from_page: 4,
+    images: [{ page: 1, width: 900, height: 1200, media_type: "image/png", data: "" }],
+  }));
+  assertStringIncludes(note!, "calling again with from_page 4");
+});
+
+Deno.test("extractPdfContent returns every page of a window it was asked for", async () => {
+  // The window raises the image budget with it. Otherwise asking for four
+  // pages of a scan returns three, silently, and the fourth looks blank.
+  const pdf = minimalPdf(
+    Array.from({ length: 6 }, () => ({ image: { width: 600, height: 400 } })),
+  );
+  const result = await extractPdfContent(pdf, 2, 4);
+  assertEquals(result.images.map((i) => i.page), [2, 3, 4, 5]);
+});
+
+Deno.test("describeGaps drops the large-file advice for a targeted read", () => {
+  // Someone asking for pages 12-15 has already made the judgement that advice
+  // exists to prompt; repeating it reads as not having listened.
+  const note = describeGaps(extraction({
+    text: "",
+    pages_total: 100,
+    first_page: 12,
+    pages_read: 15,
+    pages_without_text: [12, 13, 14, 15],
+    pages_searched_for_images: 15,
+    targeted: true,
+    next_from_page: null,
+    images: [12, 13, 14, 15].map((page) => ({
+      page,
+      width: 900,
+      height: 1200,
+      media_type: "image/png" as const,
+      data: "",
+    })),
+  }));
+  assertEquals(note!.includes("do not page"), false);
+  assertStringIncludes(note!, "4 of its 100 pages are attached");
+});
+
 Deno.test("extractPdfContent clamps a start page past the end", async () => {
   // Rather than returning an empty read that looks like an empty document.
   const result = await extractPdfContent(minimalPdf([page("Only page")]), 99);
