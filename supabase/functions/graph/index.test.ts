@@ -9,6 +9,7 @@
  */
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import {
+  connectionFailure,
   decodeBody,
   decodeBytes,
   describeGaps,
@@ -223,6 +224,30 @@ Deno.test("extractAttachments gives the same position on a re-fetch", () => {
   assertEquals(first[0].id, "2");
   // The volatile handle still differs, and each read must use its own.
   assert(first[0].gmail_id !== second[0].gmail_id);
+});
+
+Deno.test("connectionFailure tells a missing connection from an unreadable one", () => {
+  // These need different advice, and for an afternoon they got the same
+  // sentence. Reconnecting fixes the first and cannot fix the second.
+  const missing = connectionFailure("Google", null);
+  assertEquals(missing.status, 403);
+  assertEquals(missing.reconnectNeeded, true);
+  assertStringIncludes(missing.message, "No Google connection");
+
+  const wrongKey = connectionFailure("Google", "Wrong key or corrupt data");
+  assertEquals(wrongKey.status, 503);
+  // Telling someone to reconnect here sends them round a loop that never
+  // closes: the new row is written with the same key this server cannot read.
+  assertEquals(wrongKey.reconnectNeeded, false);
+  assertStringIncludes(wrongKey.message, "Reconnecting will not help");
+  assertStringIncludes(wrongKey.message, "token encryption key");
+});
+
+Deno.test("connectionFailure passes an unexpected database error through", () => {
+  const other = connectionFailure("Microsoft", "connection pool exhausted");
+  assertEquals(other.status, 503);
+  assertEquals(other.reconnectNeeded, false);
+  assertStringIncludes(other.message, "connection pool exhausted");
 });
 
 Deno.test("decodeBytes keeps a PDF's bytes intact", () => {
