@@ -117,6 +117,9 @@ needs a separate Google connection:
 - `read_email` — accepts an id from `list_emails` and returns the message body,
   plus a list of what is attached by name, type and size. Attachment contents
   are not read.
+- `read_attachment` — accepts an attachment id from `read_email` and extracts
+  the text of a PDF. Pages that are diagrams or images are named as gaps rather
+  than skipped silently, and a file with no text layer is reported as a scan.
 - `list_events` — lists Google Calendar events in a time window, with recurring
   occurrences expanded and flagged.
 - `read_event` — accepts an id from `list_events` and returns description and

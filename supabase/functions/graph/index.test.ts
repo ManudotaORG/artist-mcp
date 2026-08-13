@@ -7,11 +7,13 @@
  *
  * Run with: deno test supabase/functions/graph/index.test.ts
  */
-import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
+import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import {
   decodeBody,
+  decodeBytes,
   eventTime,
   extractAttachments,
+  extractPdfText,
   extractText,
   htmlToText,
   shapeEvent,
@@ -159,6 +161,130 @@ Deno.test("extractAttachments names an attachment that arrives without a filenam
 
 Deno.test("extractAttachments tolerates a missing payload", () => {
   assertEquals(extractAttachments(undefined), []);
+});
+
+Deno.test("decodeBytes keeps a PDF's bytes intact", () => {
+  // decodeBody would hand back mojibake here: a PDF is not text.
+  const raw = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0xff, 0x00, 0x80]);
+  const encoded = btoa(String.fromCharCode(...raw))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  assertEquals(decodeBytes(encoded), raw);
+});
+
+/**
+ * Build a PDF by hand, one content stream per page.
+ *
+ * A page given null draws nothing, which is how a page carrying only a scanned
+ * image looks to a text extractor — the case a real rider's stage plan lands
+ * in. Generating it here beats committing someone's actual contract.
+ */
+function minimalPdf(pages: (string | null)[]): Uint8Array {
+  const objects: string[] = [];
+  const kids: string[] = [];
+  // 1 = catalogue, 2 = page tree, 3 = font, then a page and a stream each.
+  pages.forEach((text, i) => {
+    const pageObj = 4 + i * 2;
+    const streamObj = pageObj + 1;
+    kids.push(`${pageObj} 0 R`);
+    objects[pageObj] =
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] ` +
+      `/Resources << /Font << /F1 3 0 R >> >> /Contents ${streamObj} 0 R >>`;
+    // Laid out as lines rather than one enormous string: a single Tj does not
+    // survive extraction intact past a hundred characters or so, and a real
+    // page is lines anyway.
+    const lines = (text ?? "").match(/.{1,80}/g) ?? [];
+    const content = text === null
+      ? ""
+      : `BT /F1 12 Tf 72 720 Td 14 TL\n` +
+        lines
+          .map((line) => `(${line.replace(/[()\\]/g, "\\$&")}) Tj T*`)
+          .join("\n") +
+        `\nET`;
+    objects[streamObj] =
+      `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
+  });
+  objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
+  objects[2] = `<< /Type /Pages /Kids [${kids.join(" ")}] /Count ${pages.length} >>`;
+  objects[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
+
+  let pdf = "%PDF-1.4\n";
+  const offsets: number[] = [];
+  for (let n = 1; n < objects.length; n++) {
+    offsets[n] = pdf.length;
+    pdf += `${n} 0 obj\n${objects[n]}\nendobj\n`;
+  }
+  const xref = pdf.length;
+  pdf += `xref\n0 ${objects.length}\n0000000000 65535 f \n`;
+  for (let n = 1; n < objects.length; n++) {
+    pdf += `${String(offsets[n]).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\n` +
+    `startxref\n${xref}\n%%EOF\n`;
+
+  return new TextEncoder().encode(pdf);
+}
+
+/** A page's worth of prose: anything shorter reads as a header, by design. */
+const page = (text: string) =>
+  `${text} ${"The Promoter shall provide sound, lighting and hospitality. ".repeat(4)}`;
+
+Deno.test("extractPdfText reads a text PDF and labels its pages", async () => {
+  const result = await extractPdfText(minimalPdf([page("Fee: EUR 2400 net")]));
+  assertStringIncludes(result.text, "Fee: EUR 2400 net");
+  assertStringIncludes(result.text, "[page 1]");
+  assertEquals(result.pages_total, 1);
+  assertEquals(result.pages_without_text, []);
+  assertEquals(result.truncated, false);
+});
+
+Deno.test("extractPdfText names the page a stage plan would occupy", async () => {
+  // The shape that matters: prose extracts, one page is a diagram. Reporting
+  // per document would call this a clean read and lose page 2 in silence.
+  const result = await extractPdfText(
+    minimalPdf([page("Soundcheck at 17:00"), null, page("Patch list: SM57 on snare")]),
+  );
+  assertEquals(result.pages_total, 3);
+  assertEquals(result.pages_without_text, [2]);
+  assertStringIncludes(result.text, "Soundcheck at 17:00");
+  assertStringIncludes(result.text, "[page 3]");
+});
+
+Deno.test("extractPdfText sees past a letterhead on an image-only page", async () => {
+  // The regression that a zero-length check misses. Riders are letterheaded,
+  // so the page that is nothing but a stage plan still returns its running
+  // header — measured at 99 characters against 1,633+ on prose pages. Treating
+  // that as content reports a clean read and loses the stage plan silently.
+  const header = "TECHNICAL RIDER, SOUND, BACKLINE, LIGHTS (page 2 / 3)";
+  const result = await extractPdfText(
+    minimalPdf([
+      `${header} ${"Soundcheck at 17:00. ".repeat(20)}`,
+      header,
+      `${header} ${"Patch list: SM57 on snare. ".repeat(20)}`,
+    ]),
+  );
+  assertEquals(result.pages_without_text, [2]);
+  // The header must not survive as though it were the page's contents.
+  assertEquals(result.text.includes("[page 2]"), false);
+});
+
+Deno.test("extractPdfText reports a scan as having no text at all", async () => {
+  const result = await extractPdfText(minimalPdf([null, null]));
+  assertEquals(result.text, "");
+  assertEquals(result.pages_total, 2);
+  assertEquals(result.pages_without_text, [1, 2]);
+});
+
+Deno.test("extractPdfText stops early rather than reading every page", async () => {
+  // The memory guard: a long document must not be read in full and trimmed
+  // afterwards. 2000 chars a page means the 40k cap lands well before page 40.
+  const pages = Array.from({ length: 40 }, () => "x".repeat(2000));
+  const result = await extractPdfText(minimalPdf(pages));
+  assertEquals(result.pages_total, 40);
+  assertEquals(result.truncated, true);
+  assert(result.pages_read < 40, `read ${result.pages_read} of 40 pages`);
+  assert(result.text.length <= 40_000, `got ${result.text.length} chars`);
 });
 
 Deno.test("htmlToText decodes the entities Gmail and OneNote both emit", () => {

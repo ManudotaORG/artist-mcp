@@ -9,9 +9,9 @@
  * a field.
  *
  * Request:  { op: "list_notes" | "read_note" | "list_emails" | "read_email"
- *                 | "list_events" | "read_event" | "verify",
- *              note_id?, email_id?, event_id?, calendar_id?, query?,
- *              time_min?, time_max? }
+ *                 | "read_attachment" | "list_events" | "read_event" | "verify",
+ *              note_id?, email_id?, attachment_id?, event_id?, calendar_id?,
+ *              query?, time_min?, time_max? }
  *           Authorization: Bearer <connection key>
  */
 
@@ -58,6 +58,7 @@ const OPERATIONS = new Set([
   "read_note",
   "list_emails",
   "read_email",
+  "read_attachment",
   "list_events",
   "read_event",
   "verify",
@@ -69,6 +70,7 @@ const PROVIDER_FOR: Record<string, "microsoft" | "google"> = {
   read_note: "microsoft",
   list_emails: "google",
   read_email: "google",
+  read_attachment: "google",
   list_events: "google",
   read_event: "google",
 };
@@ -537,6 +539,211 @@ async function readEmail(token: string, emailId: unknown) {
   };
 }
 
+// ------------------------------------------------------- attachment contents
+
+/**
+ * Two ceilings, and neither is decoration.
+ *
+ * Extraction decodes a PDF into memory, and the cost tracks pages and text
+ * volume rather than file size: a 195 KB, 176-page file measured 185 MB of
+ * heap when every page was read at once, against a 256 MB function. So the
+ * character cap is enforced *during* the page loop with an early stop, which
+ * held the same file to 19 MB. A byte cap alone does not protect this.
+ *
+ * The byte cap is the cruder guard, on what is fetched at all. Contracts and
+ * riders sit far below it — a real 7-page rider was 0.6 MB.
+ */
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MAX_TEXT_CHARS = 40_000;
+
+/**
+ * Below this many characters, a page is carrying no content of its own.
+ *
+ * Testing for literally zero characters does not work, and the reason is
+ * mundane: nearly every rider is letterheaded, so the page holding the stage
+ * plan still yields its running header. A measured example returned 99
+ * characters of boilerplate against 1,633 to 2,695 on the prose pages — a page
+ * that is entirely a diagram, reported as a clean read. The gap between those
+ * two populations is wide, so a threshold well above a header and far below a
+ * real page separates them without arithmetic nobody can follow later.
+ */
+const MIN_PAGE_CHARS = 150;
+
+/** Gmail attachment ids are long — far longer than a message id. */
+const ATTACHMENT_ID = /^[A-Za-z0-9_-]{1,4096}$/;
+
+/**
+ * Decode base64url to bytes. Sibling of decodeBody, which decodes to text;
+ * a PDF has to stay bytes or the parser gets mojibake.
+ */
+function decodeBytes(data: string): Uint8Array {
+  const padded = data.replace(/-/g, "+").replace(/_/g, "/");
+  const full = padded + "=".repeat((4 - (padded.length % 4)) % 4);
+  return Uint8Array.from(atob(full), (c) => c.charCodeAt(0));
+}
+
+/**
+ * Pull text out of a PDF, page by page, stopping at the cap.
+ *
+ * Reports per page rather than per document, because the dangerous case is not
+ * the fully scanned file — it is the ordinary rider whose prose extracts fine
+ * and whose stage plan is an image. Whole-document detection calls that a
+ * success and silently omits the one page the reader most needs. Naming the
+ * pages that carry no text is what stops a summary being written over a hole.
+ *
+ * unpdf is imported here rather than at module load so that reading a note or
+ * an email never pays for a PDF parser it does not use.
+ */
+async function extractPdfText(bytes: Uint8Array) {
+  const { getDocumentProxy } = await import("npm:unpdf@1");
+  const pdf = await getDocumentProxy(bytes);
+
+  const parts: string[] = [];
+  const emptyPages: number[] = [];
+  let chars = 0;
+  let read = 0;
+
+  for (let n = 1; n <= pdf.numPages; n++) {
+    const page = await pdf.getPage(n);
+    const content = await page.getTextContent();
+    const text = (content.items as { str?: string }[])
+      .map((item) => item.str ?? "")
+      .join(" ")
+      .replace(/[ \t]+/g, " ")
+      .trim();
+    // Release the page's decoded content before the next one is opened; this
+    // is the difference between a flat loop and a growing heap.
+    page.cleanup();
+
+    read = n;
+    // Boilerplate is not content: a page under the threshold is reported as a
+    // gap and its header is left out, rather than being passed off as what the
+    // page said.
+    if (text.length < MIN_PAGE_CHARS) emptyPages.push(n);
+    else {
+      parts.push(`[page ${n}]\n${text}`);
+      chars += text.length;
+    }
+    if (chars >= MAX_TEXT_CHARS) break;
+  }
+
+  return {
+    text: parts.join("\n\n").slice(0, MAX_TEXT_CHARS),
+    pages_total: pdf.numPages,
+    pages_read: read,
+    pages_without_text: emptyPages,
+    truncated: read < pdf.numPages || chars > MAX_TEXT_CHARS,
+  };
+}
+
+/**
+ * Read one attachment's contents.
+ *
+ * The message is fetched first, which sounds wasteful next to a direct
+ * attachment call but is what makes the answer trustworthy: it proves the
+ * attachment belongs to the message asked about, and supplies the filename and
+ * declared type, which the attachment endpoint does not return. The size is
+ * there too, so an oversized file is refused before its bytes are fetched.
+ */
+async function readAttachment(
+  token: string,
+  emailId: unknown,
+  attachmentId: unknown,
+) {
+  if (typeof emailId !== "string" || !GMAIL_ID.test(emailId)) {
+    throw new HttpError(400, "email_id is missing or malformed.");
+  }
+  if (typeof attachmentId !== "string" || !ATTACHMENT_ID.test(attachmentId)) {
+    throw new HttpError(400, "attachment_id is missing or malformed.");
+  }
+  const id = encodeURIComponent(emailId);
+
+  const msgRes = await gmailGet(`/users/me/messages/${id}?format=full`, token);
+  const msg = (await msgRes.json()) as GmailMessage;
+  const meta = extractAttachments(msg.payload).find((a) => a.id === attachmentId);
+  if (!meta) {
+    throw new HttpError(404, "That attachment is not part of that message.");
+  }
+
+  if (meta.size !== null && meta.size > MAX_ATTACHMENT_BYTES) {
+    return {
+      filename: meta.filename,
+      mime_type: meta.mime_type,
+      size: meta.size,
+      kind: "too_large" as const,
+      text: "",
+      note:
+        `This file is ${Math.round(meta.size / (1024 * 1024))} MB, above the ` +
+        `${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB limit for reading in chat. ` +
+        `It was not fetched.`,
+    };
+  }
+
+  const attRes = await gmailGet(
+    `/users/me/messages/${id}/attachments/${encodeURIComponent(attachmentId)}`,
+    token,
+  );
+  const payload = (await attRes.json()) as { data?: string; size?: number };
+  if (typeof payload.data !== "string") {
+    throw new HttpError(502, "Gmail returned no data for that attachment.");
+  }
+  const bytes = decodeBytes(payload.data);
+
+  const mime = meta.mime_type.toLowerCase();
+  const base = {
+    filename: meta.filename,
+    mime_type: meta.mime_type,
+    size: meta.size ?? bytes.byteLength,
+  };
+
+  if (mime !== "application/pdf") {
+    return {
+      ...base,
+      kind: "unsupported" as const,
+      text: "",
+      note:
+        `Reading ${meta.mime_type} attachments is not supported yet, so the ` +
+        `contents of this file have not been read.`,
+    };
+  }
+
+  let extracted;
+  try {
+    extracted = await extractPdfText(bytes);
+  } catch (err) {
+    console.error("pdf extraction failed", err);
+    return {
+      ...base,
+      kind: "unreadable" as const,
+      text: "",
+      note:
+        "This PDF could not be parsed. It may be encrypted, password " +
+        "protected, or damaged.",
+    };
+  }
+
+  // A PDF with pages and no text anywhere is a scan. Saying so is the whole
+  // point: an empty string presented as the contents reads as an empty file.
+  const scanned = extracted.text.length === 0 && extracted.pages_total > 0;
+
+  return {
+    ...base,
+    kind: scanned ? ("scan" as const) : ("text" as const),
+    ...extracted,
+    note: scanned
+      ? "No text layer: this file appears to be a scan or a set of page " +
+        "images. Its contents have not been read."
+      : extracted.pages_without_text.length > 0
+      ? `${extracted.pages_without_text.length === 1 ? "Page" : "Pages"} ` +
+        `${extracted.pages_without_text.join(", ")} of ${extracted.pages_total} ` +
+        `carried little or no text and appear to be images or diagrams. ` +
+        `Nothing from ${extracted.pages_without_text.length === 1 ? "it" : "them"} ` +
+        `is included below — in a rider this is typically the stage plan, so do ` +
+        `not describe one from the rest of the document.`
+      : null,
+  };
+}
+
 // ------------------------------------------------------------------ calendar
 
 type CalendarTime = { dateTime?: string; date?: string; timeZone?: string };
@@ -801,6 +1008,9 @@ export const handleRequest = async (req: Request): Promise<Response> => {
       case "read_email":
         result = await readEmail(token, body.email_id);
         break;
+      case "read_attachment":
+        result = await readAttachment(token, body.email_id, body.attachment_id);
+        break;
       case "list_events":
         result = await listEvents(
           token,
@@ -838,7 +1048,9 @@ if (import.meta.main) {
 // pure transformations where a bug is silent rather than loud.
 export {
   decodeBody,
+  decodeBytes,
   extractAttachments,
+  extractPdfText,
   extractText,
   htmlToText,
   eventTime,

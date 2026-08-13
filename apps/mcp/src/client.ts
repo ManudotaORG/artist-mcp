@@ -29,6 +29,7 @@ export type Operation =
   | 'read_note'
   | 'list_emails'
   | 'read_email'
+  | 'read_attachment'
   | 'list_events'
   | 'read_event'
   | 'verify';
