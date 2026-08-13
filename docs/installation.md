@@ -123,7 +123,8 @@ needs a separate Google connection:
   a picture — without reading it. Use it to choose pages before reading them.
 - `read_attachment` — accepts an attachment id from `read_email`. Images (JPEG,
   PNG, GIF, WebP) come back as pictures to look at, passed through untouched.
-  PDFs are text-extracted. Diagrams such as stage plans come back as images to look
+  PDFs are text-extracted. Word `.docx` files are read as text — they have no
+  pages, so a long one is returned in parts and the answer says so. Diagrams such as stage plans come back as images to look
   at, since the text does not describe them; anything that could be neither
   read nor shown is named as a gap rather than skipped silently, and a file
   with no text layer is reported as page images. A long document or a scan is

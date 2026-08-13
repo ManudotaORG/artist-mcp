@@ -13,6 +13,8 @@ import {
   decodeBody,
   decodeBytes,
   describeGaps,
+  docxToText,
+  extractDocxContent,
   eventTime,
   extractAttachments,
   extractPdfContent,
@@ -346,6 +348,49 @@ Deno.test("imageResult still attaches an image whose header it cannot read", () 
   );
   assertEquals(result.kind, "image");
   assertEquals(result.images[0].width, 0);
+});
+
+/** A paragraph as Word writes one. */
+const para = (text: string) => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
+
+Deno.test("docxToText reads paragraphs as lines", () => {
+  const xml = `<w:body>${para("Fee: EUR 2400")}${para("Soundcheck at 17:00")}</w:body>`;
+  assertEquals(docxToText(xml), "Fee: EUR 2400\nSoundcheck at 17:00");
+});
+
+Deno.test("docxToText does not mistake table markup for text", () => {
+  // <w:t[^>]*> also matches <w:tbl>, <w:tblPr>, <w:tc> and <w:tr>, so a
+  // document with a table returned its own markup as prose. Two thirds of a
+  // real 43,000-character read turned out to be this.
+  const xml =
+    `<w:body><w:tbl><w:tblPr><w:tblW w:w="4000"/></w:tblPr>` +
+    `<w:tr><w:tc>${para("Venue")}</w:tc><w:tc>${para("Sala Apolo")}</w:tc></w:tr>` +
+    `</w:tbl>${para("Fee agreed")}</w:body>`;
+  const text = docxToText(xml);
+  assertEquals(text.includes("w:tbl"), false, `leaked markup: ${text.slice(0, 80)}`);
+  assertStringIncludes(text, "Venue");
+  assertStringIncludes(text, "Sala Apolo");
+  assertStringIncludes(text, "Fee agreed");
+});
+
+Deno.test("docxToText decodes entities in the order that matters", () => {
+  // &amp; last, or "&amp;lt;" becomes "<" rather than "&lt;".
+  const xml = `<w:body>${para("Sound &amp;lt; lights &amp; staging")}</w:body>`;
+  assertEquals(docxToText(xml), "Sound &lt; lights & staging");
+});
+
+Deno.test("docxToText joins the runs Word splits a sentence into", () => {
+  // Word breaks a line into runs at every formatting change, including
+  // spellcheck boundaries, so a sentence arrives in pieces.
+  const xml = `<w:body><w:p><w:r><w:t>Fee: </w:t></w:r>` +
+    `<w:r><w:t xml:space="preserve">EUR </w:t></w:r>` +
+    `<w:r><w:t>2400</w:t></w:r></w:p></w:body>`;
+  assertEquals(docxToText(xml), "Fee: EUR 2400");
+});
+
+Deno.test("extractDocxContent refuses bytes that are not a Word document", async () => {
+  assertEquals(await extractDocxContent(new Uint8Array(64)), null);
+  assertEquals(await extractDocxContent(new TextEncoder().encode("%PDF-1.4")), null);
 });
 
 Deno.test("unsupportedNote says a legacy .doc will never be readable", () => {

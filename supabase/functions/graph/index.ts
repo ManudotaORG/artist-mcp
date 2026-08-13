@@ -1324,6 +1324,13 @@ function describeGaps(extracted: {
  * the most likely image to arrive and the one a generic "unsupported" would
  * explain worst.
  */
+const DOCX_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/** Whether an attachment is a Word document, by type or by name. */
+const isDocx = (mimeType: string, filename: string) =>
+  mimeType.toLowerCase() === DOCX_TYPE || /\.docx$/i.test(filename);
+
 const VIEWABLE_IMAGE_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -1484,14 +1491,6 @@ function unsupportedNote(mimeType: string, filename: string): string {
       `cannot read and is not planned to. Ask the sender for a PDF or a .docx, ` +
       `or open it yourself.`;
   }
-  if (
-    mime ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-    /\.docx$/i.test(filename)
-  ) {
-    return `${filename} is a Word document (.docx). Reading these is not built ` +
-      `yet, so its contents have not been read.`;
-  }
   if (mime.startsWith("image/")) {
     return `${filename} is an image. Reading images is not built yet, so it ` +
       `has not been looked at.`;
@@ -1588,6 +1587,22 @@ async function mapAttachment(
     size: meta.size ?? bytes.byteLength,
   };
 
+  if (isDocx(meta.mime_type, meta.filename)) {
+    const doc = await extractDocxContent(bytes).catch(() => null);
+    return {
+      ...base,
+      kind: doc ? ("text" as const) : ("unreadable" as const),
+      pages: [],
+      note: doc
+        ? `${meta.filename} is a Word document of ${doc.chars_total} characters` +
+          (doc.parts_total > 1 ? ` in ${doc.parts_total} parts` : "") +
+          `. There is no page map to give: a .docx records no pages, and its ` +
+          `heading styles are not dependable enough to divide it honestly. ` +
+          `Read it with read_attachment.`
+        : `${meta.filename} could not be opened as a Word document.`,
+    };
+  }
+
   if (meta.mime_type.toLowerCase() !== "application/pdf") {
     return {
       ...base,
@@ -1668,6 +1683,45 @@ async function readAttachment(
 
   if (mime.startsWith("image/")) return imageResult(meta, bytes);
 
+  if (isDocx(meta.mime_type, meta.filename)) {
+    let doc;
+    try {
+      doc = await extractDocxContent(bytes, (fromPage as number) ?? 1);
+    } catch (err) {
+      console.error("docx read failed", err);
+      doc = null;
+    }
+    if (!doc) {
+      return {
+        ...base,
+        kind: "unreadable" as const,
+        text: "",
+        note: `${meta.filename} could not be opened as a Word document. It may ` +
+          `be damaged, password protected, or not really a .docx.`,
+      };
+    }
+    return {
+      ...base,
+      kind: "text" as const,
+      // Said out loud: a Word file has no pages, so from_page selects parts of
+      // the text rather than pages of a rendering.
+      unit: "part" as const,
+      text: doc.text,
+      chars_total: doc.chars_total,
+      parts_total: doc.parts_total,
+      first_page: doc.part,
+      pages_read: doc.part,
+      next_from_page: doc.next_from_page,
+      truncated: doc.next_from_page !== null,
+      images: [],
+      note: doc.parts_total > 1
+        ? `A Word document has no pages, so this is part ${doc.part} of ` +
+          `${doc.parts_total}, split by length alone — a heading may fall ` +
+          `across the join. Continue with from_page ${doc.next_from_page}.`
+        : null,
+    };
+  }
+
   if (mime !== "application/pdf") {
     return {
       ...base,
@@ -1703,6 +1757,132 @@ async function readAttachment(
     kind: scanned ? ("scan" as const) : ("text" as const),
     ...extracted,
     note: describeGaps(extracted),
+  };
+}
+
+// ------------------------------------------------------------ word documents
+
+/**
+ * Find one file inside a ZIP and inflate it.
+ *
+ * A .docx is a ZIP of XML, and the runtime already has what this needs:
+ * DecompressionStream("deflate-raw") is the same web standard the PNG encoder
+ * uses in the other direction. That is why no dependency appears here — a ZIP
+ * reader is a central-directory walk, and a library pulled in for this would be
+ * one more thing parsing hostile input beside the OAuth secrets.
+ */
+async function unzipEntry(
+  bytes: Uint8Array,
+  wanted: string,
+): Promise<Uint8Array | null> {
+  if (bytes.length < 22) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+
+  // The end-of-central-directory record sits at the back, behind a comment of
+  // unknown length, so it is found by scanning backwards for its signature.
+  let eocd = -1;
+  const floor = Math.max(0, bytes.length - 66_000);
+  for (let i = bytes.length - 22; i >= floor; i--) {
+    if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) return null;
+
+  const count = view.getUint16(eocd + 10, true);
+  let at = view.getUint32(eocd + 16, true);
+
+  for (let n = 0; n < count; n++) {
+    if (at + 46 > bytes.length) return null;
+    if (view.getUint32(at, true) !== 0x02014b50) return null;
+    const method = view.getUint16(at + 10, true);
+    const compressed = view.getUint32(at + 20, true);
+    const nameLength = view.getUint16(at + 28, true);
+    const extraLength = view.getUint16(at + 30, true);
+    const commentLength = view.getUint16(at + 32, true);
+    const localOffset = view.getUint32(at + 42, true);
+    const name = new TextDecoder().decode(
+      bytes.subarray(at + 46, at + 46 + nameLength),
+    );
+
+    if (name === wanted) {
+      if (localOffset + 30 > bytes.length) return null;
+      const localName = view.getUint16(localOffset + 26, true);
+      const localExtra = view.getUint16(localOffset + 28, true);
+      const start = localOffset + 30 + localName + localExtra;
+      // Copied rather than a view: a subarray is typed over ArrayBufferLike,
+      // which a Blob will not take, and the copy also keeps the caller's bytes
+      // whole if the stream ever detaches them.
+      const data = new Uint8Array(bytes.subarray(start, start + compressed));
+      if (method === 0) return data; // stored rather than deflated
+      if (method !== 8) return null; // anything else is not worth supporting
+      const inflated = await new Response(
+        new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw")),
+      ).arrayBuffer();
+      return new Uint8Array(inflated);
+    }
+    at += 46 + nameLength + extraLength + commentLength;
+  }
+  return null;
+}
+
+/**
+ * Turn word/document.xml into readable text.
+ *
+ * Paragraphs are the only structure worth trusting. Heading styles are not:
+ * measured against eight real documents, one used Word's own names, one used
+ * custom ones, and the rest carried no style at all on text that plainly reads
+ * as a heading. So nothing here claims to know where the sections are, because
+ * that would be a guess wearing the clothes of structure.
+ */
+function docxToText(xml: string): string {
+  const paragraphs = [...xml.matchAll(/<w:p[ >][\s\S]*?<\/w:p>/g)].map((m) => m[0]);
+  const lines = paragraphs.map((paragraph) =>
+    // <w:t> exactly, not "any tag starting with w:t". The loose form also
+    // matches <w:tbl>, <w:tblPr>, <w:tc> and <w:tr>, so a document containing a
+    // table returned its own markup as prose — invisible until a file with a
+    // table was tried, since ordinary paragraphs have none of those.
+    [...paragraph.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)]
+      .map((m) => m[1])
+      .join("")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      // &amp; last, so "&amp;lt;" does not become "<".
+      .replace(/&amp;/g, "&")
+      .replace(/[ \t]+/g, " ")
+      .trim()
+  );
+
+  return lines
+    .filter((line, i) => line !== "" || lines[i - 1] !== "")
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * Read a Word document, in parts only when it is too long for one answer.
+ *
+ * A .docx has no pages — pagination is what Word does when rendering, not
+ * something the file records — so nothing here invents them. Measured against
+ * eight real documents, seven fitted in a single answer, so parts are the
+ * exception rather than the shape of the feature. The response says its unit is
+ * a part, because reusing from_page silently would be its own small lie.
+ */
+async function extractDocxContent(bytes: Uint8Array, fromPart = 1) {
+  const xml = await unzipEntry(bytes, "word/document.xml");
+  if (!xml) return null;
+
+  const text = docxToText(new TextDecoder().decode(xml));
+  const parts = Math.max(1, Math.ceil(text.length / MAX_TEXT_CHARS));
+  const part = Math.min(Math.max(1, Math.trunc(fromPart)), parts);
+
+  return {
+    text: text.slice((part - 1) * MAX_TEXT_CHARS, part * MAX_TEXT_CHARS),
+    chars_total: text.length,
+    parts_total: parts,
+    part,
+    next_from_page: part < parts ? part + 1 : null,
   };
 }
 
@@ -2022,6 +2202,8 @@ export {
   connectionFailure,
   decodeBytes,
   describeGaps,
+  docxToText,
+  extractDocxContent,
   imageResult,
   imageSize,
   unsupportedNote,

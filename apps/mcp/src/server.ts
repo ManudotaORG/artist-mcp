@@ -38,7 +38,11 @@ type AttachmentBody = {
   kind: "text" | "scan" | "image" | "unsupported" | "unreadable" | "too_large";
   text: string;
   note: string | null;
+  /** What from_page selects: pages for a PDF, parts for a Word document. */
+  unit?: "page" | "part";
   pages_total?: number;
+  parts_total?: number;
+  chars_total?: number;
   first_page?: number;
   pages_read?: number;
   /**
@@ -455,7 +459,9 @@ const runServer = async (): Promise<void> => {
   server.tool(
     "read_attachment",
     "Read the contents of one attachment on a Gmail message, using an id from " +
-      "read_email. Images are shown as pictures; PDFs are read. " +
+      "read_email. Images are shown as pictures; PDFs and Word .docx files " +
+      "are read. A Word document has no pages, so from_page selects parts of " +
+      "its text and the answer says so. " +
       "Read one to answer a question, not to see everything in " +
       "it — map_attachment first tells you which pages are worth reading. " +
       "it: a long scan is pictures, and paging through all of it is neither " +
@@ -513,7 +519,15 @@ const runServer = async (): Promise<void> => {
           "",
           `Type: ${file.mime_type}`,
           `Size: ${describeSize(file.size)}`,
-          ...(file.pages_total
+          ...(file.unit === "part"
+            ? [
+              `Length: ${file.chars_total?.toLocaleString() ?? "?"} characters` +
+                (file.parts_total && file.parts_total > 1
+                  ? `, part ${file.first_page} of ${file.parts_total}`
+                  : ""),
+            ]
+            : []),
+          ...(file.pages_total && file.unit !== "part"
             ? [
                 // "only the first N" was wrong the moment reading could start
                 // partway through: a second call covers pages 10-18, not 1-18.
