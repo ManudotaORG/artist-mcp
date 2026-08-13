@@ -10,14 +10,20 @@ const require = createRequire(import.meta.url);
 const { version: packageVersion } = require('../package.json');
 const PRODUCTION_ENDPOINT = 'https://zxiemadwrkcoovvpscfb.supabase.co/functions/v1/graph';
 const STAGING_ENDPOINT = 'https://cakkwvxwlkdfzqjbvrpa.supabase.co/functions/v1/graph';
+/**
+ * A staging build is identified by its npm version alone. Both the endpoint it
+ * calls and the spec `init` registers derive from this, so an install cannot
+ * end up verifying against one environment and talking to the other.
+ */
+const isStagingVersion = (version) => version.includes('-staging.');
 const defaultEndpoint = (version) => {
-    return version.includes('-staging.') ? STAGING_ENDPOINT : PRODUCTION_ENDPOINT;
+    return isStagingVersion(version) ? STAGING_ENDPOINT : PRODUCTION_ENDPOINT;
 };
 /** Overridable for development; shipped copies select the service matching their npm version. */
 export const endpoint = () => {
     return process.env.ARTIST_MCP_ENDPOINT ?? defaultEndpoint(packageVersion);
 };
-export { defaultEndpoint };
+export { defaultEndpoint, isStagingVersion, packageVersion };
 export class GraphError extends Error {
     reconnectNeeded;
     constructor(message, reconnectNeeded) {

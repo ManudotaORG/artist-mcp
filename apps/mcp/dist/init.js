@@ -1,11 +1,21 @@
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { fileURLToPath } from "node:url";
-import { call, GraphError } from "./client.js";
+import { call, GraphError, isStagingVersion, packageVersion } from "./client.js";
 import { configPath, ENTRY_NAME, readConfig, writeConfig } from "./config.js";
 const PACKAGE = "@manudota/artist-mcp";
 const LOCAL_ENTRY = fileURLToPath(new URL("./index.js", import.meta.url));
-const createServerEntry = ({ key, local = false }) => local
+/**
+ * Register the dist-tag this copy came from, not a bare package name.
+ *
+ * `npx @manudota/artist-mcp@staging init` runs the staging build, so it
+ * verifies the key against staging — but writing an untagged spec meant the
+ * installed entry resolved to `latest` and called production on every restart.
+ * The install then failed as "Invalid connection key", blaming the one thing
+ * that was correct.
+ */
+const packageSpec = (version = packageVersion) => isStagingVersion(version) ? `${PACKAGE}@staging` : PACKAGE;
+const createServerEntry = ({ key, local = false, version = packageVersion, }) => local
     ? {
         command: process.execPath,
         args: [LOCAL_ENTRY],
@@ -13,7 +23,7 @@ const createServerEntry = ({ key, local = false }) => local
     }
     : {
         command: "npx",
-        args: ["-y", PACKAGE],
+        args: ["-y", packageSpec(version)],
         env: { ARTIST_MCP_KEY: key },
     };
 export const runInit = async ({ local = false } = {}) => {
@@ -49,9 +59,14 @@ export const runInit = async ({ local = false } = {}) => {
     if (local) {
         console.log(`Using local build: ${LOCAL_ENTRY}`);
     }
+    else {
+        // Name the environment. The two installs differ by one dist-tag and fail
+        // identically when crossed, so leaving it implicit costs more than the line.
+        console.log(`Registered ${packageSpec()} (${isStagingVersion(packageVersion) ? "staging" : "production"}).`);
+    }
     console.log("Restart Claude Desktop — it doesn't reload its config on its own.");
 };
-export { createServerEntry };
+export { createServerEntry, packageSpec };
 export const runUninstall = async () => {
     const path = configPath();
     const config = await readConfig(path);
