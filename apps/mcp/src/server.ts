@@ -35,10 +35,14 @@ type AttachmentBody = {
   mime_type: string;
   size: number;
   /** What we managed to make of it, which the note explains in words. */
-  kind: "text" | "scan" | "unsupported" | "unreadable" | "too_large";
+  kind: "text" | "scan" | "image" | "unsupported" | "unreadable" | "too_large";
   text: string;
   note: string | null;
+  /** What from_page selects: pages for a PDF, parts for a Word document. */
+  unit?: "page" | "part";
   pages_total?: number;
+  parts_total?: number;
+  chars_total?: number;
   first_page?: number;
   pages_read?: number;
   /**
@@ -49,13 +53,24 @@ type AttachmentBody = {
   pages_without_text?: number[];
   /** Diagrams the text cannot describe, already downscaled and encoded. */
   images?: {
-    page: number;
-    width: number;
-    height: number;
+    /** Absent when the attachment is itself an image rather than a page of one. */
+    page?: number;
+    width: number | null;
+    height: number | null;
     media_type: string;
     data: string;
   }[];
   truncated?: boolean;
+};
+
+type AttachmentMap = {
+  filename: string;
+  mime_type: string;
+  size: number;
+  kind: "text" | "scan" | "image" | "unsupported" | "unreadable" | "too_large";
+  pages_total?: number;
+  pages: { page: number; chars: number; heading: string | null; image_only: boolean }[];
+  note: string | null;
 };
 
 type EmailBody = EmailSummary & {
@@ -392,9 +407,63 @@ const runServer = async (): Promise<void> => {
   );
 
   server.tool(
+    "map_attachment",
+    "Show what is on each page of a PDF attachment without reading it: a " +
+      "character count, an apparent heading, and whether the page is a picture. " +
+      "Use this before read_attachment on anything long — it costs one small " +
+      "call and lets you read the two pages that answer the question instead " +
+      "of paging through the whole file. Scans cannot be mapped, and say so. " +
+      "Read-only: nothing is saved, forwarded, or downloaded.",
+    {
+      email_id: z.string().describe("The id of the message the attachment belongs to"),
+      attachment_id: z
+        .string()
+        .describe('The attachment id from read_email, e.g. "2" or "1.2"'),
+    },
+    async ({ email_id, attachment_id }) => {
+      try {
+        const map = await call<AttachmentMap>("map_attachment", key, {
+          email_id,
+          attachment_id,
+        });
+
+        const head = [
+          `# ${map.filename}`,
+          "",
+          `Type: ${map.mime_type}`,
+          `Size: ${describeSize(map.size)}`,
+        ].join("\n");
+
+        // A table rather than prose: the point is to compare pages at a glance
+        // and pick one, which a paragraph makes harder than it needs to be.
+        const rows = map.pages.length
+          ? [
+            "",
+            "| Page | Characters | What is on it |",
+            "| --- | --- | --- |",
+            ...map.pages.map((p) =>
+              `| ${p.page} | ${p.image_only ? "—" : p.chars} | ` +
+              `${p.image_only ? "a picture, not text" : p.heading ?? "(no heading found)"} |`
+            ),
+          ].join("\n")
+          : "";
+
+        const note = map.note ? `\n\n**${map.note}**` : "";
+        return { content: [{ type: "text", text: `${head}${note}${rows}` }] };
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  server.tool(
     "read_attachment",
     "Read the contents of one attachment on a Gmail message, using an id from " +
-      "read_email. Read one to answer a question, not to see everything in " +
+      "read_email. Images are shown as pictures; PDFs and Word .docx files " +
+      "are read. A Word document has no pages, so from_page selects parts of " +
+      "its text and the answer says so. " +
+      "Read one to answer a question, not to see everything in " +
+      "it — map_attachment first tells you which pages are worth reading. " +
       "it: a long scan is pictures, and paging through all of it is neither " +
       "possible nor useful. PDFs are text-extracted, and diagrams — a stage plan, a " +
       "floor plan — come back as images to look at, since the extracted text " +
@@ -450,7 +519,15 @@ const runServer = async (): Promise<void> => {
           "",
           `Type: ${file.mime_type}`,
           `Size: ${describeSize(file.size)}`,
-          ...(file.pages_total
+          ...(file.unit === "part"
+            ? [
+              `Length: ${file.chars_total?.toLocaleString() ?? "?"} characters` +
+                (file.parts_total && file.parts_total > 1
+                  ? `, part ${file.first_page} of ${file.parts_total}`
+                  : ""),
+            ]
+            : []),
+          ...(file.pages_total && file.unit !== "part"
             ? [
                 // "only the first N" was wrong the moment reading could start
                 // partway through: a second call covers pages 10-18, not 1-18.
@@ -485,7 +562,11 @@ const runServer = async (): Promise<void> => {
         const pictures = (file.images ?? []).flatMap((img) => [
           {
             type: "text" as const,
-            text: `\n### Page ${img.page}, as an image (${img.width}x${img.height})`,
+            // A page of a PDF is announced by page; an image attachment is the
+            // whole file, and calling it "page 1" would invent a structure.
+            text: img.page === undefined
+              ? `\n### ${file.filename}${img.width ? ` (${img.width}x${img.height})` : ""}`
+              : `\n### Page ${img.page}, as an image (${img.width}x${img.height})`,
           },
           {
             type: "image" as const,
