@@ -35,7 +35,7 @@ type AttachmentBody = {
   mime_type: string;
   size: number;
   /** What we managed to make of it, which the note explains in words. */
-  kind: "text" | "scan" | "unsupported" | "unreadable" | "too_large";
+  kind: "text" | "scan" | "image" | "unsupported" | "unreadable" | "too_large";
   text: string;
   note: string | null;
   pages_total?: number;
@@ -49,9 +49,10 @@ type AttachmentBody = {
   pages_without_text?: number[];
   /** Diagrams the text cannot describe, already downscaled and encoded. */
   images?: {
-    page: number;
-    width: number;
-    height: number;
+    /** Absent when the attachment is itself an image rather than a page of one. */
+    page?: number;
+    width: number | null;
+    height: number | null;
     media_type: string;
     data: string;
   }[];
@@ -62,7 +63,7 @@ type AttachmentMap = {
   filename: string;
   mime_type: string;
   size: number;
-  kind: "text" | "scan" | "unsupported" | "unreadable" | "too_large";
+  kind: "text" | "scan" | "image" | "unsupported" | "unreadable" | "too_large";
   pages_total?: number;
   pages: { page: number; chars: number; heading: string | null; image_only: boolean }[];
   note: string | null;
@@ -454,7 +455,8 @@ const runServer = async (): Promise<void> => {
   server.tool(
     "read_attachment",
     "Read the contents of one attachment on a Gmail message, using an id from " +
-      "read_email. Read one to answer a question, not to see everything in " +
+      "read_email. Images are shown as pictures; PDFs are read. " +
+      "Read one to answer a question, not to see everything in " +
       "it — map_attachment first tells you which pages are worth reading. " +
       "it: a long scan is pictures, and paging through all of it is neither " +
       "possible nor useful. PDFs are text-extracted, and diagrams — a stage plan, a " +
@@ -546,7 +548,11 @@ const runServer = async (): Promise<void> => {
         const pictures = (file.images ?? []).flatMap((img) => [
           {
             type: "text" as const,
-            text: `\n### Page ${img.page}, as an image (${img.width}x${img.height})`,
+            // A page of a PDF is announced by page; an image attachment is the
+            // whole file, and calling it "page 1" would invent a structure.
+            text: img.page === undefined
+              ? `\n### ${file.filename}${img.width ? ` (${img.width}x${img.height})` : ""}`
+              : `\n### Page ${img.page}, as an image (${img.width}x${img.height})`,
           },
           {
             type: "image" as const,

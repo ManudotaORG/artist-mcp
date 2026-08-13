@@ -121,8 +121,9 @@ needs a separate Google connection:
 - `map_attachment` — accepts an attachment id from `read_email` and returns what
   is on each page of a PDF — length, an apparent heading, and whether the page is
   a picture — without reading it. Use it to choose pages before reading them.
-- `read_attachment` — accepts an attachment id from `read_email` and extracts
-  the text of a PDF. Diagrams such as stage plans come back as images to look
+- `read_attachment` — accepts an attachment id from `read_email`. Images (JPEG,
+  PNG, GIF, WebP) come back as pictures to look at, passed through untouched.
+  PDFs are text-extracted. Diagrams such as stage plans come back as images to look
   at, since the text does not describe them; anything that could be neither
   read nor shown is named as a gap rather than skipped silently, and a file
   with no text layer is reported as page images. A long document or a scan is

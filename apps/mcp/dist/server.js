@@ -281,7 +281,8 @@ const runServer = async () => {
         }
     });
     server.tool("read_attachment", "Read the contents of one attachment on a Gmail message, using an id from " +
-        "read_email. Read one to answer a question, not to see everything in " +
+        "read_email. Images are shown as pictures; PDFs are read. " +
+        "Read one to answer a question, not to see everything in " +
         "it — map_attachment first tells you which pages are worth reading. " +
         "it: a long scan is pictures, and paging through all of it is neither " +
         "possible nor useful. PDFs are text-extracted, and diagrams — a stage plan, a " +
@@ -361,7 +362,11 @@ const runServer = async () => {
             const pictures = (file.images ?? []).flatMap((img) => [
                 {
                     type: "text",
-                    text: `\n### Page ${img.page}, as an image (${img.width}x${img.height})`,
+                    // A page of a PDF is announced by page; an image attachment is the
+                    // whole file, and calling it "page 1" would invent a structure.
+                    text: img.page === undefined
+                        ? `\n### ${file.filename}${img.width ? ` (${img.width}x${img.height})` : ""}`
+                        : `\n### Page ${img.page}, as an image (${img.width}x${img.height})`,
                 },
                 {
                     type: "image",
