@@ -153,6 +153,46 @@ const PROVIDER_LABEL: Record<Provider, string> = {
 };
 
 /**
+ * Say which of the three failures this is, because the advice differs.
+ *
+ * `connection_refresh_token` returns null when the account has no row for that
+ * provider, and *errors* when a row exists but will not decrypt — pgp_sym_decrypt
+ * throws rather than returning null. One message covered both, and told the
+ * user to reconnect either way. Reconnecting fixes the first and cannot fix the
+ * second: the web app writes a new row with the same key the function still
+ * cannot read, so the advice sends someone round a loop that never closes.
+ * That cost an afternoon here, twice, with the true cause a deployment
+ * mismatch nobody was looking for.
+ *
+ * A decrypt failure is also not the caller's fault, so it is a 503 rather than
+ * a 403 — the connection is fine, the server is misconfigured.
+ */
+function connectionFailure(label: string, errorMessage: string | null): HttpError {
+  if (errorMessage === null) {
+    return new HttpError(
+      403,
+      `No ${label} connection for this account. Connect ${label} in the web app.`,
+      true,
+    );
+  }
+  if (/wrong key or corrupt data/i.test(errorMessage)) {
+    return new HttpError(
+      503,
+      `The stored ${label} connection cannot be decrypted: this server's ` +
+        `token encryption key does not match the one that saved it. ` +
+        `Reconnecting will not help — it would store another connection the ` +
+        `same key cannot read. The deployment's key needs correcting.`,
+      false,
+    );
+  }
+  return new HttpError(
+    503,
+    `Could not read the stored ${label} connection: ${errorMessage}`,
+    false,
+  );
+}
+
+/**
  * Exchange the stored refresh token for an access token.
  *
  * The two providers differ in one way that matters. Microsoft rotates refresh
@@ -175,7 +215,8 @@ async function accessTokenFor(
     { p_user_id: userId, p_key: TOKEN_ENCRYPTION_KEY, p_provider: provider },
   );
   if (error || !refreshToken) {
-    throw new HttpError(403, `No ${label} connection. Reconnect needed.`, true);
+    if (error) console.error(`${label} connection read failed`, error);
+    throw connectionFailure(label, error?.message ?? null);
   }
 
   const google = provider === "google";
@@ -1555,6 +1596,7 @@ if (import.meta.main) {
 // pure transformations where a bug is silent rather than loud.
 export {
   decodeBody,
+  connectionFailure,
   decodeBytes,
   describeGaps,
   extractAttachments,
