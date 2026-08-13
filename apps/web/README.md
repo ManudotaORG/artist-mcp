@@ -1,7 +1,9 @@
 # artist-mcp web app
 
-The Next.js app handles Supabase magic-link sign-in, Microsoft OAuth, encrypted
-refresh-token storage, and connection-key management.
+The Next.js app handles Supabase magic-link sign-in, Microsoft and Google OAuth,
+encrypted refresh-token storage, and connection-key management. The two provider
+connections are independent: either can be connected or disconnected without
+affecting the other.
 
 ## Run locally
 
