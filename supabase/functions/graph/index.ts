@@ -771,6 +771,41 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+/**
+ * Wait for pdf.js to finish decoding one image.
+ *
+ * `getOperatorList()` resolving does not mean the images it references are
+ * ready: decoding is asynchronous, and the plain `objs.get(id)` *throws* for
+ * one still in flight rather than returning nothing. Catching that and moving
+ * on turns a timing difference into a missing picture — observed on a real
+ * scanned page whose 2782x1224 image was present the whole time. The callback
+ * form waits, and the timeout keeps a never-resolving object from holding the
+ * function open until the platform kills it.
+ */
+function resolveImage(
+  // deno-lint-ignore no-explicit-any -- pdf.js ships no type for the page proxy
+  page: any,
+  id: string,
+  ms = 5000,
+  // deno-lint-ignore no-explicit-any
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`image ${id} did not decode within ${ms}ms`)),
+      ms,
+    );
+    try {
+      page.objs.get(id, (obj: unknown) => {
+        clearTimeout(timer);
+        resolve(obj);
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      reject(err);
+    }
+  });
+}
+
 type PdfImage = {
   page: number;
   width: number;
@@ -805,6 +840,7 @@ async function extractPdfContent(bytes: Uint8Array) {
   const emptyPages: number[] = [];
   const images: PdfImage[] = [];
   const skipped: number[] = [];
+  const unreadable: number[] = [];
   let chars = 0;
   let read = 0;
   let searched = 0;
@@ -844,9 +880,14 @@ async function extractPdfContent(bytes: Uint8Array) {
 
         let raw: { width: number; height: number; kind: number; data: Uint8Array };
         try {
-          raw = page.objs.get(id);
-        } catch {
-          continue; // not resolved on this page; nothing to encode
+          raw = await resolveImage(page, id);
+        } catch (err) {
+          // A picture that exists and could not be fetched is not the same as
+          // no picture, and reporting it as absence is how a stage plan
+          // disappears without anyone noticing.
+          console.error(`image ${id} on page ${n} did not resolve`, err);
+          if (!unreadable.includes(n)) unreadable.push(n);
+          continue;
         }
         if (!raw?.data || raw.width * raw.height < MIN_IMAGE_PIXELS) continue;
 
@@ -883,6 +924,7 @@ async function extractPdfContent(bytes: Uint8Array) {
     pages_without_text: emptyPages,
     images,
     pages_with_skipped_images: skipped,
+    pages_with_unreadable_images: unreadable,
     pages_searched_for_images: searched,
     truncated: read < pdf.numPages || chars > MAX_TEXT_CHARS,
   };
@@ -906,6 +948,7 @@ function describeGaps(extracted: {
   pages_without_text: number[];
   images: PdfImage[];
   pages_with_skipped_images: number[];
+  pages_with_unreadable_images?: number[];
   pages_searched_for_images: number;
 }): string | null {
   const scanned = extracted.text.length === 0 && extracted.pages_total > 0;
@@ -926,8 +969,9 @@ function describeGaps(extracted: {
         "not been read."
       : null,
     scanned && extracted.images.length > 0
-      ? "No text layer: this file appears to be a scan. The page images are " +
-        "attached below — read them as the contents."
+      ? "No text layer: this file is page images rather than text — a scan, " +
+        "or something exported as a picture. Those images are attached below; " +
+        "read them as the contents."
       : null,
     !scanned && recovered.length > 0
       ? `${list(recovered)} carried little or no text and ${
@@ -935,7 +979,10 @@ function describeGaps(extracted: {
       } attached below as ${recovered.length === 1 ? "a picture" : "pictures"}` +
         ` — in a rider this is typically the stage plan.`
       : null,
-    blind.length > 0
+    // Suppressed when the whole file is an unrecoverable scan: the sentence
+    // above has already said every page is unreadable, and repeating it per
+    // page reads as two separate problems.
+    blind.length > 0 && !(scanned && extracted.images.length === 0)
       ? `${list(blind)} of ${extracted.pages_total} carried little or no text ` +
         `and could not be recovered as pictures either. Nothing from ` +
         `${blind.length === 1 ? "that page" : "those pages"} is included, so ` +
@@ -950,6 +997,12 @@ function describeGaps(extracted: {
       ? `Further pictures on ${list(extracted.pages_with_skipped_images)
         .toLowerCase()} were left out: only ${MAX_IMAGES_PER_CALL} are ` +
         `returned per read.`
+      : null,
+    (extracted.pages_with_unreadable_images ?? []).length > 0
+      ? `A picture on ${list(extracted.pages_with_unreadable_images ?? [])
+        .toLowerCase()} could not be decoded and is missing from this answer. ` +
+        `It is there in the file — this is a failure to read it, not an ` +
+        `absence, so do not conclude the page is blank.`
       : null,
     extracted.pages_searched_for_images < extracted.pages_read
       ? `Only the first ${MAX_IMAGES_PER_CALL} pictures are returned per read, ` +
@@ -1013,7 +1066,9 @@ async function readAttachment(
       kind: "too_large" as const,
       text: "",
       note:
-        `This file is ${Math.round(meta.size / (1024 * 1024))} MB, above the ` +
+        // One decimal: rounding 13.8 to "14" overstates a file sitting near
+        // the limit, and near the limit is exactly when the number is read.
+        `This file is ${(meta.size / (1024 * 1024)).toFixed(1)} MB, above the ` +
         `${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB limit for reading in chat. ` +
         `It was not fetched.`,
     };

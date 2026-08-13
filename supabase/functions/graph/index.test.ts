@@ -472,6 +472,34 @@ Deno.test("describeGaps admits which pages were never searched", () => {
   assertStringIncludes(note!, "pages 4 to 7 were not searched");
 });
 
+Deno.test("describeGaps says a full scan is unreadable exactly once", () => {
+  // Observed on a real scanned attachment: the whole-file sentence and the
+  // per-page sentence both fired, so one problem was reported as two.
+  const note = describeGaps(extraction({
+    text: "",
+    pages_total: 1,
+    pages_read: 1,
+    pages_without_text: [1],
+    pages_searched_for_images: 1,
+  }));
+  assertEquals(note!.match(/recovered/g)?.length, 1);
+  assertStringIncludes(note!, "appears to be a scan");
+});
+
+Deno.test("describeGaps still names unrecovered pages of a partly recovered scan", () => {
+  // The suppression above must not hide a real gap: when some pages came back
+  // as pictures and others did not, the ones that did not still matter.
+  const note = describeGaps(extraction({
+    text: "",
+    pages_total: 3,
+    pages_read: 3,
+    pages_without_text: [1, 2, 3],
+    pages_searched_for_images: 3,
+    images: [{ page: 1, width: 10, height: 10, media_type: "image/png", data: "" }],
+  }));
+  assertStringIncludes(note!, "Pages 2, 3");
+});
+
 Deno.test("describeGaps calls a scan a scan", () => {
   const note = describeGaps(extraction({
     text: "",
