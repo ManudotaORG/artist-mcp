@@ -63,19 +63,25 @@ export const call = async <T>(
     throw new GraphError(`Could not reach the notes service: ${cause}`, false);
   }
 
-  if (res.status === 401 || res.status === 403) {
-    throw new GraphError(
-      'Reconnect needed — this connection key is no longer valid. ' +
-        'Sign in to the web app and generate a new one.',
-      true,
-    );
-  }
-
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
 
   if (!res.ok) {
-    const detail = typeof body.error === 'string' ? body.error : `HTTP ${res.status}`;
-    throw new GraphError(detail, body.reconnect_needed === true);
+    // The service says which of several things went wrong — an invalid key, a
+    // provider that was never connected, a stored token this deployment cannot
+    // decrypt. Replacing all of that with "your key is no longer valid" was
+    // wrong for every case but the first, and sent people to regenerate a key
+    // that was fine. Its own words are used when it sends any.
+    if (typeof body.error === 'string' && body.error.trim() !== '') {
+      throw new GraphError(body.error, body.reconnect_needed === true);
+    }
+    if (res.status === 401 || res.status === 403) {
+      throw new GraphError(
+        'Reconnect needed — this connection key is no longer valid. ' +
+          'Sign in to the web app and generate a new one.',
+        true,
+      );
+    }
+    throw new GraphError(`The notes service returned HTTP ${res.status}.`, false);
   }
 
   return body as T;
