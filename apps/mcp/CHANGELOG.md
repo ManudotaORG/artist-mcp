@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.7.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v0.6.0...artist-mcp-v0.7.0) (2026-08-13)
+
+
+### Features
+
+* **graph:** map a PDF so pages can be chosen instead of walked ([46d2ee9](https://github.com/ManudotaORG/artist-mcp/commit/46d2ee991147e766e6ba009f8e981efe604f59b6))
+* **graph:** map a PDF so pages can be chosen instead of walked ([274a7ed](https://github.com/ManudotaORG/artist-mcp/commit/274a7ed90ce067482b6bd8dc212db9e14d999426)), closes [#26](https://github.com/ManudotaORG/artist-mcp/issues/26)
+* **graph:** read image and Word attachments, and decline formats by name ([91089bf](https://github.com/ManudotaORG/artist-mcp/commit/91089bf2d213a7dbf2a1cf12946bf2255cb267ed))
+* **graph:** read Word .docx attachments ([333d8b1](https://github.com/ManudotaORG/artist-mcp/commit/333d8b171adbec8b344861c1eecd315f611de54b)), closes [#34](https://github.com/ManudotaORG/artist-mcp/issues/34)
+* **graph:** show image attachments, and decline formats by name ([b035f63](https://github.com/ManudotaORG/artist-mcp/commit/b035f639f27d48c47eedae00337380d180ab88ad)), closes [#34](https://github.com/ManudotaORG/artist-mcp/issues/34)
+
 ## [0.6.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v0.5.0...artist-mcp-v0.6.0) (2026-08-13)
 
 

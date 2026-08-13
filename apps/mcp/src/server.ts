@@ -113,7 +113,7 @@ const describeSize = (bytes: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-const serverVersion = '0.6.0'; // x-release-please-version
+const serverVersion = '0.7.0'; // x-release-please-version
 
 const errorResult = (err: unknown) => {
   const message =
