@@ -278,13 +278,60 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
    A real fix needs shared state. Internal to the function — fixable without
    touching the `/v1/` contract.
 
-3. **Key→user isolation never observed.** Every test used one user. The code
-   isolates by resolving the key to a `user_id`, and RLS covers the browser
-   path, but no test has confirmed one user's key fails to reach another's
-   notes. Cheapest meaningful check: a second Supabase user with their own key.
+3. **Key→user isolation observed at the API; the clean-machine half is not.**
+   Verified 2026-08-12 against production with two real Supabase users, two real
+   Microsoft accounts, and a temporary key per user, all revoked afterwards:
+
+   - A key resolves to its own user. A user holding no connection is refused
+     — "No Microsoft connection" — rather than served another user's notes, on
+     both the Microsoft and Google paths.
+   - User B's page list excludes a page private to User A.
+   - User B presenting User A's private page id to `read_note` is refused with
+     a Graph 404. User A reading the same page succeeds, so the refusal is
+     isolation, not a broken id.
+
+   Still unverified: the published npm package on a separate clean machine,
+   which is the other half of [two-user-acceptance.md](two-user-acceptance.md)
+   and the part no database fixture can prove.
+
+   **A shared notebook makes overlapping page lists meaningless as evidence.**
+   The two accounts here shared sixteen of seventeen pages, so a naive "the
+   lists must not intersect" check reports a leak where Microsoft is correctly
+   honouring its own sharing. That is why the runbook asks for a private page
+   with a unique marker; the assertion needs a page the other account genuinely
+   cannot reach, not merely a different list.
 
 4. **One key per user.** Generating replaces the old, so two machines cannot
    hold separate keys.
+
+5. **One Google OAuth client serves every environment.** Local, staging, and
+   production all present the same `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`,
+   differing only in `GOOGLE_REDIRECT_URI`. This is the opposite of how the
+   Supabase and Microsoft credentials are handled, where the environment matrix
+   in [operations.md](operations.md) keeps production values out of staging, so
+   it is a deliberate exception rather than an oversight: a leaked staging
+   secret would be usable against production.
+
+   Accepted because `gmail.readonly` is a restricted scope, and a second client
+   means a second Google verification review — weeks of it — for an environment
+   that holds no real data. Split them before Gmail reaches production users,
+   not before it reaches staging. Splitting costs one new client, its own
+   redirect URI, and the staging values in Vercel and the edge function; no code
+   changes, since nothing hardcodes a client id.
+
+6. **Email is read one message at a time, never as a thread.** `list_emails`
+   returns a `thread_id` and nothing consumes it, so a negotiation has to be
+   reassembled from separate reads and only if the model thinks to look.
+
+   The failure is quiet and in the wrong direction: a fee, date, or lineup
+   agreed in the first message and revised three replies later reads as settled,
+   because the message carrying it looks complete on its own. Intake's rule is
+   to surface contradictions with both sources named — a half-read thread hides
+   the contradiction instead, which is worse than not reading the mail at all.
+
+   Deferred rather than dismissed. A `read_thread` operation is a small addition
+   on the same connection and scope; what needs deciding first is how a thread
+   is summarised without pouring quoted history into chat.
 
 ## Confirm before registering the Microsoft app
 

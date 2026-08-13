@@ -2,8 +2,8 @@
  * The only network surface this package has.
  *
  * Everything goes through one POST to the edge function, which holds the
- * Microsoft credentials. No Graph call is ever made from this machine, and the
- * connection key is the only secret that lives here.
+ * Microsoft and Google credentials. No call to either provider is ever made
+ * from this machine, and the connection key is the only secret that lives here.
  */
 import { createRequire } from 'node:module';
 
@@ -24,7 +24,15 @@ export const endpoint = (): string => {
 
 export { defaultEndpoint };
 
-export type Operation = 'list_notes' | 'read_note' | 'verify';
+export type Operation =
+  | 'list_notes'
+  | 'read_note'
+  | 'list_emails'
+  | 'read_email'
+  | 'read_attachment'
+  | 'list_events'
+  | 'read_event'
+  | 'verify';
 
 export class GraphError extends Error {
   constructor(
@@ -55,19 +63,25 @@ export const call = async <T>(
     throw new GraphError(`Could not reach the notes service: ${cause}`, false);
   }
 
-  if (res.status === 401 || res.status === 403) {
-    throw new GraphError(
-      'Reconnect needed — this connection key is no longer valid. ' +
-        'Sign in to the web app and generate a new one.',
-      true,
-    );
-  }
-
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
 
   if (!res.ok) {
-    const detail = typeof body.error === 'string' ? body.error : `HTTP ${res.status}`;
-    throw new GraphError(detail, body.reconnect_needed === true);
+    // The service says which of several things went wrong — an invalid key, a
+    // provider that was never connected, a stored token this deployment cannot
+    // decrypt. Replacing all of that with "your key is no longer valid" was
+    // wrong for every case but the first, and sent people to regenerate a key
+    // that was fine. Its own words are used when it sends any.
+    if (typeof body.error === 'string' && body.error.trim() !== '') {
+      throw new GraphError(body.error, body.reconnect_needed === true);
+    }
+    if (res.status === 401 || res.status === 403) {
+      throw new GraphError(
+        'Reconnect needed — this connection key is no longer valid. ' +
+          'Sign in to the web app and generate a new one.',
+        true,
+      );
+    }
+    throw new GraphError(`The notes service returned HTTP ${res.status}.`, false);
   }
 
   return body as T;

@@ -100,17 +100,45 @@ Then choose a returned page and ask:
 
 > Read the note titled “Test”.
 
-The MCP server exposes four read-only tools:
+The MCP server exposes nine read-only tools.
+
+OneNote holds the working unit:
 
 - `list_notes` — returns page titles, section names, modification dates, and
   OneNote page IDs.
 - `read_note` — accepts a page ID returned by `list_notes` and returns readable
   page text.
+
+Google is supporting evidence for a page, never a working unit of its own, and
+needs a separate Google connection:
+
+- `list_emails` — searches Gmail with its own query syntax and returns subject,
+  sender, date, and snippet.
+- `read_email` — accepts an id from `list_emails` and returns the message body,
+  plus a list of what is attached by name, type and size, each with a short id
+  such as `2` or `1.2` giving its position in the message. Attachment contents
+  are not read.
+- `read_attachment` — accepts an attachment id from `read_email` and extracts
+  the text of a PDF. Diagrams such as stage plans come back as images to look
+  at, since the text does not describe them; anything that could be neither
+  read nor shown is named as a gap rather than skipped silently, and a file
+  with no text layer is reported as page images. A long document or a scan is
+  read in page ranges — each answer says which pages it covered and which page
+  to start from next, or, for a document too large to read in chat, says so
+  and asks which pages are wanted rather than inviting a walk that cannot
+  finish.
+- `list_events` — lists Google Calendar events in a time window, with recurring
+  occurrences expanded and flagged.
+- `read_event` — accepts an id from `list_events` and returns description and
+  attendees.
+
+The workflow pack:
+
 - `list_agent_workflows` — lists the available artist roles and project types.
 - `load_agent_workflow` — loads one checksummed Markdown playbook.
 
-The local MCP process never receives a Microsoft access token or a Supabase
-service key. It sends only the connection key and an allowed operation to the
+The local MCP process never receives a Microsoft or Google access token, or a
+Supabase service key. It sends only the connection key and an allowed operation to the
 hosted Edge Function.
 
 ## 5. Install the workflow files in a project

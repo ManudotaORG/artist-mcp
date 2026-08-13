@@ -8,7 +8,11 @@
  * and will keep calling this shape indefinitely. Add /v2/ rather than changing
  * a field.
  *
- * Request:  { op: "list_notes" | "read_note" | "verify", note_id?: string }
+ * Request:  { op: "list_notes" | "read_note" | "list_emails" | "read_email"
+ *                 | "read_attachment" | "list_events" | "read_event" | "verify",
+ *              note_id?, email_id?, attachment_id?, from_page?, page_count?,
+ *              event_id?,
+ *              calendar_id?, query?, time_min?, time_max? }
  *           Authorization: Bearer <connection key>
  */
 
@@ -16,6 +20,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const MS_CLIENT_ID = Deno.env.get("MS_CLIENT_ID")!;
 const MS_CLIENT_SECRET = Deno.env.get("MS_CLIENT_SECRET")!;
+const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
+const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
 const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY")!;
 
 // Service role: the edge function resolves a key to a user and reads that
@@ -30,8 +36,45 @@ const GRAPH = "https://graph.microsoft.com/v1.0";
 const TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 const SCOPES = "Notes.Read offline_access User.Read";
 
-/** Only these three. Anything else is a 400 before any work happens. */
-const OPERATIONS = new Set(["list_notes", "read_note", "verify"]);
+const GMAIL = "https://gmail.googleapis.com/gmail/v1";
+const CALENDAR = "https://www.googleapis.com/calendar/v3";
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+// Read-only and deliberately narrow. Every additional scope widens the consent
+// screen and the blast radius of a leaked refresh token, so this must stay in
+// step with the web app's authorize call — a refresh that asks for more than
+// the grant carries is rejected.
+const GOOGLE_SCOPES = [
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/calendar.events.readonly",
+].join(" ");
+
+/**
+ * Anything not here is a 400 before any work happens.
+ *
+ * Adding operations is additive and safe for /v1/: an older installed copy
+ * never sends the new ops, and the shape of the existing four is untouched.
+ */
+const OPERATIONS = new Set([
+  "list_notes",
+  "read_note",
+  "list_emails",
+  "read_email",
+  "read_attachment",
+  "list_events",
+  "read_event",
+  "verify",
+]);
+
+/** Which connection each operation needs. `verify` needs none. */
+const PROVIDER_FOR: Record<string, "microsoft" | "google"> = {
+  list_notes: "microsoft",
+  read_note: "microsoft",
+  list_emails: "google",
+  read_email: "google",
+  read_attachment: "google",
+  list_events: "google",
+  read_event: "google",
+};
 
 // ------------------------------------------------------------------- helpers
 
@@ -102,29 +145,90 @@ function htmlToText(html: string): string {
 
 // ------------------------------------------------------------ token exchange
 
+type Provider = "microsoft" | "google";
+
+const PROVIDER_LABEL: Record<Provider, string> = {
+  microsoft: "Microsoft",
+  google: "Google",
+};
+
 /**
- * Microsoft rotates refresh tokens: every exchange returns a new one and
- * invalidates the old. The write-back below is not optional — miss it and the
- * connection dies silently after the first call.
+ * Say which of the three failures this is, because the advice differs.
+ *
+ * `connection_refresh_token` returns null when the account has no row for that
+ * provider, and *errors* when a row exists but will not decrypt — pgp_sym_decrypt
+ * throws rather than returning null. One message covered both, and told the
+ * user to reconnect either way. Reconnecting fixes the first and cannot fix the
+ * second: the web app writes a new row with the same key the function still
+ * cannot read, so the advice sends someone round a loop that never closes.
+ * That cost an afternoon here, twice, with the true cause a deployment
+ * mismatch nobody was looking for.
+ *
+ * A decrypt failure is also not the caller's fault, so it is a 503 rather than
+ * a 403 — the connection is fine, the server is misconfigured.
  */
-async function accessTokenFor(userId: string): Promise<string> {
+function connectionFailure(label: string, errorMessage: string | null): HttpError {
+  if (errorMessage === null) {
+    return new HttpError(
+      403,
+      `No ${label} connection for this account. Connect ${label} in the web app.`,
+      true,
+    );
+  }
+  if (/wrong key or corrupt data/i.test(errorMessage)) {
+    return new HttpError(
+      503,
+      `The stored ${label} connection cannot be decrypted: this server's ` +
+        `token encryption key does not match the one that saved it. ` +
+        `Reconnecting will not help — it would store another connection the ` +
+        `same key cannot read. The deployment's key needs correcting.`,
+      false,
+    );
+  }
+  return new HttpError(
+    503,
+    `Could not read the stored ${label} connection: ${errorMessage}`,
+    false,
+  );
+}
+
+/**
+ * Exchange the stored refresh token for an access token.
+ *
+ * The two providers differ in one way that matters. Microsoft rotates refresh
+ * tokens — every exchange returns a new one and invalidates the old, so the
+ * write-back is not optional; miss it and the connection dies silently after
+ * the first call. Google returns no refresh token on an ordinary refresh and
+ * keeps the original valid, so there is normally nothing to write back.
+ *
+ * Writing back whatever comes returns therefore handles both: it is mandatory
+ * for Microsoft and a no-op for Google, rather than two divergent paths.
+ */
+async function accessTokenFor(
+  userId: string,
+  provider: Provider,
+): Promise<string> {
+  const label = PROVIDER_LABEL[provider];
+
   const { data: refreshToken, error } = await db.rpc(
     "connection_refresh_token",
-    { p_user_id: userId, p_key: TOKEN_ENCRYPTION_KEY },
+    { p_user_id: userId, p_key: TOKEN_ENCRYPTION_KEY, p_provider: provider },
   );
   if (error || !refreshToken) {
-    throw new HttpError(403, "No Microsoft connection. Reconnect needed.", true);
+    if (error) console.error(`${label} connection read failed`, error);
+    throw connectionFailure(label, error?.message ?? null);
   }
 
-  const res = await fetch(TOKEN_URL, {
+  const google = provider === "google";
+  const res = await fetch(google ? GOOGLE_TOKEN_URL : TOKEN_URL, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: MS_CLIENT_ID,
-      client_secret: MS_CLIENT_SECRET,
+      client_id: google ? GOOGLE_CLIENT_ID : MS_CLIENT_ID,
+      client_secret: google ? GOOGLE_CLIENT_SECRET : MS_CLIENT_SECRET,
       grant_type: "refresh_token",
       refresh_token: refreshToken,
-      scope: SCOPES,
+      scope: google ? GOOGLE_SCOPES : SCOPES,
     }),
   });
 
@@ -132,7 +236,7 @@ async function accessTokenFor(userId: string): Promise<string> {
   if (!res.ok) {
     throw new HttpError(
       403,
-      `Microsoft rejected the refresh token: ${body.error_description ?? res.status}. Reconnect needed.`,
+      `${label} rejected the refresh token: ${body.error_description ?? res.status}. Reconnect needed.`,
       true,
     );
   }
@@ -142,8 +246,9 @@ async function accessTokenFor(userId: string): Promise<string> {
       p_user_id: userId,
       p_refresh_token: body.refresh_token,
       p_key: TOKEN_ENCRYPTION_KEY,
+      p_provider: provider,
     });
-    // Failing to persist the rotated token means the next call will present a
+    // Failing to persist a rotated token means the next call will present a
     // dead one. Better to fail loudly now than to silently break later.
     if (writeBackError) {
       throw new HttpError(500, "Could not persist the rotated refresh token.", false);
@@ -168,10 +273,11 @@ class HttpError extends Error {
  * one call in three, so a read is retried briefly. Only 5xx and 429 are
  * retried — a 4xx is a real answer and retrying it would just be slower.
  */
-async function graphGet(path: string, token: string): Promise<Response> {
-  // Path is built here from a fixed set of literals below. Nothing from the
-  // caller is ever concatenated into a URL.
-  const url = `${GRAPH}${path}`;
+async function getWithRetry(
+  url: string,
+  token: string,
+  api: string,
+): Promise<Response> {
   const delays = [400, 1200];
 
   for (let attempt = 0; ; attempt++) {
@@ -182,16 +288,43 @@ async function graphGet(path: string, token: string): Promise<Response> {
 
     const retryable = res.status >= 500 || res.status === 429;
     if (!retryable || attempt >= delays.length) {
-      // Graph explains 4xx in the body. Without it every failure looks the
-      // same and the only debugging tool left is guesswork.
+      // Both APIs explain their 4xx in the body. Without it every failure looks
+      // the same and the only debugging tool left is guesswork.
       const detail = (await res.text().catch(() => "")).slice(0, 300);
+
+      // A refresh token carries the scopes it was granted with, and adding a
+      // scope later does not widen it. A connection made before Calendar
+      // existed here therefore authenticates fine and is refused per-call, so
+      // this has to read as "reconnect", not as a broken integration.
+      if (res.status === 403 && /insufficient|ACCESS_TOKEN_SCOPE/i.test(detail)) {
+        throw new HttpError(
+          403,
+          `This connection predates ${api} access. Reconnect Google in the web app to grant it.`,
+          true,
+        );
+      }
+
       throw new HttpError(
         502,
-        `Microsoft Graph returned ${res.status}.${detail ? ` ${detail}` : ""}`,
+        `${api} returned ${res.status}.${detail ? ` ${detail}` : ""}`,
       );
     }
     await new Promise((r) => setTimeout(r, delays[attempt]));
   }
+}
+
+function graphGet(path: string, token: string): Promise<Response> {
+  // Path is built here from a fixed set of literals below. Nothing from the
+  // caller is ever concatenated into a URL.
+  return getWithRetry(`${GRAPH}${path}`, token, "Microsoft Graph");
+}
+
+function gmailGet(path: string, token: string): Promise<Response> {
+  return getWithRetry(`${GMAIL}${path}`, token, "Gmail");
+}
+
+function calendarGet(path: string, token: string): Promise<Response> {
+  return getWithRetry(`${CALENDAR}${path}`, token, "Google Calendar");
 }
 
 // ---------------------------------------------------------------- operations
@@ -268,6 +401,1093 @@ async function readNote(token: string, noteId: unknown) {
   return { title: title ?? "(untitled)", text: htmlToText(await content.text()) };
 }
 
+// --------------------------------------------------------------------- gmail
+
+type GmailHeader = { name?: string; value?: string };
+
+type GmailPart = {
+  mimeType?: string;
+  filename?: string;
+  body?: { data?: string; size?: number; attachmentId?: string };
+  parts?: GmailPart[];
+};
+
+type GmailMessage = {
+  id: string;
+  threadId?: string;
+  snippet?: string;
+  internalDate?: string;
+  payload?: GmailPart & { headers?: GmailHeader[] };
+};
+
+/** Gmail ids are opaque hex-ish strings; anything else never reaches a URL. */
+const GMAIL_ID = /^[A-Za-z0-9_-]{1,128}$/;
+
+function header(headers: GmailHeader[] | undefined, name: string): string | null {
+  const found = (headers ?? []).find(
+    (h) => (h.name ?? "").toLowerCase() === name.toLowerCase(),
+  );
+  return found?.value ?? null;
+}
+
+/**
+ * Gmail encodes bodies as base64url, which atob does not accept: it uses - and
+ * _ in place of + and /, and drops the padding. Translating before decoding is
+ * the whole difference between readable text and a throw.
+ */
+function decodeBody(data: string): string {
+  const padded = data.replace(/-/g, "+").replace(/_/g, "/");
+  const full = padded + "=".repeat((4 - (padded.length % 4)) % 4);
+  try {
+    // atob yields one byte per char; UTF-8 has to be reassembled from those
+    // bytes or every non-ASCII character arrives mojibaked.
+    const bytes = Uint8Array.from(atob(full), (c) => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Walk the MIME tree for something readable, preferring text/plain.
+ *
+ * A real message is rarely one part: it is usually multipart/alternative with
+ * plain and HTML siblings, often nested inside multipart/mixed alongside
+ * attachments. Taking payload.body directly works only for the simplest mails.
+ */
+function extractText(part: GmailPart | undefined): string {
+  if (!part) return "";
+
+  const plain: string[] = [];
+  const html: string[] = [];
+
+  const walk = (node: GmailPart) => {
+    const mime = (node.mimeType ?? "").toLowerCase();
+    const data = node.body?.data;
+    if (data) {
+      if (mime === "text/plain") plain.push(decodeBody(data));
+      else if (mime === "text/html") html.push(decodeBody(data));
+    }
+    for (const child of node.parts ?? []) walk(child);
+  };
+  walk(part);
+
+  if (plain.length > 0) return plain.join("\n").trim();
+  // htmlToText is written for OneNote but the job is identical here, and a
+  // second stripper would drift from this one.
+  if (html.length > 0) return htmlToText(html.join("\n"));
+  return "";
+}
+
+/**
+ * List what is attached, without fetching any of it.
+ *
+ * Everything here is already in the payload `read_email` fetches, so the
+ * manifest costs nothing: a part is an attachment when Gmail has given it an
+ * attachmentId. Inline images carry one too and are listed the same way — the
+ * model can see a signature logo for what it is, and a stage plot pasted into
+ * the body is exactly as interesting as one clipped to it.
+ *
+ * What is handed out is the part's position in the MIME tree, not Gmail's
+ * attachmentId. Gmail mints a fresh attachmentId on every fetch of the same
+ * message — verified against a real message, where two reads a second apart
+ * returned different 404-character ids for the same file — so an id quoted back
+ * later matches nothing and cannot be fetched. The position does not move,
+ * because the stored message does not change. Gmail's own id is carried
+ * alongside for the caller that fetched it, and never published.
+ */
+function extractAttachments(part: GmailPart | undefined) {
+  const found: {
+    /** Position in the MIME tree: stable, and what callers quote back. */
+    id: string;
+    /** Gmail's own handle. Valid only for the fetch that produced it. */
+    gmail_id: string;
+    filename: string;
+    mime_type: string;
+    size: number | null;
+  }[] = [];
+  if (!part) return found;
+
+  const walk = (node: GmailPart, path: string) => {
+    const gmailId = node.body?.attachmentId;
+    if (typeof gmailId === "string" && gmailId) {
+      found.push({
+        id: path,
+        gmail_id: gmailId,
+        filename: node.filename || "(unnamed)",
+        mime_type: node.mimeType ?? "application/octet-stream",
+        size: typeof node.body?.size === "number" ? node.body.size : null,
+      });
+    }
+    (node.parts ?? []).forEach((child, i) =>
+      walk(child, path === "0" ? `${i + 1}` : `${path}.${i + 1}`)
+    );
+  };
+  walk(part, "0");
+
+  return found;
+}
+
+/**
+ * List recent messages, newest first.
+ *
+ * Gmail's list endpoint returns ids and nothing else, so each message needs a
+ * second metadata call to become a usable line. That is an N+1 by the API's
+ * design, which is why the page is small and the calls run together.
+ */
+async function listEmails(token: string, rawQuery: unknown) {
+  // Gmail search syntax is the user's own; it is sent as a query parameter,
+  // never interpolated into a path, and capped so it cannot become a URL bomb.
+  const query = typeof rawQuery === "string" ? rawQuery.slice(0, 500).trim() : "";
+
+  const params = new URLSearchParams({ maxResults: "25" });
+  if (query) params.set("q", query);
+
+  const listRes = await gmailGet(`/users/me/messages?${params}`, token);
+  const ids = (((await listRes.json()).messages ?? []) as GmailMessage[])
+    .map((m) => m.id)
+    .filter((id) => typeof id === "string" && GMAIL_ID.test(id));
+
+  const emails = await Promise.all(
+    ids.map(async (id) => {
+      const res = await gmailGet(
+        `/users/me/messages/${encodeURIComponent(id)}` +
+          "?format=metadata&metadataHeaders=Subject&metadataHeaders=From" +
+          "&metadataHeaders=To&metadataHeaders=Date",
+        token,
+      );
+      const msg = (await res.json()) as GmailMessage;
+      return {
+        id: msg.id,
+        thread_id: msg.threadId ?? null,
+        subject: header(msg.payload?.headers, "Subject") ?? "(no subject)",
+        from: header(msg.payload?.headers, "From"),
+        to: header(msg.payload?.headers, "To"),
+        date: header(msg.payload?.headers, "Date"),
+        snippet: msg.snippet ?? null,
+      };
+    }),
+  );
+
+  return { emails };
+}
+
+async function readEmail(token: string, emailId: unknown) {
+  if (typeof emailId !== "string" || !GMAIL_ID.test(emailId)) {
+    throw new HttpError(400, "email_id is missing or malformed.");
+  }
+  const id = encodeURIComponent(emailId);
+
+  const res = await gmailGet(`/users/me/messages/${id}?format=full`, token);
+  const msg = (await res.json()) as GmailMessage;
+
+  return {
+    id: msg.id,
+    thread_id: msg.threadId ?? null,
+    subject: header(msg.payload?.headers, "Subject") ?? "(no subject)",
+    from: header(msg.payload?.headers, "From"),
+    to: header(msg.payload?.headers, "To"),
+    cc: header(msg.payload?.headers, "Cc"),
+    date: header(msg.payload?.headers, "Date"),
+    text: extractText(msg.payload) || (msg.snippet ?? ""),
+    // gmail_id is dropped: it expires with this fetch, so publishing it would
+    // hand the caller a handle that is already going stale.
+    attachments: extractAttachments(msg.payload).map(
+      ({ gmail_id: _gmail_id, ...rest }) => rest,
+    ),
+  };
+}
+
+// ------------------------------------------------------- attachment contents
+
+/**
+ * Two ceilings, and neither is decoration.
+ *
+ * Extraction decodes a PDF into memory, and the cost tracks pages and text
+ * volume rather than file size: a 195 KB, 176-page file measured 185 MB of
+ * heap when every page was read at once, against a 256 MB function. So the
+ * character cap is enforced *during* the page loop with an early stop, which
+ * held the same file to 19 MB. A byte cap alone does not protect this.
+ *
+ * The byte cap is the cruder guard, on what is fetched at all. Contracts and
+ * riders sit far below it — a real 7-page rider was 0.6 MB.
+ */
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MAX_TEXT_CHARS = 40_000;
+
+/**
+ * Below this many characters, a page is carrying no content of its own.
+ *
+ * Testing for literally zero characters does not work, and the reason is
+ * mundane: nearly every rider is letterheaded, so the page holding the stage
+ * plan still yields its running header. A measured example returned 99
+ * characters of boilerplate against 1,633 to 2,695 on the prose pages — a page
+ * that is entirely a diagram, reported as a clean read. The gap between those
+ * two populations is wide, so a threshold well above a header and far below a
+ * real page separates them without arithmetic nobody can follow later.
+ */
+const MIN_PAGE_CHARS = 150;
+
+/**
+ * Caps for images, which are not optional either.
+ *
+ * pdf.js decodes to a raw bitmap rather than handing back the original stream,
+ * so nothing can be passed through untouched: a 1702x2845 stage plan is 14.5 MB
+ * of RGB in memory before it is encoded, and a scanned page is worse. Hence a
+ * ceiling on how many are returned and how large each is sent.
+ *
+ * The pixel floor is what separates a diagram from furniture. A measured rider
+ * carried a 0.11 MP letterhead on every page and a 4.84 MP stage plan on one;
+ * that is not a close call, and a threshold between them costs nothing to
+ * explain.
+ */
+const MAX_IMAGE_EDGE = 1200;
+const MAX_IMAGES_PER_CALL = 3;
+
+/**
+ * How much of an image-only document is worth offering to walk through.
+ *
+ * At a 1200px edge a page image costs roughly 1,500 tokens to look at, so a
+ * hundred-page scan is on the order of 150,000 — more than a context window,
+ * and not worth spending even where it fits. Past this many pages the answer
+ * stops advertising the next page and says what the file is instead, because
+ * inviting a walk that cannot finish is worse than declining it: the caller
+ * finds out thirty calls in.
+ *
+ * Raising how many pages come back per call does not help. It reaches the same
+ * ceiling sooner.
+ */
+const WALKABLE_SCAN_PAGES = 20;
+const TOKENS_PER_PAGE_IMAGE = 1500;
+
+/** Ceiling on a requested window. The default stays small; this bounds asking. */
+const MAX_PAGES_PER_CALL = 10;
+const MIN_IMAGE_PIXELS = 200_000;
+
+/**
+ * pdf.js gives an image reused across pages a document-wide id prefixed `g_`,
+ * which is structurally what letterhead is: the same artwork on every page. It
+ * refines the pixel floor rather than replacing it — on its first appearance
+ * the logo is still page-local, so the floor is what catches that one, and this
+ * is an internal pdf.js convention rather than anything the PDF spec promises.
+ * That is why unpdf is pinned.
+ */
+const SHARED_IMAGE_ID = /^g_/;
+
+/**
+ * A MIME position such as "2" or "2.1", never Gmail's own id.
+ *
+ * Narrow on purpose: this value is interpolated into no URL, but it is quoted
+ * back into an error message, and digits and dots cannot carry anything.
+ */
+const ATTACHMENT_ID = /^\d+(\.\d+){0,8}$/;
+
+/**
+ * Decode base64url to bytes. Sibling of decodeBody, which decodes to text;
+ * a PDF has to stay bytes or the parser gets mojibake.
+ */
+function decodeBytes(data: string): Uint8Array {
+  const padded = data.replace(/-/g, "+").replace(/_/g, "/");
+  const full = padded + "=".repeat((4 - (padded.length % 4)) % 4);
+  return Uint8Array.from(atob(full), (c) => c.charCodeAt(0));
+}
+
+// PNG encoding, because pdf.js hands back pixels and MCP wants a file. Doing
+// it by hand keeps the rasteriser and the canvas polyfill out of the component
+// that holds the OAuth secrets: a CRC, a deflate, and four chunks.
+
+const crcTable = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(buf: Uint8Array): number {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) c = crcTable[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Uint8Array): Uint8Array {
+  const out = new Uint8Array(12 + data.length);
+  const view = new DataView(out.buffer);
+  view.setUint32(0, data.length);
+  out.set(new TextEncoder().encode(type), 4);
+  out.set(data, 8);
+  view.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)));
+  return out;
+}
+
+/**
+ * Normalise pdf.js's three bitmap layouts to plain RGB.
+ *
+ * Kind 1 is one *bit* per pixel with rows padded to a byte boundary, not one
+ * byte — reading it as bytes yields noise, which is the kind of bug that looks
+ * like a corrupt file rather than a decoding mistake.
+ */
+function toRgb(
+  data: Uint8Array,
+  width: number,
+  height: number,
+  kind: number,
+): Uint8Array | null {
+  if (kind === 2) return data;
+  const rgb = new Uint8Array(width * height * 3);
+  if (kind === 3) {
+    for (let p = 0; p < width * height; p++) {
+      rgb[p * 3] = data[p * 4];
+      rgb[p * 3 + 1] = data[p * 4 + 1];
+      rgb[p * 3 + 2] = data[p * 4 + 2];
+    }
+    return rgb;
+  }
+  if (kind === 1) {
+    const rowBytes = (width + 7) >> 3;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const bit = (data[y * rowBytes + (x >> 3)] >> (7 - (x & 7))) & 1;
+        const value = bit ? 255 : 0;
+        const at = (y * width + x) * 3;
+        rgb[at] = value;
+        rgb[at + 1] = value;
+        rgb[at + 2] = value;
+      }
+    }
+    return rgb;
+  }
+  return null;
+}
+
+/** Box filter by an integer factor: cheap, and kind to line art and labels. */
+function downscale(rgb: Uint8Array, width: number, height: number, factor: number) {
+  if (factor <= 1) return { rgb, width, height };
+  const w = Math.floor(width / factor);
+  const h = Math.floor(height / factor);
+  const out = new Uint8Array(w * h * 3);
+  const n = factor * factor;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let r = 0, g = 0, b = 0;
+      for (let dy = 0; dy < factor; dy++) {
+        for (let dx = 0; dx < factor; dx++) {
+          const s = ((y * factor + dy) * width + (x * factor + dx)) * 3;
+          r += rgb[s]; g += rgb[s + 1]; b += rgb[s + 2];
+        }
+      }
+      const d = (y * w + x) * 3;
+      out[d] = r / n; out[d + 1] = g / n; out[d + 2] = b / n;
+    }
+  }
+  return { rgb: out, width: w, height: h };
+}
+
+async function encodePng(
+  rgb: Uint8Array,
+  width: number,
+  height: number,
+): Promise<Uint8Array> {
+  // Each scanline is prefixed with its filter byte; 0 (None) leaves the work
+  // to deflate, which is plenty for line art.
+  const stride = width * 3;
+  const raw = new Uint8Array(height * (1 + stride));
+  for (let y = 0; y < height; y++) {
+    raw[y * (1 + stride)] = 0;
+    raw.set(rgb.subarray(y * stride, (y + 1) * stride), y * (1 + stride) + 1);
+  }
+  const deflated = new Uint8Array(
+    await new Response(
+      new Blob([raw]).stream().pipeThrough(new CompressionStream("deflate")),
+    ).arrayBuffer(),
+  );
+
+  const ihdr = new Uint8Array(13);
+  const view = new DataView(ihdr.buffer);
+  view.setUint32(0, width);
+  view.setUint32(4, height);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // truecolour RGB
+
+  const parts = [
+    new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", deflated),
+    pngChunk("IEND", new Uint8Array(0)),
+  ];
+  const png = new Uint8Array(parts.reduce((total, p) => total + p.length, 0));
+  let at = 0;
+  for (const part of parts) { png.set(part, at); at += part.length; }
+  return png;
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  // Chunked: spreading a megabyte into apply() overflows the argument list.
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
+}
+
+/**
+ * Wait for pdf.js to finish decoding one image.
+ *
+ * `getOperatorList()` resolving does not mean the images it references are
+ * ready: decoding is asynchronous, and the plain `objs.get(id)` *throws* for
+ * one still in flight rather than returning nothing. Catching that and moving
+ * on turns a timing difference into a missing picture — observed on a real
+ * scanned page whose 2782x1224 image was present the whole time. The callback
+ * form waits, and the timeout keeps a never-resolving object from holding the
+ * function open until the platform kills it.
+ */
+function resolveImage(
+  // deno-lint-ignore no-explicit-any -- pdf.js ships no type for the page proxy
+  page: any,
+  id: string,
+  ms = 5000,
+  // deno-lint-ignore no-explicit-any
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`image ${id} did not decode within ${ms}ms`)),
+      ms,
+    );
+    try {
+      page.objs.get(id, (obj: unknown) => {
+        clearTimeout(timer);
+        resolve(obj);
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      reject(err);
+    }
+  });
+}
+
+type PdfImage = {
+  page: number;
+  width: number;
+  height: number;
+  media_type: "image/png";
+  data: string;
+};
+
+/**
+ * Read a PDF page by page: text, and the pictures the text cannot describe.
+ *
+ * Both are reported per page rather than per document, because the dangerous
+ * case is not the fully scanned file — it is the ordinary rider whose prose
+ * extracts fine and whose stage plan is a picture. Whole-document detection
+ * calls that a success and silently omits the one page the crew most needs.
+ *
+ * Crucially the two are independent. Deciding "there is a diagram here"
+ * from "this page yielded no text" only ever finds diagrams that are alone on
+ * their page; a floor plan sitting under two paragraphs would extract as a
+ * clean read with the picture never mentioned. So pages are searched for
+ * images whether or not they gave up text.
+ *
+ * unpdf is imported here rather than at module load so that reading a note or
+ * an email never pays for a PDF parser it does not use.
+ */
+async function extractPdfContent(
+  bytes: Uint8Array,
+  fromPage = 1,
+  pageCount?: number,
+) {
+  const { getDocumentProxy } = await import("npm:unpdf@1");
+  const { OPS } = await import("npm:unpdf@1/pdfjs");
+  // pdf.js transfers the buffer to its worker, which detaches it — the
+  // caller's array is unusable afterwards, and a second read of the same bytes
+  // throws DataCloneError. Reading a document in page ranges means exactly
+  // that second read, so the copy is what makes ranges possible at all.
+  const pdf = await getDocumentProxy(new Uint8Array(bytes));
+
+  const first = Math.min(Math.max(1, Math.trunc(fromPage)), pdf.numPages);
+  // A window is for asking about pages someone already has reason to care
+  // about — "40 to 45" — not for reading faster. Unbounded, it would be a way
+  // to request the whole document in one call and exhaust the function.
+  const window = pageCount === undefined
+    ? undefined
+    : Math.min(Math.max(1, Math.trunc(pageCount)), MAX_PAGES_PER_CALL);
+  const last = window === undefined
+    ? pdf.numPages
+    : Math.min(first + window - 1, pdf.numPages);
+
+  const parts: string[] = [];
+  const emptyPages: number[] = [];
+  const images: PdfImage[] = [];
+  const skipped: number[] = [];
+  const unreadable: number[] = [];
+  let chars = 0;
+  let read = first - 1;
+  // One before the start, so "searched as far as read" holds when the very
+  // first page already fills the image budget.
+  let searched = first - 1;
+  // Asking for a window is an explicit request for those pages, so it raises
+  // the image budget to match; the default stays deliberately small.
+  const imageBudget = window ?? MAX_IMAGES_PER_CALL;
+
+  for (let n = first; n <= last; n++) {
+    const page = await pdf.getPage(n);
+
+    const content = await page.getTextContent();
+    const text = (content.items as { str?: string }[])
+      .map((item) => item.str ?? "")
+      .join(" ")
+      .replace(/[ \t]+/g, " ")
+      .trim();
+
+    read = n;
+    // Boilerplate is not content: a page under the threshold is reported as a
+    // gap and its header is left out, rather than being passed off as what the
+    // page said.
+    if (text.length < MIN_PAGE_CHARS) emptyPages.push(n);
+    else {
+      parts.push(`[page ${n}]\n${text}`);
+      chars += text.length;
+    }
+
+    // Building the operator list decodes this page's images, so it is skipped
+    // entirely once enough have been collected — that is the expensive half of
+    // the loop on a long document. The price is that later pages are not
+    // searched at all, which must be reported rather than left to look like a
+    // document with no further diagrams in it.
+    if (images.length < imageBudget) {
+      searched = n;
+      const ops = await page.getOperatorList();
+      for (let i = 0; i < ops.fnArray.length; i++) {
+        if (ops.fnArray[i] !== OPS.paintImageXObject) continue;
+        const id = ops.argsArray[i][0];
+        if (typeof id !== "string" || SHARED_IMAGE_ID.test(id)) continue;
+
+        let raw: { width: number; height: number; kind: number; data: Uint8Array };
+        try {
+          raw = await resolveImage(page, id);
+        } catch (err) {
+          // A picture that exists and could not be fetched is not the same as
+          // no picture, and reporting it as absence is how a stage plan
+          // disappears without anyone noticing.
+          console.error(`image ${id} on page ${n} did not resolve`, err);
+          if (!unreadable.includes(n)) unreadable.push(n);
+          continue;
+        }
+        if (!raw?.data || raw.width * raw.height < MIN_IMAGE_PIXELS) continue;
+
+        if (images.length >= imageBudget) {
+          if (!skipped.includes(n)) skipped.push(n);
+          continue;
+        }
+
+        const rgb = toRgb(raw.data, raw.width, raw.height, raw.kind);
+        if (!rgb) continue;
+        const factor = Math.ceil(Math.max(raw.width, raw.height) / MAX_IMAGE_EDGE);
+        const small = downscale(rgb, raw.width, raw.height, factor);
+        images.push({
+          page: n,
+          width: small.width,
+          height: small.height,
+          media_type: "image/png",
+          data: toBase64(await encodePng(small.rgb, small.width, small.height)),
+        });
+      }
+    }
+
+    // Release the page's decoded content before the next one is opened; this
+    // is the difference between a flat loop and a growing heap.
+    page.cleanup();
+
+    // A call ends when either budget is spent, and the caller resumes from the
+    // next page. Stopping only on the text budget was the subtler mistake: on
+    // a scan the text budget is never touched, so the loop ran to the end,
+    // declared the file finished, and left every page past the image cap
+    // permanently unreachable — a page range that could not reach them.
+    if (chars >= MAX_TEXT_CHARS || images.length >= imageBudget) break;
+  }
+
+  // Image-only and longer than anyone can read here: see WALKABLE_SCAN_PAGES.
+  const unwalkable = chars === 0 && pdf.numPages > WALKABLE_SCAN_PAGES;
+
+  return {
+    text: parts.join("\n\n").slice(0, MAX_TEXT_CHARS),
+    pages_total: pdf.numPages,
+    first_page: first,
+    pages_read: read,
+    pages_without_text: emptyPages,
+    images,
+    pages_with_skipped_images: skipped,
+    pages_with_unreadable_images: unreadable,
+    pages_searched_for_images: searched,
+    // Whether the caller named a window. Someone who asked for pages 12-15 has
+    // already made the judgement the large-file advice exists to prompt.
+    targeted: window !== undefined,
+    // What to ask for to carry on — withheld for an image-only document too
+    // large to finish, where the note declines the walk. Leaving a page number
+    // here while the prose says "do not page through it" is the same
+    // contradiction in machine-readable form, and a caller following fields
+    // rather than sentences would walk anyway. Targeted pages are still
+    // available through from_page and page_count.
+    next_from_page: read < pdf.numPages && !unwalkable ? read + 1 : null,
+    truncated: read < pdf.numPages || chars > MAX_TEXT_CHARS,
+  };
+}
+
+/**
+ * Say, in words, what of this file did not make it into the answer.
+ *
+ * A PDF with pages and no text anywhere is a scan, and an empty string offered
+ * as its contents reads as an empty file. But the gaps are several different
+ * things and flattening them into one sentence leaves a reader unsure whether
+ * they saw the stage plan: a page whose picture is attached, a page whose
+ * picture could not be recovered, a page of prose that also carries a diagram,
+ * and pages nothing ever looked at. The last is the easiest to misread as
+ * "there were no more diagrams".
+ */
+function describeGaps(extracted: {
+  text: string;
+  pages_total: number;
+  pages_read: number;
+  pages_without_text: number[];
+  images: PdfImage[];
+  pages_with_skipped_images: number[];
+  pages_with_unreadable_images?: number[];
+  pages_searched_for_images: number;
+  first_page?: number;
+  next_from_page?: number | null;
+  targeted?: boolean;
+}): string | null {
+  const scanned = extracted.text.length === 0 && extracted.pages_total > 0;
+  const bigScan = scanned && extracted.pages_total > WALKABLE_SCAN_PAGES &&
+    !extracted.targeted;
+  const shown = new Set(extracted.images.map((img) => img.page));
+  const list = (pages: number[]) =>
+    `${pages.length === 1 ? "Page" : "Pages"} ${pages.join(", ")}`;
+
+  // "Could not be recovered" must mean tried and failed. A page past the point
+  // where the image search stopped was never attempted, and saying recovery
+  // failed there is both false and the more reassuring of the two readings —
+  // it implies someone looked. Those pages belong to the "not searched"
+  // sentence alone.
+  const blind = extracted.pages_without_text.filter(
+    (p) => !shown.has(p) && p <= extracted.pages_searched_for_images,
+  );
+  const recovered = extracted.pages_without_text.filter((p) => shown.has(p));
+  const alongside = [...shown].filter(
+    (p) => !extracted.pages_without_text.includes(p),
+  );
+
+  const notes = [
+    scanned && extracted.images.length === 0
+      ? "No text layer: this file appears to be a scan or a set of page " +
+        "images, and none could be recovered as pictures. Its contents have " +
+        "not been read."
+      : null,
+    scanned && extracted.images.length > 0 && !bigScan
+      ? `No text layer: this file is page images rather than text — a scan, ` +
+        `or something exported as a picture. Its contents are the pictures, ` +
+        `and ${extracted.images.length} of its ${extracted.pages_total} ` +
+        `${extracted.pages_total === 1 ? "page is" : "pages are"} attached ` +
+        `below. Read ${extracted.images.length === 1 ? "it" : "them"} as the ` +
+        `contents, and treat the rest of the document as unread.`
+      : null,
+    !scanned && recovered.length > 0
+      ? `${list(recovered)} carried little or no text and ${
+        recovered.length === 1 ? "is" : "are"
+      } attached below as ${recovered.length === 1 ? "a picture" : "pictures"}` +
+        ` — in a rider this is typically the stage plan.`
+      : null,
+    // Suppressed when the whole file is an unrecoverable scan: the sentence
+    // above has already said every page is unreadable, and repeating it per
+    // page reads as two separate problems.
+    blind.length > 0 && !(scanned && extracted.images.length === 0)
+      ? `${list(blind)} of ${extracted.pages_total} carried little or no text ` +
+        `and could not be recovered as pictures either. Nothing from ` +
+        `${blind.length === 1 ? "that page" : "those pages"} is included, so ` +
+        `do not describe what ${blind.length === 1 ? "it" : "they"} might show.`
+      : null,
+    alongside.length > 0
+      ? `${list(alongside)} also carr${alongside.length === 1 ? "ies" : "y"} a ` +
+        `diagram or picture, attached below; the extracted text does not ` +
+        `describe ${alongside.length === 1 ? "it" : "them"}.`
+      : null,
+    extracted.pages_with_skipped_images.length > 0
+      ? `Further pictures on ${list(extracted.pages_with_skipped_images)
+        .toLowerCase()} were left out: only ${MAX_IMAGES_PER_CALL} are ` +
+        `returned per read.`
+      : null,
+    (extracted.pages_with_unreadable_images ?? []).length > 0
+      ? `A picture on ${list(extracted.pages_with_unreadable_images ?? [])
+        .toLowerCase()} could not be decoded and is missing from this answer. ` +
+        `It is there in the file — this is a failure to read it, not an ` +
+        `absence, so do not conclude the page is blank.`
+      : null,
+    // A document too large to walk gets told what it is, not where to go next.
+    // Inviting a walk that cannot finish is worse than declining it: the caller
+    // discovers the ceiling thirty calls in, having spent the context getting
+    // there. Targeted pages stay available, because that is the request worth
+    // serving — nobody needs a hundred pages, they need the clause on page 40.
+    bigScan
+      ? `This is a ${extracted.pages_total}-page document of page images. ` +
+        `Reading all of it would be roughly ${
+          Math.round(extracted.pages_total * TOKENS_PER_PAGE_IMAGE / 1000)
+        }k tokens of pictures, which is not practical here, so do not page ` +
+        `through it. Pages ${extracted.first_page ?? 1} to ` +
+        `${extracted.pages_read} are attached so the file can be identified. ` +
+        `Ask which pages are needed and request those with from_page and ` +
+        `page_count, or say plainly that this one is better opened directly.`
+      : null,
+    // The way out of every cap above: ask for the rest. Without this the
+    // caller is told what is missing and not that it is obtainable.
+    extracted.next_from_page && !bigScan
+      ? `This read covered pages ${extracted.first_page ?? 1} to ` +
+        `${extracted.pages_read} of ${extracted.pages_total}. Read the rest by ` +
+        `calling again with from_page ${extracted.next_from_page}.`
+      : null,
+    extracted.pages_searched_for_images < extracted.pages_read
+      ? `Only the first ${MAX_IMAGES_PER_CALL} pictures are returned per read, ` +
+        `so pages ${extracted.pages_searched_for_images + 1} to ` +
+        `${extracted.pages_read} were not searched for diagrams at all — ` +
+        `there may be more that nothing here reports.`
+      : null,
+  ].filter((line): line is string => line !== null);
+
+  return notes.length > 0 ? notes.join(" ") : null;
+}
+
+/**
+ * Read one attachment's contents.
+ *
+ * The message is fetched first, and not as a formality. Gmail's attachmentId
+ * is per-fetch, so the only way to get one that works is to take it from the
+ * fetch about to be used; a caller quotes back a MIME position instead, which
+ * is resolved here. The same fetch supplies the filename and declared type,
+ * which the attachment endpoint does not return, and the size, so an oversized
+ * file is refused before its bytes are moved.
+ *
+ * Resolving through the message's own tree is also what keeps an attachment
+ * from being read out of a message it does not belong to — a property of the
+ * lookup rather than a check bolted on beside it.
+ */
+async function readAttachment(
+  token: string,
+  emailId: unknown,
+  attachmentId: unknown,
+  fromPage: unknown,
+  pageCount: unknown,
+) {
+  if (typeof emailId !== "string" || !GMAIL_ID.test(emailId)) {
+    throw new HttpError(400, "email_id is missing or malformed.");
+  }
+  if (typeof attachmentId !== "string" || !ATTACHMENT_ID.test(attachmentId)) {
+    throw new HttpError(400, "attachment_id is missing or malformed.");
+  }
+  if (
+    fromPage !== undefined && fromPage !== null &&
+    (typeof fromPage !== "number" || !Number.isFinite(fromPage) || fromPage < 1)
+  ) {
+    throw new HttpError(400, "from_page must be a page number, 1 or greater.");
+  }
+  if (
+    pageCount !== undefined && pageCount !== null &&
+    (typeof pageCount !== "number" || !Number.isFinite(pageCount) || pageCount < 1)
+  ) {
+    throw new HttpError(400, "page_count must be a number of pages, 1 or greater.");
+  }
+  const id = encodeURIComponent(emailId);
+
+  const msgRes = await gmailGet(`/users/me/messages/${id}?format=full`, token);
+  const msg = (await msgRes.json()) as GmailMessage;
+  const attachments = extractAttachments(msg.payload);
+  const meta = attachments.find((a) => a.id === attachmentId);
+  if (!meta) {
+    // Name what is there. A bare "not found" invites the caller to retry with
+    // the same id, and this is the one error a caller can actually act on.
+    const available = attachments.length
+      ? attachments.map((a) => `${a.id} (${a.filename})`).join(", ")
+      : "none";
+    throw new HttpError(
+      404,
+      `That message has no attachment ${attachmentId}. Available: ${available}.`,
+    );
+  }
+
+  if (meta.size !== null && meta.size > MAX_ATTACHMENT_BYTES) {
+    return {
+      filename: meta.filename,
+      mime_type: meta.mime_type,
+      size: meta.size,
+      kind: "too_large" as const,
+      text: "",
+      note:
+        // One decimal: rounding 13.8 to "14" overstates a file sitting near
+        // the limit, and near the limit is exactly when the number is read.
+        `This file is ${(meta.size / (1024 * 1024)).toFixed(1)} MB, above the ` +
+        `${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB limit for reading in chat. ` +
+        `It was not fetched.`,
+    };
+  }
+
+  const attRes = await gmailGet(
+    `/users/me/messages/${id}/attachments/${encodeURIComponent(meta.gmail_id)}`,
+    token,
+  );
+  const payload = (await attRes.json()) as { data?: string; size?: number };
+  if (typeof payload.data !== "string") {
+    throw new HttpError(502, "Gmail returned no data for that attachment.");
+  }
+  const bytes = decodeBytes(payload.data);
+
+  const mime = meta.mime_type.toLowerCase();
+  const base = {
+    filename: meta.filename,
+    mime_type: meta.mime_type,
+    size: meta.size ?? bytes.byteLength,
+  };
+
+  if (mime !== "application/pdf") {
+    return {
+      ...base,
+      kind: "unsupported" as const,
+      text: "",
+      note:
+        `Reading ${meta.mime_type} attachments is not supported yet, so the ` +
+        `contents of this file have not been read.`,
+    };
+  }
+
+  let extracted;
+  try {
+    extracted = await extractPdfContent(
+      bytes,
+      (fromPage as number) ?? 1,
+      pageCount as number | undefined,
+    );
+  } catch (err) {
+    console.error("pdf extraction failed", err);
+    return {
+      ...base,
+      kind: "unreadable" as const,
+      text: "",
+      note:
+        "This PDF could not be parsed. It may be encrypted, password " +
+        "protected, or damaged.",
+    };
+  }
+
+  const scanned = extracted.text.length === 0 && extracted.pages_total > 0;
+
+  return {
+    ...base,
+    kind: scanned ? ("scan" as const) : ("text" as const),
+    ...extracted,
+    note: describeGaps(extracted),
+  };
+}
+
+// ------------------------------------------------------------------ calendar
+
+type CalendarTime = { dateTime?: string; date?: string; timeZone?: string };
+
+type CalendarEvent = {
+  id: string;
+  status?: string;
+  summary?: string;
+  description?: string;
+  location?: string;
+  htmlLink?: string;
+  start?: CalendarTime;
+  end?: CalendarTime;
+  recurringEventId?: string;
+  attendees?: { email?: string; displayName?: string; responseStatus?: string }[];
+  organizer?: { email?: string; displayName?: string };
+};
+
+/**
+ * Calendar ids are `primary` or an email-shaped address. Checked because the
+ * value is a caller-supplied path segment.
+ */
+const CALENDAR_ID = /^[A-Za-z0-9._%+@#-]{1,320}$/;
+/** Event ids are base32hex-ish; recurring instances append `_<timestamp>`. */
+const EVENT_ID = /^[A-Za-z0-9_-]{1,1024}$/;
+
+/**
+ * Normalise a Calendar time into one shape.
+ *
+ * An event carries `dateTime` OR `date`, never both: timed events use the
+ * first, all-day events the second. Reading only `dateTime` therefore returns
+ * nothing for every all-day event, which is how a festival or a tour block is
+ * usually recorded — the failure is silent and looks like an empty calendar.
+ */
+function eventTime(t: CalendarTime | undefined): {
+  value: string | null;
+  all_day: boolean;
+  time_zone: string | null;
+} {
+  if (!t) return { value: null, all_day: false, time_zone: null };
+  if (t.date) return { value: t.date, all_day: true, time_zone: t.timeZone ?? null };
+  return { value: t.dateTime ?? null, all_day: false, time_zone: t.timeZone ?? null };
+}
+
+/**
+ * Events carry their own time zone, which need not be the musician's. Times are
+ * returned as the API states them and always paired with their zone, rather
+ * than rendered into an ambient local time that silently differs between
+ * whoever formats it.
+ */
+function shapeEvent(e: CalendarEvent) {
+  const start = eventTime(e.start);
+  const end = eventTime(e.end);
+  return {
+    id: e.id,
+    summary: e.summary ?? "(no title)",
+    status: e.status ?? null,
+    location: e.location ?? null,
+    start: start.value,
+    end: end.value,
+    all_day: start.all_day,
+    time_zone: start.time_zone ?? end.time_zone,
+    // Present only on an instance of a recurring series, which is worth saying:
+    // "every Tuesday" and "this Tuesday" are different claims about a page.
+    recurring: Boolean(e.recurringEventId),
+  };
+}
+
+/** Events returned per call, and how many occurrences of one series may fill it. */
+const PAGE = 25;
+const MAX_PER_SERIES = 3;
+
+/**
+ * Keep at most `limit` occurrences of any one recurring series.
+ *
+ * A weekly rehearsal expands to dozens of instances and, ordered by start time,
+ * crowds every other event out of the page: a real calendar returned 23
+ * rehearsals and two other events. The first few occurrences answer "when does
+ * this recur"; the rest push out the concert the page is actually about.
+ *
+ * Non-recurring events are never thinned, and the count of what was dropped is
+ * returned so the caller can say so rather than implying an empty diary.
+ */
+function thinRecurring(
+  events: CalendarEvent[],
+  limit: number,
+): { kept: CalendarEvent[]; omitted: number } {
+  const seen = new Map<string, number>();
+  const kept: CalendarEvent[] = [];
+  let omitted = 0;
+
+  for (const e of events) {
+    const series = e.recurringEventId;
+    if (!series) {
+      kept.push(e);
+      continue;
+    }
+    const n = (seen.get(series) ?? 0) + 1;
+    seen.set(series, n);
+    if (n <= limit) kept.push(e);
+    else omitted += 1;
+  }
+  return { kept, omitted };
+}
+
+/**
+ * List events in a window, earliest first.
+ *
+ * singleEvents=true is not optional. Without it the API returns recurrence
+ * *rules* rather than occurrences, so a weekly rehearsal appears once, at its
+ * first date, carrying an RRULE that reads as a single event on the wrong day.
+ * orderBy=startTime is only accepted alongside it.
+ */
+async function listEvents(
+  token: string,
+  rawCalendarId: unknown,
+  rawQuery: unknown,
+  rawTimeMin: unknown,
+  rawTimeMax: unknown,
+) {
+  const calendarId = typeof rawCalendarId === "string" && rawCalendarId.trim()
+    ? rawCalendarId.trim()
+    : "primary";
+  if (!CALENDAR_ID.test(calendarId)) {
+    throw new HttpError(400, "calendar_id is malformed.");
+  }
+
+  const iso = (v: unknown, fallback: string): string => {
+    if (typeof v !== "string" || !v.trim()) return fallback;
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) throw new HttpError(400, `Not a date: ${v}`);
+    return d.toISOString();
+  };
+
+  // Defaults lean recent-and-ahead: corroborating next month's concert is the
+  // common case, but a page about last week still needs its evidence, so the
+  // window opens slightly in the past rather than at now.
+  const now = Date.now();
+  const params = new URLSearchParams({
+    singleEvents: "true",
+    orderBy: "startTime",
+    // Fetched wide and thinned below. A weekly series expands to ~50 instances
+    // a year, so asking for exactly the number to be returned means one
+    // rehearsal fills the whole page and a concert three months out is never
+    // seen at all.
+    maxResults: "100",
+    timeMin: iso(rawTimeMin, new Date(now - 7 * 86_400_000).toISOString()),
+    timeMax: iso(rawTimeMax, new Date(now + 365 * 86_400_000).toISOString()),
+  });
+  if (typeof rawQuery === "string" && rawQuery.trim()) {
+    params.set("q", rawQuery.slice(0, 500).trim());
+  }
+
+  const res = await calendarGet(
+    `/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
+    token,
+  );
+  const items = ((await res.json()).items ?? []) as CalendarEvent[];
+
+  // Expanding a series also yields its cancelled instances. A cancelled
+  // occurrence is not evidence that something is happening, so it is dropped
+  // here — read_event still reports the status if one is asked for by id.
+  const live = items.filter((e) => e.status !== "cancelled");
+
+  const { kept, omitted } = thinRecurring(live, MAX_PER_SERIES);
+  return {
+    events: kept.slice(0, PAGE).map(shapeEvent),
+    // Stated rather than silent: "nothing else is booked" and "the rest of the
+    // page was rehearsals" are different answers about a musician's diary.
+    omitted_occurrences: omitted + Math.max(0, kept.length - PAGE),
+  };
+}
+
+async function readEvent(token: string, rawEventId: unknown, rawCalendarId: unknown) {
+  if (typeof rawEventId !== "string" || !EVENT_ID.test(rawEventId)) {
+    throw new HttpError(400, "event_id is missing or malformed.");
+  }
+  const calendarId = typeof rawCalendarId === "string" && rawCalendarId.trim()
+    ? rawCalendarId.trim()
+    : "primary";
+  if (!CALENDAR_ID.test(calendarId)) {
+    throw new HttpError(400, "calendar_id is malformed.");
+  }
+
+  const res = await calendarGet(
+    `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(rawEventId)}`,
+    token,
+  );
+  const e = (await res.json()) as CalendarEvent;
+
+  return {
+    ...shapeEvent(e),
+    description: e.description ?? null,
+    organizer: e.organizer?.email ?? e.organizer?.displayName ?? null,
+    attendees: (e.attendees ?? []).map((a) => ({
+      email: a.email ?? null,
+      name: a.displayName ?? null,
+      response: a.responseStatus ?? null,
+    })),
+  };
+}
+
 // -------------------------------------------------------------------- router
 
 /**
@@ -311,10 +1531,46 @@ export const handleRequest = async (req: Request): Promise<Response> => {
 
     if (op === "verify") return json({ ok: true });
 
-    const token = await accessTokenFor(keyRow.user_id);
-    const result = op === "list_notes"
-      ? await listNotes(token)
-      : await readNote(token, body.note_id);
+    // The operation decides the provider, so a Gmail call never spends a
+    // Microsoft token and a missing Google connection is reported as such
+    // instead of surfacing as an unrelated Microsoft error.
+    const token = await accessTokenFor(keyRow.user_id, PROVIDER_FOR[op]);
+
+    let result: unknown;
+    switch (op) {
+      case "list_notes":
+        result = await listNotes(token);
+        break;
+      case "read_note":
+        result = await readNote(token, body.note_id);
+        break;
+      case "list_emails":
+        result = await listEmails(token, body.query);
+        break;
+      case "read_email":
+        result = await readEmail(token, body.email_id);
+        break;
+      case "read_attachment":
+        result = await readAttachment(
+          token,
+          body.email_id,
+          body.attachment_id,
+          body.from_page,
+          body.page_count,
+        );
+        break;
+      case "list_events":
+        result = await listEvents(
+          token,
+          body.calendar_id,
+          body.query,
+          body.time_min,
+          body.time_max,
+        );
+        break;
+      default:
+        result = await readEvent(token, body.event_id, body.calendar_id);
+    }
 
     return json(result);
   } catch (err) {
@@ -329,4 +1585,25 @@ export const handleRequest = async (req: Request): Promise<Response> => {
   }
 };
 
-Deno.serve(handleRequest);
+// Guarded so the module can be imported by a test without binding a port.
+// Deno runs this as the entry point in production, where import.meta.main is
+// true, so the served behaviour is unchanged.
+if (import.meta.main) {
+  Deno.serve(handleRequest);
+}
+
+// Exported for tests only. These are the parts with no network and no auth:
+// pure transformations where a bug is silent rather than loud.
+export {
+  decodeBody,
+  connectionFailure,
+  decodeBytes,
+  describeGaps,
+  extractAttachments,
+  extractPdfContent,
+  extractText,
+  htmlToText,
+  eventTime,
+  shapeEvent,
+  thinRecurring,
+};

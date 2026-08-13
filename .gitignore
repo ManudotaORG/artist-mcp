@@ -55,3 +55,7 @@ graphify-out/
 
 # local-only test fixtures (messy OneNote test notebook source)
 test-fixtures/
+
+# Deno regenerates this on each run; the edge function pins its deps in the
+# import specifier, and CI does not run with a frozen lockfile.
+deno.lock

@@ -25,11 +25,17 @@ Users move between live performance, studio work, and practical production admin
 ## Capabilities and Constraints
 
 - Microsoft OAuth with `Notes.Read`, `offline_access`, and `User.Read`.
+- Google OAuth with `gmail.readonly` and `calendar.events.readonly`, offline access, as a separate and optional connection. The narrower events scope is deliberate: calendar metadata, sharing and settings are not read.
 - One OneNote page is one working unit.
 - Read-only OneNote page listing and reading.
+- Read-only Gmail search and message reading, as supporting evidence for a OneNote working unit. An email thread is never itself a working unit.
+- Read-only Google Calendar event listing and reading, as supporting evidence. Recurring occurrences are expanded and flagged; times are always reported with their zone. A calendar entry is never itself a working unit.
+- Where a page and a source disagree, both are reported with their source named. Nothing picks a winner.
+- Either connection stands alone: a user may connect OneNote, Gmail, or both, and disconnecting one leaves the other working.
 - Checksummed runtime registry of seven roles and four starter project types.
 - Results appear only in chat.
-- No OneNote writes, message sending, calendar editing, background jobs, synchronization, or workflow state in Supabase.
+- No writes to any source: no OneNote edits, message sending, replying, drafting, labelling, calendar creation or editing, RSVP responses, background jobs, synchronization, or workflow state in Supabase.
+- No availability computation or scheduling suggestions; reading a calendar is not planning against it.
 - The existing authentication, connection-key, Claude Desktop, and Codex installation flows must remain functional.
 
 ## Brand Commitments

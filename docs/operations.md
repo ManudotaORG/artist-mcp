@@ -58,17 +58,42 @@ into staging:
 | `NEXT_PUBLIC_SITE_URL`     | `https://artist-mcp.vercel.app`                             | `https://artist-mcp-staging.vercel.app`                             |
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://zxiemadwrkcoovvpscfb.supabase.co`                  | `https://cakkwvxwlkdfzqjbvrpa.supabase.co`                          |
 | `MS_REDIRECT_URI`          | `https://artist-mcp.vercel.app/api/auth/microsoft/callback` | `https://artist-mcp-staging.vercel.app/api/auth/microsoft/callback` |
+| `GOOGLE_REDIRECT_URI`      | `https://artist-mcp.vercel.app/api/auth/google/callback`    | `https://artist-mcp-staging.vercel.app/api/auth/google/callback`    |
 | npm MCP default            | production Graph function                                   | staging Graph function for `-staging.*` versions                    |
 
 Both Vercel projects also require their matching Supabase browser key and
-service-role key plus `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, and
-`TOKEN_ENCRYPTION_KEY`. `NEXT_PUBLIC_SITE_URL` is mandatory in hosted builds;
-only local development may fall back to `http://localhost:3000`.
+service-role key plus `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`,
+`GOOGLE_CLIENT_SECRET`, and `TOKEN_ENCRYPTION_KEY`. `NEXT_PUBLIC_SITE_URL` is
+mandatory in hosted builds; only local development may fall back to
+`http://localhost:3000`.
+
+The Graph edge function needs `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in
+its own secrets as well as the web app's — it performs its own refresh-token
+exchange and shares nothing with Vercel.
 
 Production uses `https://artist-mcp.vercel.app`; staging uses
 `https://artist-mcp-staging.vercel.app`. Add each `/api/auth/microsoft/callback`
-URL to the Microsoft Entra app and each `/auth/confirm` origin to the Supabase
+URL to the Microsoft Entra app, each `/api/auth/google/callback` URL to the
+Google Cloud OAuth client, and each `/auth/confirm` origin to the Supabase
 Auth redirect allowlist.
+
+Gmail's `gmail.readonly` scope is restricted: Google requires app verification
+before users outside the test list can consent, and that review takes weeks.
+Add the intended users to the OAuth consent screen's test-user list to work
+before verification completes.
+
+Enable the **Gmail API** and the **Google Calendar API** in the Google Cloud
+project itself, not just the scopes on the consent screen. They are separate
+switches, and OAuth succeeds without them: the consent screen appears, the
+refresh token stores, and the first read then fails with a 403 that names the
+project. Consenting is not evidence that an API is on.
+
+Adding a Google scope does not widen refresh tokens already issued. A user
+connected before Calendar was added keeps working for Gmail and is refused for
+Calendar until they reconnect, which the function reports as "this connection
+predates Google Calendar access" rather than as a failure. Expect every existing
+Google connection to need one reconnect after this ships; `prompt=consent` is
+already set, so reconnecting grants the new scope without further work.
 
 ## Supabase changes
 
@@ -97,8 +122,21 @@ Important invariants:
 - The Graph function keeps `verify_jwt = false`; connection-key verification is
   performed inside the function.
 - Refresh-token rotation is written back on every Microsoft token exchange.
-- Callers select only `verify`, `list_notes`, or `read_note`; no arbitrary Graph
-  URL is accepted.
+- Callers select only `verify`, `list_notes`, `read_note`, `list_emails`,
+  `read_email`, `read_attachment`, `list_events`, or `read_event`; no arbitrary
+  Graph, Gmail, or Calendar URL is accepted. `read_attachment` resolves a MIME position
+  against the message it names, so an attachment cannot be read out of another
+  message; Gmail's own attachment ids are per-fetch and are never published.
+  Fetching is capped at 10 MB, and extracted text at 40,000 characters during
+  extraction rather than after it. A call also ends once its image budget is
+  spent, reporting the page to resume from, so a long scan is read across
+  several calls rather than one that would exhaust the function. Search syntax is passed as a query parameter, never
+  interpolated into a path.
+- Migrations and Edge Functions deploy by hand, reviewed first. The Supabase
+  GitHub integration is deliberately not connected, so merging to `staging` or
+  `main` deploys the web app through Vercel and nothing else. Push with
+  `--db-url` for the branch you mean: the CLI is linked to production, so
+  `--linked` targets production whatever you intended.
 
 ## Publish the MCP package
 
@@ -161,8 +199,9 @@ scoped to the `production` GitHub environment. Use the manual
 `telegram-release-notes.yml` workflow to retry a specific existing tag without
 republishing npm.
 
-Verify the four MCP tools (`list_notes`, `read_note`,
-`list_agent_workflows`, and `load_agent_workflow`) with a real client. Registry
+Verify the MCP tools with a real client: `list_notes` and `read_note` against
+OneNote, `list_emails`, `read_email`, `read_attachment`, `list_events` and
+`read_event` against Google, and `list_agent_workflows` and `load_agent_workflow` against the pack. Registry
 and playbook content come from the installed npm package by default, preserving
 the version selected by the user. `ARTIST_MCP_REGISTRY_URL` and
 `ARTIST_MCP_ENDPOINT` are development/testing overrides, not publishing-job or
