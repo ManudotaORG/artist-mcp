@@ -132,8 +132,16 @@ Deno.test("extractAttachments finds attachments nested beside the body", () => {
       },
     ],
   };
+  // The id is the MIME position, not Gmail's attachmentId — that one is minted
+  // fresh on every fetch and is useless the moment it is quoted back.
   assertEquals(extractAttachments(part), [
-    { id: "att-1", filename: "contract.pdf", mime_type: "application/pdf", size: 240_000 },
+    {
+      id: "2",
+      gmail_id: "att-1",
+      filename: "contract.pdf",
+      mime_type: "application/pdf",
+      size: 240_000,
+    },
   ]);
 });
 
@@ -156,12 +164,65 @@ Deno.test("extractAttachments names an attachment that arrives without a filenam
     parts: [{ mimeType: "image/jpeg", body: { size: 900, attachmentId: "att-2" } }],
   };
   assertEquals(extractAttachments(part), [
-    { id: "att-2", filename: "(unnamed)", mime_type: "image/jpeg", size: 900 },
+    {
+      id: "1",
+      gmail_id: "att-2",
+      filename: "(unnamed)",
+      mime_type: "image/jpeg",
+      size: 900,
+    },
   ]);
 });
 
 Deno.test("extractAttachments tolerates a missing payload", () => {
   assertEquals(extractAttachments(undefined), []);
+});
+
+Deno.test("extractAttachments numbers nested parts by their position", () => {
+  // Positions have to survive a re-fetch, because that is the whole reason they
+  // are handed out instead of Gmail's ids. Nesting is where an off-by-one would
+  // silently point at the wrong file rather than at nothing.
+  const part = {
+    mimeType: "multipart/mixed",
+    parts: [
+      {
+        mimeType: "multipart/related",
+        parts: [
+          { mimeType: "text/plain", body: {} },
+          { mimeType: "image/png", filename: "plan.png", body: { attachmentId: "x" } },
+        ],
+      },
+      { mimeType: "application/pdf", filename: "rider.pdf", body: { attachmentId: "y" } },
+    ],
+  };
+  assertEquals(
+    extractAttachments(part).map((a) => `${a.id}:${a.filename}`),
+    ["1.2:plan.png", "2:rider.pdf"],
+  );
+});
+
+Deno.test("extractAttachments gives the same position on a re-fetch", () => {
+  // The bug this replaced: Gmail returned two different 404-character ids for
+  // one file, seconds apart, so an id quoted back matched nothing. Positions
+  // are derived from structure, so a second fetch agrees with the first.
+  const fetched = (gmailId: string) => ({
+    mimeType: "multipart/mixed",
+    parts: [
+      { mimeType: "text/plain", body: {} },
+      {
+        mimeType: "application/pdf",
+        filename: "rider.pdf",
+        body: { size: 601_599, attachmentId: gmailId },
+      },
+    ],
+  });
+  const first = extractAttachments(fetched("ANGjdJ9sb_GR_iN_6rGj3tTV"));
+  const second = extractAttachments(fetched("ANGjdJ94Td7H9bUMt9ASALTB"));
+
+  assertEquals(first[0].id, second[0].id);
+  assertEquals(first[0].id, "2");
+  // The volatile handle still differs, and each read must use its own.
+  assert(first[0].gmail_id !== second[0].gmail_id);
 });
 
 Deno.test("decodeBytes keeps a PDF's bytes intact", () => {

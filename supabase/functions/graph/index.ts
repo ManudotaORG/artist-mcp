@@ -442,33 +442,46 @@ function extractText(part: GmailPart | undefined): string {
  *
  * Everything here is already in the payload `read_email` fetches, so the
  * manifest costs nothing: a part is an attachment when Gmail has given it an
- * attachmentId, which is also the handle needed to fetch the bytes later.
- * Inline images carry one too and are listed the same way — the model can see
- * a signature logo for what it is, and a stage plot pasted into the body is
- * exactly as interesting as one clipped to it.
+ * attachmentId. Inline images carry one too and are listed the same way — the
+ * model can see a signature logo for what it is, and a stage plot pasted into
+ * the body is exactly as interesting as one clipped to it.
+ *
+ * What is handed out is the part's position in the MIME tree, not Gmail's
+ * attachmentId. Gmail mints a fresh attachmentId on every fetch of the same
+ * message — verified against a real message, where two reads a second apart
+ * returned different 404-character ids for the same file — so an id quoted back
+ * later matches nothing and cannot be fetched. The position does not move,
+ * because the stored message does not change. Gmail's own id is carried
+ * alongside for the caller that fetched it, and never published.
  */
 function extractAttachments(part: GmailPart | undefined) {
   const found: {
+    /** Position in the MIME tree: stable, and what callers quote back. */
     id: string;
+    /** Gmail's own handle. Valid only for the fetch that produced it. */
+    gmail_id: string;
     filename: string;
     mime_type: string;
     size: number | null;
   }[] = [];
   if (!part) return found;
 
-  const walk = (node: GmailPart) => {
-    const id = node.body?.attachmentId;
-    if (typeof id === "string" && id) {
+  const walk = (node: GmailPart, path: string) => {
+    const gmailId = node.body?.attachmentId;
+    if (typeof gmailId === "string" && gmailId) {
       found.push({
-        id,
+        id: path,
+        gmail_id: gmailId,
         filename: node.filename || "(unnamed)",
         mime_type: node.mimeType ?? "application/octet-stream",
         size: typeof node.body?.size === "number" ? node.body.size : null,
       });
     }
-    for (const child of node.parts ?? []) walk(child);
+    (node.parts ?? []).forEach((child, i) =>
+      walk(child, path === "0" ? `${i + 1}` : `${path}.${i + 1}`)
+    );
   };
-  walk(part);
+  walk(part, "0");
 
   return found;
 }
@@ -535,7 +548,11 @@ async function readEmail(token: string, emailId: unknown) {
     cc: header(msg.payload?.headers, "Cc"),
     date: header(msg.payload?.headers, "Date"),
     text: extractText(msg.payload) || (msg.snippet ?? ""),
-    attachments: extractAttachments(msg.payload),
+    // gmail_id is dropped: it expires with this fetch, so publishing it would
+    // hand the caller a handle that is already going stale.
+    attachments: extractAttachments(msg.payload).map(
+      ({ gmail_id: _gmail_id, ...rest }) => rest,
+    ),
   };
 }
 
@@ -596,8 +613,13 @@ const MIN_IMAGE_PIXELS = 200_000;
  */
 const SHARED_IMAGE_ID = /^g_/;
 
-/** Gmail attachment ids are long — far longer than a message id. */
-const ATTACHMENT_ID = /^[A-Za-z0-9_-]{1,4096}$/;
+/**
+ * A MIME position such as "2" or "2.1", never Gmail's own id.
+ *
+ * Narrow on purpose: this value is interpolated into no URL, but it is quoted
+ * back into an error message, and digits and dots cannot carry anything.
+ */
+const ATTACHMENT_ID = /^\d+(\.\d+){0,8}$/;
 
 /**
  * Decode base64url to bytes. Sibling of decodeBody, which decodes to text;
@@ -943,11 +965,16 @@ function describeGaps(extracted: {
 /**
  * Read one attachment's contents.
  *
- * The message is fetched first, which sounds wasteful next to a direct
- * attachment call but is what makes the answer trustworthy: it proves the
- * attachment belongs to the message asked about, and supplies the filename and
- * declared type, which the attachment endpoint does not return. The size is
- * there too, so an oversized file is refused before its bytes are fetched.
+ * The message is fetched first, and not as a formality. Gmail's attachmentId
+ * is per-fetch, so the only way to get one that works is to take it from the
+ * fetch about to be used; a caller quotes back a MIME position instead, which
+ * is resolved here. The same fetch supplies the filename and declared type,
+ * which the attachment endpoint does not return, and the size, so an oversized
+ * file is refused before its bytes are moved.
+ *
+ * Resolving through the message's own tree is also what keeps an attachment
+ * from being read out of a message it does not belong to — a property of the
+ * lookup rather than a check bolted on beside it.
  */
 async function readAttachment(
   token: string,
@@ -964,9 +991,18 @@ async function readAttachment(
 
   const msgRes = await gmailGet(`/users/me/messages/${id}?format=full`, token);
   const msg = (await msgRes.json()) as GmailMessage;
-  const meta = extractAttachments(msg.payload).find((a) => a.id === attachmentId);
+  const attachments = extractAttachments(msg.payload);
+  const meta = attachments.find((a) => a.id === attachmentId);
   if (!meta) {
-    throw new HttpError(404, "That attachment is not part of that message.");
+    // Name what is there. A bare "not found" invites the caller to retry with
+    // the same id, and this is the one error a caller can actually act on.
+    const available = attachments.length
+      ? attachments.map((a) => `${a.id} (${a.filename})`).join(", ")
+      : "none";
+    throw new HttpError(
+      404,
+      `That message has no attachment ${attachmentId}. Available: ${available}.`,
+    );
   }
 
   if (meta.size !== null && meta.size > MAX_ATTACHMENT_BYTES) {
@@ -984,7 +1020,7 @@ async function readAttachment(
   }
 
   const attRes = await gmailGet(
-    `/users/me/messages/${id}/attachments/${encodeURIComponent(attachmentId)}`,
+    `/users/me/messages/${id}/attachments/${encodeURIComponent(meta.gmail_id)}`,
     token,
   );
   const payload = (await attRes.json()) as { data?: string; size?: number };

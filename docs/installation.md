@@ -115,7 +115,8 @@ needs a separate Google connection:
 - `list_emails` — searches Gmail with its own query syntax and returns subject,
   sender, date, and snippet.
 - `read_email` — accepts an id from `list_emails` and returns the message body,
-  plus a list of what is attached by name, type and size. Attachment contents
+  plus a list of what is attached by name, type and size, each with a short id
+  such as `2` or `1.2` giving its position in the message. Attachment contents
   are not read.
 - `read_attachment` — accepts an attachment id from `read_email` and extracts
   the text of a PDF. Diagrams such as stage plans come back as images to look

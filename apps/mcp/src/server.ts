@@ -403,7 +403,10 @@ const runServer = async (): Promise<void> => {
         .describe("The id of the message the attachment belongs to"),
       attachment_id: z
         .string()
-        .describe("The attachment id, as listed by read_email"),
+        .describe(
+          "The attachment id from read_email, e.g. \"2\" or \"1.2\". It is the " +
+            "file's position in the message, so it stays valid.",
+        ),
     },
     async ({ email_id, attachment_id }) => {
       try {
