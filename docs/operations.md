@@ -67,6 +67,9 @@ service-role key plus `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`,
 mandatory in hosted builds; only local development may fall back to
 `http://localhost:3000`.
 
+Local development is a third environment and uses staging's Supabase project,
+not production's — see "Local development runs against staging" below.
+
 The Graph edge function needs `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in
 its own secrets as well as the web app's — it performs its own refresh-token
 exchange and shares nothing with Vercel.
@@ -109,9 +112,51 @@ branch-specific and must be installed separately in both environments. Do not
 enable automatic ephemeral/PR branches; this project has only production and
 the permanent staging branch.
 
+Apply that file with `supabase config push --project-ref <ref>`, which picks
+the `[remotes.*]` block whose `project_id` matches the ref. The CLI is linked
+to production, so always pass `--project-ref` explicitly. Both refs were pushed
+on 2026-08-13; before that the file had never been applied to either project
+and had drifted from both. Make auth changes in the file and push them. A
+change made only in the dashboard is invisible to the file, and the next push
+reverts it without warning.
+
+`config push` applies api, db, auth, and storage. It does not apply
+`[functions.*]`; `verify_jwt` takes effect when the function is deployed.
+
 Discover the installed CLI command shape with `supabase --help` before use.
 Review migrations and function diffs, run the security advisors, and verify the
 result against the linked hosted project.
+
+### Local development runs against staging
+
+`apps/web/.env.local` carries staging's Supabase URL, anon key, and
+service-role key — never production's. Copy them from the staging Vercel
+project or the Supabase dashboard rather than retyping: a mistyped key fails in
+ways that look like an auth bug.
+
+The redirect allowlists follow from that, and the asymmetry is the point:
+
+| Project    | `http://localhost:3000/**` allowed |
+| ---------- | ---------------------------------- |
+| Staging    | yes — local sign-in depends on it  |
+| Production | no, deliberately                   |
+
+`getSiteUrl()` falls back to `http://localhost:3000` when
+`NEXT_PUBLIC_SITE_URL` is unset, so a local `signInWithOtp` asks for a
+localhost redirect. Staging allows it and the magic link opens on your machine.
+Production does not, and if you point a local server at production the link
+lands on the deployed site instead — Supabase falls back to `site_url` silently
+rather than reporting an error. That is the intended refusal, not a bug to fix
+by re-adding localhost to production. A production magic link that can redirect
+to a developer's machine is a way to hand someone else a production session.
+
+To confirm which project a local sign-in actually used, read the emailed link:
+the host is the project ref, and `redirect_to` shows whether the allowlist was
+honoured or fell back.
+
+Staging holds no real data, so anything a feature needs must be set up there:
+a Google connection exists and works; Microsoft is not connected, so OneNote
+cannot be exercised locally until it is.
 
 Important invariants:
 
