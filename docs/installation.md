@@ -122,7 +122,9 @@ needs a separate Google connection:
   the text of a PDF. Diagrams such as stage plans come back as images to look
   at, since the text does not describe them; anything that could be neither
   read nor shown is named as a gap rather than skipped silently, and a file
-  with no text layer is reported as a scan.
+  with no text layer is reported as page images. A long document or a scan is
+  read in page ranges — each answer says which pages it covered and which page
+  to start from next.
 - `list_events` — lists Google Calendar events in a time window, with recurring
   occurrences expanded and flagged.
 - `read_event` — accepts an id from `list_events` and returns description and

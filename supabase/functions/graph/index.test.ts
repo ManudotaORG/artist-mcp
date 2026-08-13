@@ -413,11 +413,10 @@ Deno.test("extractPdfContent caps how many images it returns", async () => {
   }));
   const result = await extractPdfContent(minimalPdf(pages));
   assertEquals(result.images.length, 3);
-  // Scanning stops once the cap is met, so the later pages are not merely
-  // missing their pictures — they were never looked at. Saying how far the
-  // search reached is what stops that reading as "no more diagrams".
-  assertEquals(result.pages_searched_for_images, 3);
-  assertEquals(result.pages_read, 5);
+  // The call ends when the image budget is spent, and says where to resume;
+  // the remaining pages are reachable rather than quietly dropped.
+  assertEquals(result.pages_read, 3);
+  assertEquals(result.next_from_page, 4);
 });
 
 /** Defaults for a clean 7-page read; each test bends only what it is about. */
@@ -534,6 +533,53 @@ Deno.test("describeGaps calls a scan a scan", () => {
   }));
   assertStringIncludes(note!, "appears to be a scan");
   assertStringIncludes(note!, "have not been read");
+});
+
+Deno.test("extractPdfContent starts where it is told and says where to resume", async () => {
+  const pdf = minimalPdf([
+    page("Clause one"),
+    page("Clause two"),
+    page("Clause three"),
+  ]);
+  const rest = await extractPdfContent(pdf, 2);
+
+  assertEquals(rest.first_page, 2);
+  assertEquals(rest.pages_read, 3);
+  assertEquals(rest.next_from_page, null);
+  assertStringIncludes(rest.text, "Clause two");
+  // Pages before the start are absent, not silently folded in.
+  assertEquals(rest.text.includes("Clause one"), false);
+});
+
+Deno.test("extractPdfContent walks a whole scan across successive calls", async () => {
+  // The case that motivated the range: a scanned document is entirely
+  // pictures, so the image cap alone would return three pages of eight and
+  // call the rest unread. Successive calls have to cover it without gaps or
+  // repeats.
+  const pdf = minimalPdf(
+    Array.from({ length: 8 }, () => ({ image: { width: 600, height: 400 } })),
+  );
+
+  const seen: number[] = [];
+  let from: number | null = 1;
+  let calls = 0;
+  while (from !== null && calls < 10) {
+    const part = await extractPdfContent(pdf, from);
+    for (const img of part.images) seen.push(img.page);
+    assertEquals(part.first_page, from);
+    from = part.next_from_page;
+    calls++;
+  }
+
+  assertEquals(from, null, "the walk must terminate");
+  assertEquals(seen, [1, 2, 3, 4, 5, 6, 7, 8]);
+});
+
+Deno.test("extractPdfContent clamps a start page past the end", async () => {
+  // Rather than returning an empty read that looks like an empty document.
+  const result = await extractPdfContent(minimalPdf([page("Only page")]), 99);
+  assertEquals(result.first_page, 1);
+  assertEquals(result.next_from_page, null);
 });
 
 Deno.test("extractPdfContent stops early rather than reading every page", async () => {

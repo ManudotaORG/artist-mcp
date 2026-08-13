@@ -39,7 +39,10 @@ type AttachmentBody = {
   text: string;
   note: string | null;
   pages_total?: number;
+  first_page?: number;
   pages_read?: number;
+  /** Page to pass as from_page to continue; null when the file is finished. */
+  next_from_page?: number | null;
   pages_without_text?: number[];
   /** Diagrams the text cannot describe, already downscaled and encoded. */
   images?: {
@@ -407,12 +410,22 @@ const runServer = async (): Promise<void> => {
           "The attachment id from read_email, e.g. \"2\" or \"1.2\". It is the " +
             "file's position in the message, so it stays valid.",
         ),
+      from_page: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe(
+          "Page to start at, for reading a long document or a scan across " +
+            "several calls. Defaults to 1; the answer says what to pass next.",
+        ),
     },
-    async ({ email_id, attachment_id }) => {
+    async ({ email_id, attachment_id, from_page }) => {
       try {
         const file = await call<AttachmentBody>("read_attachment", key, {
           email_id,
           attachment_id,
+          from_page,
         });
 
         const head = [
@@ -422,8 +435,13 @@ const runServer = async (): Promise<void> => {
           `Size: ${describeSize(file.size)}`,
           ...(file.pages_total
             ? [
-                `Pages: ${file.pages_total}` +
-                  (file.truncated ? ` (only the first ${file.pages_read} were read)` : ""),
+                // "only the first N" was wrong the moment reading could start
+                // partway through: a second call covers pages 10-18, not 1-18.
+                `Pages: ${file.first_page ?? 1}-${file.pages_read} of ` +
+                  `${file.pages_total}` +
+                  (file.next_from_page
+                    ? ` (more remains; continue from page ${file.next_from_page})`
+                    : ""),
               ]
             : []),
         ].join("\n");

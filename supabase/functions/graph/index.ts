@@ -10,8 +10,8 @@
  *
  * Request:  { op: "list_notes" | "read_note" | "list_emails" | "read_email"
  *                 | "read_attachment" | "list_events" | "read_event" | "verify",
- *              note_id?, email_id?, attachment_id?, event_id?, calendar_id?,
- *              query?, time_min?, time_max? }
+ *              note_id?, email_id?, attachment_id?, from_page?, event_id?,
+ *              calendar_id?, query?, time_min?, time_max? }
  *           Authorization: Bearer <connection key>
  */
 
@@ -831,10 +831,16 @@ type PdfImage = {
  * unpdf is imported here rather than at module load so that reading a note or
  * an email never pays for a PDF parser it does not use.
  */
-async function extractPdfContent(bytes: Uint8Array) {
+async function extractPdfContent(bytes: Uint8Array, fromPage = 1) {
   const { getDocumentProxy } = await import("npm:unpdf@1");
   const { OPS } = await import("npm:unpdf@1/pdfjs");
-  const pdf = await getDocumentProxy(bytes);
+  // pdf.js transfers the buffer to its worker, which detaches it — the
+  // caller's array is unusable afterwards, and a second read of the same bytes
+  // throws DataCloneError. Reading a document in page ranges means exactly
+  // that second read, so the copy is what makes ranges possible at all.
+  const pdf = await getDocumentProxy(new Uint8Array(bytes));
+
+  const first = Math.min(Math.max(1, Math.trunc(fromPage)), pdf.numPages);
 
   const parts: string[] = [];
   const emptyPages: number[] = [];
@@ -842,10 +848,12 @@ async function extractPdfContent(bytes: Uint8Array) {
   const skipped: number[] = [];
   const unreadable: number[] = [];
   let chars = 0;
-  let read = 0;
-  let searched = 0;
+  let read = first - 1;
+  // One before the start, so "searched as far as read" holds when the very
+  // first page already fills the image budget.
+  let searched = first - 1;
 
-  for (let n = 1; n <= pdf.numPages; n++) {
+  for (let n = first; n <= pdf.numPages; n++) {
     const page = await pdf.getPage(n);
 
     const content = await page.getTextContent();
@@ -914,18 +922,27 @@ async function extractPdfContent(bytes: Uint8Array) {
     // is the difference between a flat loop and a growing heap.
     page.cleanup();
 
-    if (chars >= MAX_TEXT_CHARS) break;
+    // A call ends when either budget is spent, and the caller resumes from the
+    // next page. Stopping only on the text budget was the subtler mistake: on
+    // a scan the text budget is never touched, so the loop ran to the end,
+    // declared the file finished, and left every page past the image cap
+    // permanently unreachable — a page range that could not reach them.
+    if (chars >= MAX_TEXT_CHARS || images.length >= MAX_IMAGES_PER_CALL) break;
   }
 
   return {
     text: parts.join("\n\n").slice(0, MAX_TEXT_CHARS),
     pages_total: pdf.numPages,
+    first_page: first,
     pages_read: read,
     pages_without_text: emptyPages,
     images,
     pages_with_skipped_images: skipped,
     pages_with_unreadable_images: unreadable,
     pages_searched_for_images: searched,
+    // What to ask for to carry on. A long contract or a scan is read across
+    // several calls rather than in one that would exhaust the function.
+    next_from_page: read < pdf.numPages ? read + 1 : null,
     truncated: read < pdf.numPages || chars > MAX_TEXT_CHARS,
   };
 }
@@ -950,6 +967,8 @@ function describeGaps(extracted: {
   pages_with_skipped_images: number[];
   pages_with_unreadable_images?: number[];
   pages_searched_for_images: number;
+  first_page?: number;
+  next_from_page?: number | null;
 }): string | null {
   const scanned = extracted.text.length === 0 && extracted.pages_total > 0;
   const shown = new Set(extracted.images.map((img) => img.page));
@@ -1014,6 +1033,13 @@ function describeGaps(extracted: {
         `It is there in the file — this is a failure to read it, not an ` +
         `absence, so do not conclude the page is blank.`
       : null,
+    // The way out of every cap above: ask for the rest. Without this the
+    // caller is told what is missing and not that it is obtainable.
+    extracted.next_from_page
+      ? `This read covered pages ${extracted.first_page ?? 1} to ` +
+        `${extracted.pages_read} of ${extracted.pages_total}. Read the rest by ` +
+        `calling again with from_page ${extracted.next_from_page}.`
+      : null,
     extracted.pages_searched_for_images < extracted.pages_read
       ? `Only the first ${MAX_IMAGES_PER_CALL} pictures are returned per read, ` +
         `so pages ${extracted.pages_searched_for_images + 1} to ` +
@@ -1043,12 +1069,19 @@ async function readAttachment(
   token: string,
   emailId: unknown,
   attachmentId: unknown,
+  fromPage: unknown,
 ) {
   if (typeof emailId !== "string" || !GMAIL_ID.test(emailId)) {
     throw new HttpError(400, "email_id is missing or malformed.");
   }
   if (typeof attachmentId !== "string" || !ATTACHMENT_ID.test(attachmentId)) {
     throw new HttpError(400, "attachment_id is missing or malformed.");
+  }
+  if (
+    fromPage !== undefined && fromPage !== null &&
+    (typeof fromPage !== "number" || !Number.isFinite(fromPage) || fromPage < 1)
+  ) {
+    throw new HttpError(400, "from_page must be a page number, 1 or greater.");
   }
   const id = encodeURIComponent(emailId);
 
@@ -1114,7 +1147,7 @@ async function readAttachment(
 
   let extracted;
   try {
-    extracted = await extractPdfContent(bytes);
+    extracted = await extractPdfContent(bytes, (fromPage as number) ?? 1);
   } catch (err) {
     console.error("pdf extraction failed", err);
     return {
@@ -1402,7 +1435,12 @@ export const handleRequest = async (req: Request): Promise<Response> => {
         result = await readEmail(token, body.email_id);
         break;
       case "read_attachment":
-        result = await readAttachment(token, body.email_id, body.attachment_id);
+        result = await readAttachment(
+          token,
+          body.email_id,
+          body.attachment_id,
+          body.from_page,
+        );
         break;
       case "list_events":
         result = await listEvents(
