@@ -100,7 +100,7 @@ Then choose a returned page and ask:
 
 > Read the note titled “Test”.
 
-The MCP server exposes eight read-only tools.
+The MCP server exposes nine read-only tools.
 
 OneNote holds the working unit:
 
@@ -118,8 +118,10 @@ needs a separate Google connection:
   plus a list of what is attached by name, type and size. Attachment contents
   are not read.
 - `read_attachment` — accepts an attachment id from `read_email` and extracts
-  the text of a PDF. Pages that are diagrams or images are named as gaps rather
-  than skipped silently, and a file with no text layer is reported as a scan.
+  the text of a PDF. Diagrams such as stage plans come back as images to look
+  at, since the text does not describe them; anything that could be neither
+  read nor shown is named as a gap rather than skipped silently, and a file
+  with no text layer is reported as a scan.
 - `list_events` — lists Google Calendar events in a time window, with recurring
   occurrences expanded and flagged.
 - `read_event` — accepts an id from `list_events` and returns description and

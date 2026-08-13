@@ -569,6 +569,33 @@ const MAX_TEXT_CHARS = 40_000;
  */
 const MIN_PAGE_CHARS = 150;
 
+/**
+ * Caps for images, which are not optional either.
+ *
+ * pdf.js decodes to a raw bitmap rather than handing back the original stream,
+ * so nothing can be passed through untouched: a 1702x2845 stage plan is 14.5 MB
+ * of RGB in memory before it is encoded, and a scanned page is worse. Hence a
+ * ceiling on how many are returned and how large each is sent.
+ *
+ * The pixel floor is what separates a diagram from furniture. A measured rider
+ * carried a 0.11 MP letterhead on every page and a 4.84 MP stage plan on one;
+ * that is not a close call, and a threshold between them costs nothing to
+ * explain.
+ */
+const MAX_IMAGE_EDGE = 1200;
+const MAX_IMAGES_PER_CALL = 3;
+const MIN_IMAGE_PIXELS = 200_000;
+
+/**
+ * pdf.js gives an image reused across pages a document-wide id prefixed `g_`,
+ * which is structurally what letterhead is: the same artwork on every page. It
+ * refines the pixel floor rather than replacing it — on its first appearance
+ * the logo is still page-local, so the floor is what catches that one, and this
+ * is an internal pdf.js convention rather than anything the PDF spec promises.
+ * That is why unpdf is pinned.
+ */
+const SHARED_IMAGE_ID = /^g_/;
+
 /** Gmail attachment ids are long — far longer than a message id. */
 const ATTACHMENT_ID = /^[A-Za-z0-9_-]{1,4096}$/;
 
@@ -582,38 +609,193 @@ function decodeBytes(data: string): Uint8Array {
   return Uint8Array.from(atob(full), (c) => c.charCodeAt(0));
 }
 
+// PNG encoding, because pdf.js hands back pixels and MCP wants a file. Doing
+// it by hand keeps the rasteriser and the canvas polyfill out of the component
+// that holds the OAuth secrets: a CRC, a deflate, and four chunks.
+
+const crcTable = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(buf: Uint8Array): number {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) c = crcTable[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Uint8Array): Uint8Array {
+  const out = new Uint8Array(12 + data.length);
+  const view = new DataView(out.buffer);
+  view.setUint32(0, data.length);
+  out.set(new TextEncoder().encode(type), 4);
+  out.set(data, 8);
+  view.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)));
+  return out;
+}
+
 /**
- * Pull text out of a PDF, page by page, stopping at the cap.
+ * Normalise pdf.js's three bitmap layouts to plain RGB.
  *
- * Reports per page rather than per document, because the dangerous case is not
- * the fully scanned file — it is the ordinary rider whose prose extracts fine
- * and whose stage plan is an image. Whole-document detection calls that a
- * success and silently omits the one page the reader most needs. Naming the
- * pages that carry no text is what stops a summary being written over a hole.
+ * Kind 1 is one *bit* per pixel with rows padded to a byte boundary, not one
+ * byte — reading it as bytes yields noise, which is the kind of bug that looks
+ * like a corrupt file rather than a decoding mistake.
+ */
+function toRgb(
+  data: Uint8Array,
+  width: number,
+  height: number,
+  kind: number,
+): Uint8Array | null {
+  if (kind === 2) return data;
+  const rgb = new Uint8Array(width * height * 3);
+  if (kind === 3) {
+    for (let p = 0; p < width * height; p++) {
+      rgb[p * 3] = data[p * 4];
+      rgb[p * 3 + 1] = data[p * 4 + 1];
+      rgb[p * 3 + 2] = data[p * 4 + 2];
+    }
+    return rgb;
+  }
+  if (kind === 1) {
+    const rowBytes = (width + 7) >> 3;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const bit = (data[y * rowBytes + (x >> 3)] >> (7 - (x & 7))) & 1;
+        const value = bit ? 255 : 0;
+        const at = (y * width + x) * 3;
+        rgb[at] = value;
+        rgb[at + 1] = value;
+        rgb[at + 2] = value;
+      }
+    }
+    return rgb;
+  }
+  return null;
+}
+
+/** Box filter by an integer factor: cheap, and kind to line art and labels. */
+function downscale(rgb: Uint8Array, width: number, height: number, factor: number) {
+  if (factor <= 1) return { rgb, width, height };
+  const w = Math.floor(width / factor);
+  const h = Math.floor(height / factor);
+  const out = new Uint8Array(w * h * 3);
+  const n = factor * factor;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let r = 0, g = 0, b = 0;
+      for (let dy = 0; dy < factor; dy++) {
+        for (let dx = 0; dx < factor; dx++) {
+          const s = ((y * factor + dy) * width + (x * factor + dx)) * 3;
+          r += rgb[s]; g += rgb[s + 1]; b += rgb[s + 2];
+        }
+      }
+      const d = (y * w + x) * 3;
+      out[d] = r / n; out[d + 1] = g / n; out[d + 2] = b / n;
+    }
+  }
+  return { rgb: out, width: w, height: h };
+}
+
+async function encodePng(
+  rgb: Uint8Array,
+  width: number,
+  height: number,
+): Promise<Uint8Array> {
+  // Each scanline is prefixed with its filter byte; 0 (None) leaves the work
+  // to deflate, which is plenty for line art.
+  const stride = width * 3;
+  const raw = new Uint8Array(height * (1 + stride));
+  for (let y = 0; y < height; y++) {
+    raw[y * (1 + stride)] = 0;
+    raw.set(rgb.subarray(y * stride, (y + 1) * stride), y * (1 + stride) + 1);
+  }
+  const deflated = new Uint8Array(
+    await new Response(
+      new Blob([raw]).stream().pipeThrough(new CompressionStream("deflate")),
+    ).arrayBuffer(),
+  );
+
+  const ihdr = new Uint8Array(13);
+  const view = new DataView(ihdr.buffer);
+  view.setUint32(0, width);
+  view.setUint32(4, height);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // truecolour RGB
+
+  const parts = [
+    new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", deflated),
+    pngChunk("IEND", new Uint8Array(0)),
+  ];
+  const png = new Uint8Array(parts.reduce((total, p) => total + p.length, 0));
+  let at = 0;
+  for (const part of parts) { png.set(part, at); at += part.length; }
+  return png;
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  // Chunked: spreading a megabyte into apply() overflows the argument list.
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
+}
+
+type PdfImage = {
+  page: number;
+  width: number;
+  height: number;
+  media_type: "image/png";
+  data: string;
+};
+
+/**
+ * Read a PDF page by page: text, and the pictures the text cannot describe.
+ *
+ * Both are reported per page rather than per document, because the dangerous
+ * case is not the fully scanned file — it is the ordinary rider whose prose
+ * extracts fine and whose stage plan is a picture. Whole-document detection
+ * calls that a success and silently omits the one page the crew most needs.
+ *
+ * Crucially the two are independent. Deciding "there is a diagram here"
+ * from "this page yielded no text" only ever finds diagrams that are alone on
+ * their page; a floor plan sitting under two paragraphs would extract as a
+ * clean read with the picture never mentioned. So pages are searched for
+ * images whether or not they gave up text.
  *
  * unpdf is imported here rather than at module load so that reading a note or
  * an email never pays for a PDF parser it does not use.
  */
-async function extractPdfText(bytes: Uint8Array) {
+async function extractPdfContent(bytes: Uint8Array) {
   const { getDocumentProxy } = await import("npm:unpdf@1");
+  const { OPS } = await import("npm:unpdf@1/pdfjs");
   const pdf = await getDocumentProxy(bytes);
 
   const parts: string[] = [];
   const emptyPages: number[] = [];
+  const images: PdfImage[] = [];
+  const skipped: number[] = [];
   let chars = 0;
   let read = 0;
+  let searched = 0;
 
   for (let n = 1; n <= pdf.numPages; n++) {
     const page = await pdf.getPage(n);
+
     const content = await page.getTextContent();
     const text = (content.items as { str?: string }[])
       .map((item) => item.str ?? "")
       .join(" ")
       .replace(/[ \t]+/g, " ")
       .trim();
-    // Release the page's decoded content before the next one is opened; this
-    // is the difference between a flat loop and a growing heap.
-    page.cleanup();
 
     read = n;
     // Boilerplate is not content: a page under the threshold is reported as a
@@ -624,6 +806,51 @@ async function extractPdfText(bytes: Uint8Array) {
       parts.push(`[page ${n}]\n${text}`);
       chars += text.length;
     }
+
+    // Building the operator list decodes this page's images, so it is skipped
+    // entirely once enough have been collected — that is the expensive half of
+    // the loop on a long document. The price is that later pages are not
+    // searched at all, which must be reported rather than left to look like a
+    // document with no further diagrams in it.
+    if (images.length < MAX_IMAGES_PER_CALL) {
+      searched = n;
+      const ops = await page.getOperatorList();
+      for (let i = 0; i < ops.fnArray.length; i++) {
+        if (ops.fnArray[i] !== OPS.paintImageXObject) continue;
+        const id = ops.argsArray[i][0];
+        if (typeof id !== "string" || SHARED_IMAGE_ID.test(id)) continue;
+
+        let raw: { width: number; height: number; kind: number; data: Uint8Array };
+        try {
+          raw = page.objs.get(id);
+        } catch {
+          continue; // not resolved on this page; nothing to encode
+        }
+        if (!raw?.data || raw.width * raw.height < MIN_IMAGE_PIXELS) continue;
+
+        if (images.length >= MAX_IMAGES_PER_CALL) {
+          if (!skipped.includes(n)) skipped.push(n);
+          continue;
+        }
+
+        const rgb = toRgb(raw.data, raw.width, raw.height, raw.kind);
+        if (!rgb) continue;
+        const factor = Math.ceil(Math.max(raw.width, raw.height) / MAX_IMAGE_EDGE);
+        const small = downscale(rgb, raw.width, raw.height, factor);
+        images.push({
+          page: n,
+          width: small.width,
+          height: small.height,
+          media_type: "image/png",
+          data: toBase64(await encodePng(small.rgb, small.width, small.height)),
+        });
+      }
+    }
+
+    // Release the page's decoded content before the next one is opened; this
+    // is the difference between a flat loop and a growing heap.
+    page.cleanup();
+
     if (chars >= MAX_TEXT_CHARS) break;
   }
 
@@ -632,8 +859,85 @@ async function extractPdfText(bytes: Uint8Array) {
     pages_total: pdf.numPages,
     pages_read: read,
     pages_without_text: emptyPages,
+    images,
+    pages_with_skipped_images: skipped,
+    pages_searched_for_images: searched,
     truncated: read < pdf.numPages || chars > MAX_TEXT_CHARS,
   };
+}
+
+/**
+ * Say, in words, what of this file did not make it into the answer.
+ *
+ * A PDF with pages and no text anywhere is a scan, and an empty string offered
+ * as its contents reads as an empty file. But the gaps are several different
+ * things and flattening them into one sentence leaves a reader unsure whether
+ * they saw the stage plan: a page whose picture is attached, a page whose
+ * picture could not be recovered, a page of prose that also carries a diagram,
+ * and pages nothing ever looked at. The last is the easiest to misread as
+ * "there were no more diagrams".
+ */
+function describeGaps(extracted: {
+  text: string;
+  pages_total: number;
+  pages_read: number;
+  pages_without_text: number[];
+  images: PdfImage[];
+  pages_with_skipped_images: number[];
+  pages_searched_for_images: number;
+}): string | null {
+  const scanned = extracted.text.length === 0 && extracted.pages_total > 0;
+  const shown = new Set(extracted.images.map((img) => img.page));
+  const list = (pages: number[]) =>
+    `${pages.length === 1 ? "Page" : "Pages"} ${pages.join(", ")}`;
+
+  const blind = extracted.pages_without_text.filter((p) => !shown.has(p));
+  const recovered = extracted.pages_without_text.filter((p) => shown.has(p));
+  const alongside = [...shown].filter(
+    (p) => !extracted.pages_without_text.includes(p),
+  );
+
+  const notes = [
+    scanned && extracted.images.length === 0
+      ? "No text layer: this file appears to be a scan or a set of page " +
+        "images, and none could be recovered as pictures. Its contents have " +
+        "not been read."
+      : null,
+    scanned && extracted.images.length > 0
+      ? "No text layer: this file appears to be a scan. The page images are " +
+        "attached below — read them as the contents."
+      : null,
+    !scanned && recovered.length > 0
+      ? `${list(recovered)} carried little or no text and ${
+        recovered.length === 1 ? "is" : "are"
+      } attached below as ${recovered.length === 1 ? "a picture" : "pictures"}` +
+        ` — in a rider this is typically the stage plan.`
+      : null,
+    blind.length > 0
+      ? `${list(blind)} of ${extracted.pages_total} carried little or no text ` +
+        `and could not be recovered as pictures either. Nothing from ` +
+        `${blind.length === 1 ? "that page" : "those pages"} is included, so ` +
+        `do not describe what ${blind.length === 1 ? "it" : "they"} might show.`
+      : null,
+    alongside.length > 0
+      ? `${list(alongside)} also carr${alongside.length === 1 ? "ies" : "y"} a ` +
+        `diagram or picture, attached below; the extracted text does not ` +
+        `describe ${alongside.length === 1 ? "it" : "them"}.`
+      : null,
+    extracted.pages_with_skipped_images.length > 0
+      ? `Further pictures on ${list(extracted.pages_with_skipped_images)
+        .toLowerCase()} were left out: only ${MAX_IMAGES_PER_CALL} are ` +
+        `returned per read.`
+      : null,
+    extracted.pages_searched_for_images < extracted.pages_read
+      ? `Only the first ${MAX_IMAGES_PER_CALL} pictures are returned per read, ` +
+        `so pages ${extracted.pages_searched_for_images + 1} to ` +
+        `${extracted.pages_read} were not searched for diagrams at all — ` +
+        `there may be more that nothing here reports.`
+      : null,
+  ].filter((line): line is string => line !== null);
+
+  return notes.length > 0 ? notes.join(" ") : null;
 }
 
 /**
@@ -709,7 +1013,7 @@ async function readAttachment(
 
   let extracted;
   try {
-    extracted = await extractPdfText(bytes);
+    extracted = await extractPdfContent(bytes);
   } catch (err) {
     console.error("pdf extraction failed", err);
     return {
@@ -722,25 +1026,13 @@ async function readAttachment(
     };
   }
 
-  // A PDF with pages and no text anywhere is a scan. Saying so is the whole
-  // point: an empty string presented as the contents reads as an empty file.
   const scanned = extracted.text.length === 0 && extracted.pages_total > 0;
 
   return {
     ...base,
     kind: scanned ? ("scan" as const) : ("text" as const),
     ...extracted,
-    note: scanned
-      ? "No text layer: this file appears to be a scan or a set of page " +
-        "images. Its contents have not been read."
-      : extracted.pages_without_text.length > 0
-      ? `${extracted.pages_without_text.length === 1 ? "Page" : "Pages"} ` +
-        `${extracted.pages_without_text.join(", ")} of ${extracted.pages_total} ` +
-        `carried little or no text and appear to be images or diagrams. ` +
-        `Nothing from ${extracted.pages_without_text.length === 1 ? "it" : "them"} ` +
-        `is included below — in a rider this is typically the stage plan, so do ` +
-        `not describe one from the rest of the document.`
-      : null,
+    note: describeGaps(extracted),
   };
 }
 
@@ -1049,8 +1341,9 @@ if (import.meta.main) {
 export {
   decodeBody,
   decodeBytes,
+  describeGaps,
   extractAttachments,
-  extractPdfText,
+  extractPdfContent,
   extractText,
   htmlToText,
   eventTime,
