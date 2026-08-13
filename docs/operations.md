@@ -124,10 +124,13 @@ Important invariants:
 - Refresh-token rotation is written back on every Microsoft token exchange.
 - Callers select only `verify`, `list_notes`, `read_note`, `list_emails`,
   `read_email`, `read_attachment`, `list_events`, or `read_event`; no arbitrary
-  Graph, Gmail, or Calendar URL is accepted. `read_attachment` fetches only an
-  attachment that the named message actually carries, capped at 10 MB, and
-  extracted text is capped at 40,000 characters during extraction rather than
-  after it. Search syntax is passed as a query parameter, never
+  Graph, Gmail, or Calendar URL is accepted. `read_attachment` resolves a MIME position
+  against the message it names, so an attachment cannot be read out of another
+  message; Gmail's own attachment ids are per-fetch and are never published.
+  Fetching is capped at 10 MB, and extracted text at 40,000 characters during
+  extraction rather than after it. A call also ends once its image budget is
+  spent, reporting the page to resume from, so a long scan is read across
+  several calls rather than one that would exhaust the function. Search syntax is passed as a query parameter, never
   interpolated into a path.
 - Migrations and Edge Functions deploy by hand, reviewed first. The Supabase
   GitHub integration is deliberately not connected, so merging to `staging` or

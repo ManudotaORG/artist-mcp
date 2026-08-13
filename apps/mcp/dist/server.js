@@ -241,7 +241,9 @@ const runServer = async () => {
         }
     });
     server.tool("read_attachment", "Read the contents of one attachment on a Gmail message, using an id from " +
-        "read_email. PDFs are text-extracted, and diagrams — a stage plan, a " +
+        "read_email. Read one to answer a question, not to see everything in " +
+        "it: a long scan is pictures, and paging through all of it is neither " +
+        "possible nor useful. PDFs are text-extracted, and diagrams — a stage plan, a " +
         "floor plan — come back as images to look at, since the extracted text " +
         "does not describe them. Where a page could be neither read nor shown, " +
         "it is named as a gap rather than skipped quietly: never describe a " +
@@ -257,11 +259,29 @@ const runServer = async () => {
             .string()
             .describe("The attachment id from read_email, e.g. \"2\" or \"1.2\". It is the " +
             "file's position in the message, so it stays valid."),
-    }, async ({ email_id, attachment_id }) => {
+        from_page: z
+            .number()
+            .int()
+            .min(1)
+            .optional()
+            .describe("Page to start at, for reading a long document or a scan across " +
+            "several calls. Defaults to 1; the answer says what to pass next."),
+        page_count: z
+            .number()
+            .int()
+            .min(1)
+            .max(10)
+            .optional()
+            .describe("How many pages to read from from_page. For asking about pages " +
+            "someone already has reason to care about, e.g. \"the fee is " +
+            "around page 40\" — not for reading a long file faster."),
+    }, async ({ email_id, attachment_id, from_page, page_count }) => {
         try {
             const file = await call("read_attachment", key, {
                 email_id,
                 attachment_id,
+                from_page,
+                page_count,
             });
             const head = [
                 `# ${file.filename}`,
@@ -270,8 +290,13 @@ const runServer = async () => {
                 `Size: ${describeSize(file.size)}`,
                 ...(file.pages_total
                     ? [
-                        `Pages: ${file.pages_total}` +
-                            (file.truncated ? ` (only the first ${file.pages_read} were read)` : ""),
+                        // "only the first N" was wrong the moment reading could start
+                        // partway through: a second call covers pages 10-18, not 1-18.
+                        `Pages: ${file.first_page ?? 1}-${file.pages_read} of ` +
+                            `${file.pages_total}` +
+                            (file.next_from_page
+                                ? ` (more remains; continue from page ${file.next_from_page})`
+                                : ""),
                     ]
                     : []),
             ].join("\n");

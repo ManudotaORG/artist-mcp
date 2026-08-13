@@ -10,8 +10,9 @@
  *
  * Request:  { op: "list_notes" | "read_note" | "list_emails" | "read_email"
  *                 | "read_attachment" | "list_events" | "read_event" | "verify",
- *              note_id?, email_id?, attachment_id?, event_id?, calendar_id?,
- *              query?, time_min?, time_max? }
+ *              note_id?, email_id?, attachment_id?, from_page?, page_count?,
+ *              event_id?,
+ *              calendar_id?, query?, time_min?, time_max? }
  *           Authorization: Bearer <connection key>
  */
 
@@ -601,6 +602,25 @@ const MIN_PAGE_CHARS = 150;
  */
 const MAX_IMAGE_EDGE = 1200;
 const MAX_IMAGES_PER_CALL = 3;
+
+/**
+ * How much of an image-only document is worth offering to walk through.
+ *
+ * At a 1200px edge a page image costs roughly 1,500 tokens to look at, so a
+ * hundred-page scan is on the order of 150,000 — more than a context window,
+ * and not worth spending even where it fits. Past this many pages the answer
+ * stops advertising the next page and says what the file is instead, because
+ * inviting a walk that cannot finish is worse than declining it: the caller
+ * finds out thirty calls in.
+ *
+ * Raising how many pages come back per call does not help. It reaches the same
+ * ceiling sooner.
+ */
+const WALKABLE_SCAN_PAGES = 20;
+const TOKENS_PER_PAGE_IMAGE = 1500;
+
+/** Ceiling on a requested window. The default stays small; this bounds asking. */
+const MAX_PAGES_PER_CALL = 10;
 const MIN_IMAGE_PIXELS = 200_000;
 
 /**
@@ -831,10 +851,29 @@ type PdfImage = {
  * unpdf is imported here rather than at module load so that reading a note or
  * an email never pays for a PDF parser it does not use.
  */
-async function extractPdfContent(bytes: Uint8Array) {
+async function extractPdfContent(
+  bytes: Uint8Array,
+  fromPage = 1,
+  pageCount?: number,
+) {
   const { getDocumentProxy } = await import("npm:unpdf@1");
   const { OPS } = await import("npm:unpdf@1/pdfjs");
-  const pdf = await getDocumentProxy(bytes);
+  // pdf.js transfers the buffer to its worker, which detaches it — the
+  // caller's array is unusable afterwards, and a second read of the same bytes
+  // throws DataCloneError. Reading a document in page ranges means exactly
+  // that second read, so the copy is what makes ranges possible at all.
+  const pdf = await getDocumentProxy(new Uint8Array(bytes));
+
+  const first = Math.min(Math.max(1, Math.trunc(fromPage)), pdf.numPages);
+  // A window is for asking about pages someone already has reason to care
+  // about — "40 to 45" — not for reading faster. Unbounded, it would be a way
+  // to request the whole document in one call and exhaust the function.
+  const window = pageCount === undefined
+    ? undefined
+    : Math.min(Math.max(1, Math.trunc(pageCount)), MAX_PAGES_PER_CALL);
+  const last = window === undefined
+    ? pdf.numPages
+    : Math.min(first + window - 1, pdf.numPages);
 
   const parts: string[] = [];
   const emptyPages: number[] = [];
@@ -842,10 +881,15 @@ async function extractPdfContent(bytes: Uint8Array) {
   const skipped: number[] = [];
   const unreadable: number[] = [];
   let chars = 0;
-  let read = 0;
-  let searched = 0;
+  let read = first - 1;
+  // One before the start, so "searched as far as read" holds when the very
+  // first page already fills the image budget.
+  let searched = first - 1;
+  // Asking for a window is an explicit request for those pages, so it raises
+  // the image budget to match; the default stays deliberately small.
+  const imageBudget = window ?? MAX_IMAGES_PER_CALL;
 
-  for (let n = 1; n <= pdf.numPages; n++) {
+  for (let n = first; n <= last; n++) {
     const page = await pdf.getPage(n);
 
     const content = await page.getTextContent();
@@ -870,7 +914,7 @@ async function extractPdfContent(bytes: Uint8Array) {
     // the loop on a long document. The price is that later pages are not
     // searched at all, which must be reported rather than left to look like a
     // document with no further diagrams in it.
-    if (images.length < MAX_IMAGES_PER_CALL) {
+    if (images.length < imageBudget) {
       searched = n;
       const ops = await page.getOperatorList();
       for (let i = 0; i < ops.fnArray.length; i++) {
@@ -891,7 +935,7 @@ async function extractPdfContent(bytes: Uint8Array) {
         }
         if (!raw?.data || raw.width * raw.height < MIN_IMAGE_PIXELS) continue;
 
-        if (images.length >= MAX_IMAGES_PER_CALL) {
+        if (images.length >= imageBudget) {
           if (!skipped.includes(n)) skipped.push(n);
           continue;
         }
@@ -914,18 +958,37 @@ async function extractPdfContent(bytes: Uint8Array) {
     // is the difference between a flat loop and a growing heap.
     page.cleanup();
 
-    if (chars >= MAX_TEXT_CHARS) break;
+    // A call ends when either budget is spent, and the caller resumes from the
+    // next page. Stopping only on the text budget was the subtler mistake: on
+    // a scan the text budget is never touched, so the loop ran to the end,
+    // declared the file finished, and left every page past the image cap
+    // permanently unreachable — a page range that could not reach them.
+    if (chars >= MAX_TEXT_CHARS || images.length >= imageBudget) break;
   }
+
+  // Image-only and longer than anyone can read here: see WALKABLE_SCAN_PAGES.
+  const unwalkable = chars === 0 && pdf.numPages > WALKABLE_SCAN_PAGES;
 
   return {
     text: parts.join("\n\n").slice(0, MAX_TEXT_CHARS),
     pages_total: pdf.numPages,
+    first_page: first,
     pages_read: read,
     pages_without_text: emptyPages,
     images,
     pages_with_skipped_images: skipped,
     pages_with_unreadable_images: unreadable,
     pages_searched_for_images: searched,
+    // Whether the caller named a window. Someone who asked for pages 12-15 has
+    // already made the judgement the large-file advice exists to prompt.
+    targeted: window !== undefined,
+    // What to ask for to carry on — withheld for an image-only document too
+    // large to finish, where the note declines the walk. Leaving a page number
+    // here while the prose says "do not page through it" is the same
+    // contradiction in machine-readable form, and a caller following fields
+    // rather than sentences would walk anyway. Targeted pages are still
+    // available through from_page and page_count.
+    next_from_page: read < pdf.numPages && !unwalkable ? read + 1 : null,
     truncated: read < pdf.numPages || chars > MAX_TEXT_CHARS,
   };
 }
@@ -950,13 +1013,25 @@ function describeGaps(extracted: {
   pages_with_skipped_images: number[];
   pages_with_unreadable_images?: number[];
   pages_searched_for_images: number;
+  first_page?: number;
+  next_from_page?: number | null;
+  targeted?: boolean;
 }): string | null {
   const scanned = extracted.text.length === 0 && extracted.pages_total > 0;
+  const bigScan = scanned && extracted.pages_total > WALKABLE_SCAN_PAGES &&
+    !extracted.targeted;
   const shown = new Set(extracted.images.map((img) => img.page));
   const list = (pages: number[]) =>
     `${pages.length === 1 ? "Page" : "Pages"} ${pages.join(", ")}`;
 
-  const blind = extracted.pages_without_text.filter((p) => !shown.has(p));
+  // "Could not be recovered" must mean tried and failed. A page past the point
+  // where the image search stopped was never attempted, and saying recovery
+  // failed there is both false and the more reassuring of the two readings —
+  // it implies someone looked. Those pages belong to the "not searched"
+  // sentence alone.
+  const blind = extracted.pages_without_text.filter(
+    (p) => !shown.has(p) && p <= extracted.pages_searched_for_images,
+  );
   const recovered = extracted.pages_without_text.filter((p) => shown.has(p));
   const alongside = [...shown].filter(
     (p) => !extracted.pages_without_text.includes(p),
@@ -968,10 +1043,13 @@ function describeGaps(extracted: {
         "images, and none could be recovered as pictures. Its contents have " +
         "not been read."
       : null,
-    scanned && extracted.images.length > 0
-      ? "No text layer: this file is page images rather than text — a scan, " +
-        "or something exported as a picture. Those images are attached below; " +
-        "read them as the contents."
+    scanned && extracted.images.length > 0 && !bigScan
+      ? `No text layer: this file is page images rather than text — a scan, ` +
+        `or something exported as a picture. Its contents are the pictures, ` +
+        `and ${extracted.images.length} of its ${extracted.pages_total} ` +
+        `${extracted.pages_total === 1 ? "page is" : "pages are"} attached ` +
+        `below. Read ${extracted.images.length === 1 ? "it" : "them"} as the ` +
+        `contents, and treat the rest of the document as unread.`
       : null,
     !scanned && recovered.length > 0
       ? `${list(recovered)} carried little or no text and ${
@@ -1004,6 +1082,28 @@ function describeGaps(extracted: {
         `It is there in the file — this is a failure to read it, not an ` +
         `absence, so do not conclude the page is blank.`
       : null,
+    // A document too large to walk gets told what it is, not where to go next.
+    // Inviting a walk that cannot finish is worse than declining it: the caller
+    // discovers the ceiling thirty calls in, having spent the context getting
+    // there. Targeted pages stay available, because that is the request worth
+    // serving — nobody needs a hundred pages, they need the clause on page 40.
+    bigScan
+      ? `This is a ${extracted.pages_total}-page document of page images. ` +
+        `Reading all of it would be roughly ${
+          Math.round(extracted.pages_total * TOKENS_PER_PAGE_IMAGE / 1000)
+        }k tokens of pictures, which is not practical here, so do not page ` +
+        `through it. Pages ${extracted.first_page ?? 1} to ` +
+        `${extracted.pages_read} are attached so the file can be identified. ` +
+        `Ask which pages are needed and request those with from_page and ` +
+        `page_count, or say plainly that this one is better opened directly.`
+      : null,
+    // The way out of every cap above: ask for the rest. Without this the
+    // caller is told what is missing and not that it is obtainable.
+    extracted.next_from_page && !bigScan
+      ? `This read covered pages ${extracted.first_page ?? 1} to ` +
+        `${extracted.pages_read} of ${extracted.pages_total}. Read the rest by ` +
+        `calling again with from_page ${extracted.next_from_page}.`
+      : null,
     extracted.pages_searched_for_images < extracted.pages_read
       ? `Only the first ${MAX_IMAGES_PER_CALL} pictures are returned per read, ` +
         `so pages ${extracted.pages_searched_for_images + 1} to ` +
@@ -1033,12 +1133,26 @@ async function readAttachment(
   token: string,
   emailId: unknown,
   attachmentId: unknown,
+  fromPage: unknown,
+  pageCount: unknown,
 ) {
   if (typeof emailId !== "string" || !GMAIL_ID.test(emailId)) {
     throw new HttpError(400, "email_id is missing or malformed.");
   }
   if (typeof attachmentId !== "string" || !ATTACHMENT_ID.test(attachmentId)) {
     throw new HttpError(400, "attachment_id is missing or malformed.");
+  }
+  if (
+    fromPage !== undefined && fromPage !== null &&
+    (typeof fromPage !== "number" || !Number.isFinite(fromPage) || fromPage < 1)
+  ) {
+    throw new HttpError(400, "from_page must be a page number, 1 or greater.");
+  }
+  if (
+    pageCount !== undefined && pageCount !== null &&
+    (typeof pageCount !== "number" || !Number.isFinite(pageCount) || pageCount < 1)
+  ) {
+    throw new HttpError(400, "page_count must be a number of pages, 1 or greater.");
   }
   const id = encodeURIComponent(emailId);
 
@@ -1104,7 +1218,11 @@ async function readAttachment(
 
   let extracted;
   try {
-    extracted = await extractPdfContent(bytes);
+    extracted = await extractPdfContent(
+      bytes,
+      (fromPage as number) ?? 1,
+      pageCount as number | undefined,
+    );
   } catch (err) {
     console.error("pdf extraction failed", err);
     return {
@@ -1392,7 +1510,13 @@ export const handleRequest = async (req: Request): Promise<Response> => {
         result = await readEmail(token, body.email_id);
         break;
       case "read_attachment":
-        result = await readAttachment(token, body.email_id, body.attachment_id);
+        result = await readAttachment(
+          token,
+          body.email_id,
+          body.attachment_id,
+          body.from_page,
+          body.page_count,
+        );
         break;
       case "list_events":
         result = await listEvents(
