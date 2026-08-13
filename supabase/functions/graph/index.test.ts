@@ -16,6 +16,7 @@ import {
   eventTime,
   extractAttachments,
   extractPdfContent,
+  extractPdfMap,
   extractText,
   htmlToText,
   shapeEvent,
@@ -549,6 +550,32 @@ Deno.test("describeGaps does not claim recovery failed on pages it never searche
   assertStringIncludes(note!, "3 of its 8 pages are attached");
 });
 
+Deno.test("describeGaps does not mention a rest that does not exist", () => {
+  // A one-page file returned whole was told to "treat the rest of the document
+  // as unread", of a document with no rest.
+  const whole = describeGaps(extraction({
+    text: "",
+    pages_total: 1,
+    pages_read: 1,
+    pages_without_text: [1],
+    pages_searched_for_images: 1,
+    images: [{ page: 1, width: 900, height: 1200, media_type: "image/png", data: "" }],
+  }));
+  assertEquals(whole!.includes("the rest of the document"), false);
+
+  const partial = describeGaps(extraction({
+    text: "",
+    pages_total: 8,
+    pages_read: 3,
+    pages_without_text: [1, 2, 3],
+    pages_searched_for_images: 3,
+    images: [1, 2, 3].map((page) => ({
+      page, width: 900, height: 1200, media_type: "image/png" as const, data: "",
+    })),
+  }));
+  assertStringIncludes(partial!, "the rest of the document");
+});
+
 Deno.test("describeGaps calls a scan a scan", () => {
   const note = describeGaps(extraction({
     text: "",
@@ -702,6 +729,50 @@ Deno.test("extractPdfContent clamps a start page past the end", async () => {
   const result = await extractPdfContent(minimalPdf([page("Only page")]), 99);
   assertEquals(result.first_page, 1);
   assertEquals(result.next_from_page, null);
+});
+
+Deno.test("extractPdfMap reports what is on each page", async () => {
+  const pdf = minimalPdf([
+    { text: page("Soundcheck at 17:00") },
+    { image: { width: 600, height: 400 } },
+    { text: page("Patch list follows") },
+  ]);
+  const map = await extractPdfMap(pdf);
+
+  assertEquals(map.pages_total, 3);
+  assertEquals(map.scanned, false);
+  assertEquals(map.pages.map((p) => p.image_only), [false, true, false]);
+  assert(map.pages[0].chars > 100, "a prose page should report its length");
+  assertEquals(map.pages[1].chars, 0);
+});
+
+Deno.test("extractPdfMap says a scan cannot be mapped", async () => {
+  // Every page a picture: there is nothing to summarise, and pretending
+  // otherwise would hand back a list of empty rows.
+  const map = await extractPdfMap(
+    minimalPdf([1, 2].map(() => ({ image: { width: 600, height: 400 } }))),
+  );
+  assertEquals(map.scanned, true);
+  assertEquals(map.pages.every((p) => p.image_only && p.heading === null), true);
+});
+
+Deno.test("extractPdfMap does not offer a running header as a heading", async () => {
+  // The letterhead is set large and appears on every page, so it wins on size
+  // alone. Repetition is what disqualifies it — and page numbers make each
+  // copy textually unique, so digits have to be folded together first.
+  const pdf = minimalPdf(
+    [1, 2, 3].map((n) => ({
+      text: `TECHNICAL RIDER (page ${n} / 3) ${"Body text about the stage. ".repeat(8)}`,
+    })),
+  );
+  const map = await extractPdfMap(pdf);
+  for (const entry of map.pages) {
+    assertEquals(
+      /TECHNICAL RIDER/.test(entry.heading ?? ""),
+      false,
+      `page ${entry.page} offered the running header as its heading`,
+    );
+  }
 });
 
 Deno.test("extractPdfContent stops early rather than reading every page", async () => {

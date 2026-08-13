@@ -58,6 +58,16 @@ type AttachmentBody = {
   truncated?: boolean;
 };
 
+type AttachmentMap = {
+  filename: string;
+  mime_type: string;
+  size: number;
+  kind: "text" | "scan" | "unsupported" | "unreadable" | "too_large";
+  pages_total?: number;
+  pages: { page: number; chars: number; heading: string | null; image_only: boolean }[];
+  note: string | null;
+};
+
 type EmailBody = EmailSummary & {
   cc: string | null;
   text: string;
@@ -392,9 +402,60 @@ const runServer = async (): Promise<void> => {
   );
 
   server.tool(
+    "map_attachment",
+    "Show what is on each page of a PDF attachment without reading it: a " +
+      "character count, an apparent heading, and whether the page is a picture. " +
+      "Use this before read_attachment on anything long — it costs one small " +
+      "call and lets you read the two pages that answer the question instead " +
+      "of paging through the whole file. Scans cannot be mapped, and say so. " +
+      "Read-only: nothing is saved, forwarded, or downloaded.",
+    {
+      email_id: z.string().describe("The id of the message the attachment belongs to"),
+      attachment_id: z
+        .string()
+        .describe('The attachment id from read_email, e.g. "2" or "1.2"'),
+    },
+    async ({ email_id, attachment_id }) => {
+      try {
+        const map = await call<AttachmentMap>("map_attachment", key, {
+          email_id,
+          attachment_id,
+        });
+
+        const head = [
+          `# ${map.filename}`,
+          "",
+          `Type: ${map.mime_type}`,
+          `Size: ${describeSize(map.size)}`,
+        ].join("\n");
+
+        // A table rather than prose: the point is to compare pages at a glance
+        // and pick one, which a paragraph makes harder than it needs to be.
+        const rows = map.pages.length
+          ? [
+            "",
+            "| Page | Characters | What is on it |",
+            "| --- | --- | --- |",
+            ...map.pages.map((p) =>
+              `| ${p.page} | ${p.image_only ? "—" : p.chars} | ` +
+              `${p.image_only ? "a picture, not text" : p.heading ?? "(no heading found)"} |`
+            ),
+          ].join("\n")
+          : "";
+
+        const note = map.note ? `\n\n**${map.note}**` : "";
+        return { content: [{ type: "text", text: `${head}${note}${rows}` }] };
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  server.tool(
     "read_attachment",
     "Read the contents of one attachment on a Gmail message, using an id from " +
       "read_email. Read one to answer a question, not to see everything in " +
+      "it — map_attachment first tells you which pages are worth reading. " +
       "it: a long scan is pictures, and paging through all of it is neither " +
       "possible nor useful. PDFs are text-extracted, and diagrams — a stage plan, a " +
       "floor plan — come back as images to look at, since the extracted text " +
