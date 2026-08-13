@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.6.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v0.5.0...artist-mcp-v0.6.0) (2026-08-13)
+
+
+### Features
+
+* **graph:** decline to walk a scan too large to read, and read windows ([a909280](https://github.com/ManudotaORG/artist-mcp/commit/a909280d0ebd4beb730678f42118087c0dcd29aa)), closes [#19](https://github.com/ManudotaORG/artist-mcp/issues/19)
+* **graph:** list email attachments without reading them ([db708ee](https://github.com/ManudotaORG/artist-mcp/commit/db708eecdbf6496c0f54e4cb07394943fe36cdda)), closes [#19](https://github.com/ManudotaORG/artist-mcp/issues/19)
+* **graph:** read a long document or a scan in page ranges ([b95d4f9](https://github.com/ManudotaORG/artist-mcp/commit/b95d4f9fc4a677efe8309d7e32e8b2ddf142e749)), closes [#19](https://github.com/ManudotaORG/artist-mcp/issues/19)
+* **graph:** read email attachments as supporting evidence ([ca65952](https://github.com/ManudotaORG/artist-mcp/commit/ca659522887892f3c3b9bfd9ca8e1080e98e204b))
+* **graph:** read Google Calendar as supporting evidence ([7aa0795](https://github.com/ManudotaORG/artist-mcp/commit/7aa0795a72aa11f27c9e64b5ea1465a9ab05ad51))
+* **graph:** read long attachments and scans in page ranges ([0e37f96](https://github.com/ManudotaORG/artist-mcp/commit/0e37f96be6b4e9d351f858e5159980425d89270e))
+* **graph:** read PDF attachments, naming the pages it cannot read ([7e8080d](https://github.com/ManudotaORG/artist-mcp/commit/7e8080d741e2c4f62631535e96fe56834217bcd3)), closes [#19](https://github.com/ManudotaORG/artist-mcp/issues/19)
+* **graph:** return the diagrams a rider's text cannot describe ([b59a8f2](https://github.com/ManudotaORG/artist-mcp/commit/b59a8f2d851f5b2d4098342355eebd0881e8c48c)), closes [#19](https://github.com/ManudotaORG/artist-mcp/issues/19)
+* **mcp:** expose list_emails and read_email ([fd2195f](https://github.com/ManudotaORG/artist-mcp/commit/fd2195fb3d861ad6bc3e09033d4bcb349b541272))
+
+
+### Bug Fixes
+
+* **graph:** key attachments on MIME position, not Gmail's id ([2b330fe](https://github.com/ManudotaORG/artist-mcp/commit/2b330feea297cc4ba9e4854d68b00cf3042f6efe)), closes [#19](https://github.com/ManudotaORG/artist-mcp/issues/19)
+* **graph:** stop one recurring series filling the event page ([d8a3321](https://github.com/ManudotaORG/artist-mcp/commit/d8a3321ad4d19e253df10238152f4e885e463f07))
+* say which connection failure this is, and stop overwriting the answer ([79f5e9c](https://github.com/ManudotaORG/artist-mcp/commit/79f5e9c3fbc82e7ebd8d4404c061563062cc25f7))
+* say which connection failure this is, and stop overwriting the answer ([ade9ff3](https://github.com/ManudotaORG/artist-mcp/commit/ade9ff3f1e41a125ce24939fba6f7f5dfbdaac1e)), closes [#19](https://github.com/ManudotaORG/artist-mcp/issues/19)
+
 ## [0.5.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v0.4.0...artist-mcp-v0.5.0) (2026-08-12)
 
 
