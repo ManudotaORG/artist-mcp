@@ -13,11 +13,16 @@ import {
   decodeBody,
   decodeBytes,
   describeGaps,
+  docxToText,
+  extractDocxContent,
   eventTime,
   extractAttachments,
   extractPdfContent,
   extractPdfMap,
   extractText,
+  imageResult,
+  imageSize,
+  unsupportedNote,
   htmlToText,
   shapeEvent,
   thinRecurring,
@@ -249,6 +254,172 @@ Deno.test("connectionFailure passes an unexpected database error through", () =>
   assertEquals(other.status, 503);
   assertEquals(other.reconnectNeeded, false);
   assertStringIncludes(other.message, "connection pool exhausted");
+});
+
+/** Minimal but real headers: the parser reads these, not a whole image. */
+const pngHeader = (w: number, h: number) => {
+  const b = new Uint8Array(24);
+  b.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  new DataView(b.buffer).setUint32(16, w);
+  new DataView(b.buffer).setUint32(20, h);
+  return b;
+};
+
+const jpegHeader = (w: number, h: number) => {
+  // SOI, then an APP0 segment to be skipped, then a real SOF0 carrying the size.
+  const b = new Uint8Array(40);
+  const v = new DataView(b.buffer);
+  b[0] = 0xff; b[1] = 0xd8;
+  b[2] = 0xff; b[3] = 0xe0; v.setUint16(4, 6); // APP0, length 6
+  const sof = 10;
+  b[sof] = 0xff; b[sof + 1] = 0xc0; v.setUint16(sof + 2, 17);
+  v.setUint16(sof + 5, h);
+  v.setUint16(sof + 7, w);
+  return b;
+};
+
+Deno.test("imageSize reads dimensions without decoding", () => {
+  assertEquals(imageSize(pngHeader(1200, 800)), { width: 1200, height: 800 });
+  assertEquals(imageSize(jpegHeader(4032, 3024)), { width: 4032, height: 3024 });
+});
+
+Deno.test("imageSize returns null rather than guessing", () => {
+  assertEquals(imageSize(new Uint8Array(40)), null);
+  assertEquals(imageSize(new Uint8Array(4)), null);
+});
+
+Deno.test("imageSize does not loop forever on a malformed JPEG", () => {
+  // A zero-length segment would advance the cursor by nothing. Real files are
+  // truncated and corrupted often enough that this must terminate.
+  const b = jpegHeader(100, 100);
+  b[2] = 0xff; b[3] = 0xe0;
+  new DataView(b.buffer).setUint16(4, 0);
+  assertEquals(imageSize(b), null);
+});
+
+Deno.test("imageResult passes a viewable image through untouched", () => {
+  const bytes = pngHeader(1200, 800);
+  const result = imageResult(
+    { filename: "plan.png", mime_type: "image/png", size: bytes.length },
+    bytes,
+  );
+  assertEquals(result.kind, "image");
+  assertEquals(result.images.length, 1);
+  assertEquals(result.images[0].width, 1200);
+  assertEquals(result.images[0].media_type, "image/png");
+  // Untouched: what comes back must decode to exactly what went in.
+  const returned = Uint8Array.from(atob(result.images[0].data), (c) => c.charCodeAt(0));
+  assertEquals(returned, bytes);
+});
+
+Deno.test("imageResult names HEIC rather than calling it unsupported", () => {
+  // The format an iPhone sends by default, so the most likely to arrive and
+  // the one a generic message would explain worst.
+  const result = imageResult(
+    { filename: "plan.heic", mime_type: "image/heic", size: 900 },
+    new Uint8Array(40),
+  );
+  assertEquals(result.kind, "unsupported");
+  assertEquals(result.images, []);
+  assertStringIncludes(result.note!, "HEIC");
+  assertStringIncludes(result.note!, "JPEG");
+});
+
+Deno.test("imageResult refuses an image too large to travel, and says how big", () => {
+  const big = new Uint8Array(4_000_000);
+  big.set(pngHeader(1200, 800).subarray(0, 24));
+  const result = imageResult(
+    { filename: "photo.png", mime_type: "image/png", size: big.length },
+    big,
+  );
+  assertEquals(result.kind, "too_large");
+  assertStringIncludes(result.note!, "3.8 MB");
+  // Nothing here can shrink it, and the note must not imply otherwise.
+  assertStringIncludes(result.note!, "smaller copy");
+});
+
+Deno.test("imageResult still attaches an image whose header it cannot read", () => {
+  // Unknown dimensions are worth reporting, but not worth refusing over.
+  const bytes = new Uint8Array(40);
+  bytes[0] = 0x89; bytes[1] = 0x50; bytes[2] = 0x4e; bytes[3] = 0x47;
+  const result = imageResult(
+    { filename: "odd.png", mime_type: "image/png", size: 40 },
+    bytes,
+  );
+  assertEquals(result.kind, "image");
+  assertEquals(result.images[0].width, 0);
+});
+
+/** A paragraph as Word writes one. */
+const para = (text: string) => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
+
+Deno.test("docxToText reads paragraphs as lines", () => {
+  const xml = `<w:body>${para("Fee: EUR 2400")}${para("Soundcheck at 17:00")}</w:body>`;
+  assertEquals(docxToText(xml), "Fee: EUR 2400\nSoundcheck at 17:00");
+});
+
+Deno.test("docxToText does not mistake table markup for text", () => {
+  // <w:t[^>]*> also matches <w:tbl>, <w:tblPr>, <w:tc> and <w:tr>, so a
+  // document with a table returned its own markup as prose. Two thirds of a
+  // real 43,000-character read turned out to be this.
+  const xml =
+    `<w:body><w:tbl><w:tblPr><w:tblW w:w="4000"/></w:tblPr>` +
+    `<w:tr><w:tc>${para("Venue")}</w:tc><w:tc>${para("Sala Apolo")}</w:tc></w:tr>` +
+    `</w:tbl>${para("Fee agreed")}</w:body>`;
+  const text = docxToText(xml);
+  assertEquals(text.includes("w:tbl"), false, `leaked markup: ${text.slice(0, 80)}`);
+  assertStringIncludes(text, "Venue");
+  assertStringIncludes(text, "Sala Apolo");
+  assertStringIncludes(text, "Fee agreed");
+});
+
+Deno.test("docxToText decodes entities in the order that matters", () => {
+  // &amp; last, or "&amp;lt;" becomes "<" rather than "&lt;".
+  const xml = `<w:body>${para("Sound &amp;lt; lights &amp; staging")}</w:body>`;
+  assertEquals(docxToText(xml), "Sound &lt; lights & staging");
+});
+
+Deno.test("docxToText joins the runs Word splits a sentence into", () => {
+  // Word breaks a line into runs at every formatting change, including
+  // spellcheck boundaries, so a sentence arrives in pieces.
+  const xml = `<w:body><w:p><w:r><w:t>Fee: </w:t></w:r>` +
+    `<w:r><w:t xml:space="preserve">EUR </w:t></w:r>` +
+    `<w:r><w:t>2400</w:t></w:r></w:p></w:body>`;
+  assertEquals(docxToText(xml), "Fee: EUR 2400");
+});
+
+Deno.test("extractDocxContent refuses bytes that are not a Word document", async () => {
+  assertEquals(await extractDocxContent(new Uint8Array(64)), null);
+  assertEquals(await extractDocxContent(new TextEncoder().encode("%PDF-1.4")), null);
+});
+
+Deno.test("unsupportedNote says a legacy .doc will never be readable", () => {
+  // "Not supported yet" invites waiting. The old binary Word format needs a
+  // parser this runtime does not have and is not getting, so the useful answer
+  // tells the reader what to ask the sender for.
+  const note = unsupportedNote("application/msword", "contract.doc");
+  assertStringIncludes(note, "legacy Word document");
+  assertStringIncludes(note, "PDF or a .docx");
+  assertEquals(note.includes("not built yet"), false);
+});
+
+Deno.test("unsupportedNote distinguishes formats that are merely unbuilt", () => {
+  const docx = unsupportedNote(
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "rider.docx",
+  );
+  assertStringIncludes(docx, "not built yet");
+
+  const image = unsupportedNote("image/jpeg", "stage-plan.jpg");
+  assertStringIncludes(image, "not built yet");
+  assertStringIncludes(image, "stage-plan.jpg");
+});
+
+Deno.test("unsupportedNote falls back on an extension when the type is generic", () => {
+  // Senders and clients mislabel attachments as octet-stream often enough that
+  // the filename is the more reliable signal.
+  const note = unsupportedNote("application/octet-stream", "contract.doc");
+  assertStringIncludes(note, "legacy Word document");
 });
 
 Deno.test("decodeBytes keeps a PDF's bytes intact", () => {

@@ -281,7 +281,10 @@ const runServer = async () => {
         }
     });
     server.tool("read_attachment", "Read the contents of one attachment on a Gmail message, using an id from " +
-        "read_email. Read one to answer a question, not to see everything in " +
+        "read_email. Images are shown as pictures; PDFs and Word .docx files " +
+        "are read. A Word document has no pages, so from_page selects parts of " +
+        "its text and the answer says so. " +
+        "Read one to answer a question, not to see everything in " +
         "it — map_attachment first tells you which pages are worth reading. " +
         "it: a long scan is pictures, and paging through all of it is neither " +
         "possible nor useful. PDFs are text-extracted, and diagrams — a stage plan, a " +
@@ -329,7 +332,15 @@ const runServer = async () => {
                 "",
                 `Type: ${file.mime_type}`,
                 `Size: ${describeSize(file.size)}`,
-                ...(file.pages_total
+                ...(file.unit === "part"
+                    ? [
+                        `Length: ${file.chars_total?.toLocaleString() ?? "?"} characters` +
+                            (file.parts_total && file.parts_total > 1
+                                ? `, part ${file.first_page} of ${file.parts_total}`
+                                : ""),
+                    ]
+                    : []),
+                ...(file.pages_total && file.unit !== "part"
                     ? [
                         // "only the first N" was wrong the moment reading could start
                         // partway through: a second call covers pages 10-18, not 1-18.
@@ -361,7 +372,11 @@ const runServer = async () => {
             const pictures = (file.images ?? []).flatMap((img) => [
                 {
                     type: "text",
-                    text: `\n### Page ${img.page}, as an image (${img.width}x${img.height})`,
+                    // A page of a PDF is announced by page; an image attachment is the
+                    // whole file, and calling it "page 1" would invent a structure.
+                    text: img.page === undefined
+                        ? `\n### ${file.filename}${img.width ? ` (${img.width}x${img.height})` : ""}`
+                        : `\n### Page ${img.page}, as an image (${img.width}x${img.height})`,
                 },
                 {
                     type: "image",

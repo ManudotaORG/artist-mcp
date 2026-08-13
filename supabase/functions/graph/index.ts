@@ -870,6 +870,29 @@ function resolveImage(
   });
 }
 
+/**
+ * Pages whose images pdf.js gave up on, collected from the only signal it gives.
+ *
+ * When an image cannot be decoded — JPEG 2000 is the common case, and 4 of 88
+ * real documents here contain one — pdf.js drops the paint operation entirely,
+ * so the operator list shows no trace and nothing downstream can tell the
+ * picture apart from a page that never had one. It does log a warning, so the
+ * warning is listened to.
+ *
+ * Patched once at module load rather than around each call: two reads sharing
+ * an isolate would otherwise restore each other's patch and leak it. The sink
+ * is swapped per read, so concurrent reads at worst leave one of them detecting
+ * nothing — under-reporting, never attributing a page to the wrong document.
+ */
+let undecodableSink: Set<number> | null = null;
+const originalWarn = console.warn;
+console.warn = (...args: unknown[]) => {
+  const found = /Unable to decode image "img_p(\d+)_/.exec(String(args[0] ?? ""));
+  // The object id counts pages from zero.
+  if (found && undecodableSink) undecodableSink.add(Number(found[1]) + 1);
+  originalWarn(...args);
+};
+
 type PdfImage = {
   page: number;
   width: number;
@@ -1046,6 +1069,13 @@ async function extractPdfContent(
   const images: PdfImage[] = [];
   const skipped: number[] = [];
   const unreadable: number[] = [];
+
+  // See undecodableSink: a picture pdf.js cannot decode leaves no trace in the
+  // operator list, and naming it is the difference between "no picture here"
+  // and "a picture nobody could read".
+  const undecodable = new Set<number>();
+  const outerSink = undecodableSink;
+  undecodableSink = undecodable;
   let chars = 0;
   let read = first - 1;
   // One before the start, so "searched as far as read" holds when the very
@@ -1055,6 +1085,7 @@ async function extractPdfContent(
   // the image budget to match; the default stays deliberately small.
   const imageBudget = window ?? MAX_IMAGES_PER_CALL;
 
+  try {
   for (let n = first; n <= last; n++) {
     const page = await pdf.getPage(n);
 
@@ -1131,6 +1162,16 @@ async function extractPdfContent(
     // permanently unreachable — a page range that could not reach them.
     if (chars >= MAX_TEXT_CHARS || images.length >= imageBudget) break;
   }
+  } finally {
+    undecodableSink = outerSink;
+  }
+
+  for (const page of undecodable) {
+    if (page >= first && page <= read && !unreadable.includes(page)) {
+      unreadable.push(page);
+    }
+  }
+  unreadable.sort((a, b) => a - b);
 
   // Image-only and longer than anyone can read here: see WALKABLE_SCAN_PAGES.
   const unwalkable = chars === 0 && pdf.numPages > WALKABLE_SCAN_PAGES;
@@ -1308,6 +1349,197 @@ function describeGaps(extracted: {
  * that the attachment endpoint does not return, and the size — so an oversized
  * file is refused before its bytes are moved rather than after.
  */
+/**
+ * Explain an attachment we will not read, in terms the sender could act on.
+ *
+ * "Not supported yet" is true of everything and useful about nothing. A legacy
+ * .doc will not become readable by waiting — the old binary Word format needs a
+ * parser that does not exist in this runtime — so the honest answer names the
+ * file and suggests what to ask for instead. A format that is merely not built
+ * yet says that, which is a different sentence and a different expectation.
+ */
+/**
+ * What Claude can actually look at. Anything else is declined by name.
+ *
+ * HEIC in particular is worth naming: an iPhone sends it by default, so it is
+ * the most likely image to arrive and the one a generic "unsupported" would
+ * explain worst.
+ */
+const DOCX_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/** Whether an attachment is a Word document, by type or by name. */
+const isDocx = (mimeType: string, filename: string) =>
+  mimeType.toLowerCase() === DOCX_TYPE || /\.docx$/i.test(filename);
+
+const VIEWABLE_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+]);
+
+/**
+ * An image attachment is passed through untouched, so the ceiling is transport
+ * rather than pixels: it is carried base64-encoded, which adds a third, and
+ * clients reject an oversized payload outright. Nothing here can shrink a photo
+ * — that needs a decoder this deliberately does not have — so the honest move
+ * at the limit is to refuse and say how big it was.
+ */
+const MAX_IMAGE_BYTES_FOR_CHAT = 3_500_000;
+const MAX_IMAGE_EDGE_FOR_CHAT = 8000;
+
+/**
+ * Read width and height from the header, without decoding the image.
+ *
+ * Costs microseconds and needs no decoder, which is the point: a decoder for
+ * hostile input is exactly what this component should not be running. Returns
+ * null when the bytes are not a format we recognise, which is a fact worth
+ * reporting rather than guessing past.
+ */
+function imageSize(bytes: Uint8Array): { width: number; height: number } | null {
+  if (bytes.length < 24) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+
+  // PNG: IHDR is required to be the first chunk, so the size is at a fixed spot.
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+    return { width: view.getUint32(16), height: view.getUint32(20) };
+  }
+
+  // JPEG: walk the marker chain to a start-of-frame, which is the only segment
+  // carrying dimensions. C4, C8 and CC share the range but are not frames.
+  if (bytes[0] === 0xff && bytes[1] === 0xd8) {
+    let i = 2;
+    while (i < bytes.length - 9) {
+      if (bytes[i] !== 0xff) { i++; continue; }
+      const marker = bytes[i + 1];
+      if (
+        marker >= 0xc0 && marker <= 0xcf &&
+        marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc
+      ) {
+        return { height: view.getUint16(i + 5), width: view.getUint16(i + 7) };
+      }
+      const length = view.getUint16(i + 2);
+      if (length < 2) return null; // malformed; refuse to loop on it
+      i += 2 + length;
+    }
+    return null;
+  }
+
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) {
+    return { width: view.getUint16(6, true), height: view.getUint16(8, true) };
+  }
+
+  // WebP: "RIFF" .... "WEBP", then a VP8/VP8L/VP8X chunk holding the size.
+  if (
+    bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+    bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+  ) {
+    const chunk = String.fromCharCode(bytes[12], bytes[13], bytes[14], bytes[15]);
+    if (chunk === "VP8X") {
+      const w = 1 + (bytes[24] | (bytes[25] << 8) | (bytes[26] << 16));
+      const h = 1 + (bytes[27] | (bytes[28] << 8) | (bytes[29] << 16));
+      return { width: w, height: h };
+    }
+    if (chunk === "VP8 " && bytes.length > 30) {
+      return {
+        width: view.getUint16(26, true) & 0x3fff,
+        height: view.getUint16(28, true) & 0x3fff,
+      };
+    }
+    if (chunk === "VP8L" && bytes.length > 25) {
+      const bits = bytes[21] | (bytes[22] << 8) | (bytes[23] << 16) | (bytes[24] << 24);
+      return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Hand an image attachment over as something to look at.
+ *
+ * Nothing is decoded or re-encoded: the bytes go through as they arrived, which
+ * is both cheaper and safer than the PDF path, where pdf.js gives back raw
+ * pixels that have to be encoded before they can travel.
+ */
+function imageResult(
+  meta: { filename: string; mime_type: string; size: number | null },
+  bytes: Uint8Array,
+) {
+  const base = {
+    filename: meta.filename,
+    mime_type: meta.mime_type,
+    size: meta.size ?? bytes.byteLength,
+    text: "",
+  };
+  const mime = meta.mime_type.toLowerCase();
+
+  if (!VIEWABLE_IMAGE_TYPES.has(mime)) {
+    return {
+      ...base,
+      kind: "unsupported" as const,
+      images: [],
+      note: `${meta.filename} is ${meta.mime_type}, which cannot be displayed ` +
+        `in chat. JPEG, PNG, GIF and WebP can. An iPhone sends HEIC by default, ` +
+        `so asking the sender to share it as a JPEG usually solves this.`,
+    };
+  }
+
+  if (bytes.byteLength > MAX_IMAGE_BYTES_FOR_CHAT) {
+    return {
+      ...base,
+      kind: "too_large" as const,
+      images: [],
+      note: `${meta.filename} is ${(bytes.byteLength / (1024 * 1024)).toFixed(1)} MB, ` +
+        `above the ${(MAX_IMAGE_BYTES_FOR_CHAT / (1024 * 1024)).toFixed(1)} MB an ` +
+        `image can be to travel through chat. It was fetched but not shown, and ` +
+        `nothing here can shrink it — ask the sender for a smaller copy.`,
+    };
+  }
+
+  const size = imageSize(bytes);
+  if (size && Math.max(size.width, size.height) > MAX_IMAGE_EDGE_FOR_CHAT) {
+    return {
+      ...base,
+      kind: "too_large" as const,
+      images: [],
+      note: `${meta.filename} is ${size.width}x${size.height}, beyond the ` +
+        `${MAX_IMAGE_EDGE_FOR_CHAT} pixel limit for an image in chat.`,
+    };
+  }
+
+  return {
+    ...base,
+    kind: "image" as const,
+    images: [{
+      width: size?.width ?? null,
+      height: size?.height ?? null,
+      media_type: mime,
+      data: toBase64(bytes),
+    }],
+    note: size
+      ? null
+      : `The header of ${meta.filename} could not be read, so its dimensions ` +
+        `are unknown. It is attached as it arrived.`,
+  };
+}
+
+function unsupportedNote(mimeType: string, filename: string): string {
+  const mime = mimeType.toLowerCase();
+  if (mime === "application/msword" || /\.doc$/i.test(filename)) {
+    return `${filename} is a legacy Word document (.doc), a binary format this ` +
+      `cannot read and is not planned to. Ask the sender for a PDF or a .docx, ` +
+      `or open it yourself.`;
+  }
+  if (mime.startsWith("image/")) {
+    return `${filename} is an image. Reading images is not built yet, so it ` +
+      `has not been looked at.`;
+  }
+  return `Reading ${mimeType} attachments is not built yet, so the contents of ` +
+    `${filename} have not been read.`;
+}
+
 async function loadAttachment(
   token: string,
   emailId: unknown,
@@ -1396,12 +1628,29 @@ async function mapAttachment(
     size: meta.size ?? bytes.byteLength,
   };
 
+  if (isDocx(meta.mime_type, meta.filename)) {
+    const doc = await extractDocxContent(bytes).catch(() => null);
+    return {
+      ...base,
+      kind: doc ? ("text" as const) : ("unreadable" as const),
+      pages: [],
+      note: doc
+        ? `${meta.filename} is a Word document of ${doc.chars_total} characters` +
+          (doc.parts_total > 1 ? ` in ${doc.parts_total} parts` : "") +
+          `. There is no page map to give: a .docx records no pages, and its ` +
+          `heading styles are not dependable enough to divide it honestly. ` +
+          `Read it with read_attachment.`
+        : `${meta.filename} could not be opened as a Word document.`,
+    };
+  }
+
   if (meta.mime_type.toLowerCase() !== "application/pdf") {
     return {
       ...base,
       kind: "unsupported" as const,
       pages: [],
-      note: `Only PDF attachments can be mapped; this one is ${meta.mime_type}.`,
+      note: `Only PDF attachments can be mapped. ` +
+        unsupportedNote(meta.mime_type, meta.filename),
     };
   }
 
@@ -1473,14 +1722,53 @@ async function readAttachment(
     size: meta.size ?? bytes.byteLength,
   };
 
+  if (mime.startsWith("image/")) return imageResult(meta, bytes);
+
+  if (isDocx(meta.mime_type, meta.filename)) {
+    let doc;
+    try {
+      doc = await extractDocxContent(bytes, (fromPage as number) ?? 1);
+    } catch (err) {
+      console.error("docx read failed", err);
+      doc = null;
+    }
+    if (!doc) {
+      return {
+        ...base,
+        kind: "unreadable" as const,
+        text: "",
+        note: `${meta.filename} could not be opened as a Word document. It may ` +
+          `be damaged, password protected, or not really a .docx.`,
+      };
+    }
+    return {
+      ...base,
+      kind: "text" as const,
+      // Said out loud: a Word file has no pages, so from_page selects parts of
+      // the text rather than pages of a rendering.
+      unit: "part" as const,
+      text: doc.text,
+      chars_total: doc.chars_total,
+      parts_total: doc.parts_total,
+      first_page: doc.part,
+      pages_read: doc.part,
+      next_from_page: doc.next_from_page,
+      truncated: doc.next_from_page !== null,
+      images: [],
+      note: doc.parts_total > 1
+        ? `A Word document has no pages, so this is part ${doc.part} of ` +
+          `${doc.parts_total}, split by length alone — a heading may fall ` +
+          `across the join. Continue with from_page ${doc.next_from_page}.`
+        : null,
+    };
+  }
+
   if (mime !== "application/pdf") {
     return {
       ...base,
       kind: "unsupported" as const,
       text: "",
-      note:
-        `Reading ${meta.mime_type} attachments is not supported yet, so the ` +
-        `contents of this file have not been read.`,
+      note: unsupportedNote(meta.mime_type, meta.filename),
     };
   }
 
@@ -1510,6 +1798,132 @@ async function readAttachment(
     kind: scanned ? ("scan" as const) : ("text" as const),
     ...extracted,
     note: describeGaps(extracted),
+  };
+}
+
+// ------------------------------------------------------------ word documents
+
+/**
+ * Find one file inside a ZIP and inflate it.
+ *
+ * A .docx is a ZIP of XML, and the runtime already has what this needs:
+ * DecompressionStream("deflate-raw") is the same web standard the PNG encoder
+ * uses in the other direction. That is why no dependency appears here — a ZIP
+ * reader is a central-directory walk, and a library pulled in for this would be
+ * one more thing parsing hostile input beside the OAuth secrets.
+ */
+async function unzipEntry(
+  bytes: Uint8Array,
+  wanted: string,
+): Promise<Uint8Array | null> {
+  if (bytes.length < 22) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+
+  // The end-of-central-directory record sits at the back, behind a comment of
+  // unknown length, so it is found by scanning backwards for its signature.
+  let eocd = -1;
+  const floor = Math.max(0, bytes.length - 66_000);
+  for (let i = bytes.length - 22; i >= floor; i--) {
+    if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) return null;
+
+  const count = view.getUint16(eocd + 10, true);
+  let at = view.getUint32(eocd + 16, true);
+
+  for (let n = 0; n < count; n++) {
+    if (at + 46 > bytes.length) return null;
+    if (view.getUint32(at, true) !== 0x02014b50) return null;
+    const method = view.getUint16(at + 10, true);
+    const compressed = view.getUint32(at + 20, true);
+    const nameLength = view.getUint16(at + 28, true);
+    const extraLength = view.getUint16(at + 30, true);
+    const commentLength = view.getUint16(at + 32, true);
+    const localOffset = view.getUint32(at + 42, true);
+    const name = new TextDecoder().decode(
+      bytes.subarray(at + 46, at + 46 + nameLength),
+    );
+
+    if (name === wanted) {
+      if (localOffset + 30 > bytes.length) return null;
+      const localName = view.getUint16(localOffset + 26, true);
+      const localExtra = view.getUint16(localOffset + 28, true);
+      const start = localOffset + 30 + localName + localExtra;
+      // Copied rather than a view: a subarray is typed over ArrayBufferLike,
+      // which a Blob will not take, and the copy also keeps the caller's bytes
+      // whole if the stream ever detaches them.
+      const data = new Uint8Array(bytes.subarray(start, start + compressed));
+      if (method === 0) return data; // stored rather than deflated
+      if (method !== 8) return null; // anything else is not worth supporting
+      const inflated = await new Response(
+        new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw")),
+      ).arrayBuffer();
+      return new Uint8Array(inflated);
+    }
+    at += 46 + nameLength + extraLength + commentLength;
+  }
+  return null;
+}
+
+/**
+ * Turn word/document.xml into readable text.
+ *
+ * Paragraphs are the only structure worth trusting. Heading styles are not:
+ * measured against eight real documents, one used Word's own names, one used
+ * custom ones, and the rest carried no style at all on text that plainly reads
+ * as a heading. So nothing here claims to know where the sections are, because
+ * that would be a guess wearing the clothes of structure.
+ */
+function docxToText(xml: string): string {
+  const paragraphs = [...xml.matchAll(/<w:p[ >][\s\S]*?<\/w:p>/g)].map((m) => m[0]);
+  const lines = paragraphs.map((paragraph) =>
+    // <w:t> exactly, not "any tag starting with w:t". The loose form also
+    // matches <w:tbl>, <w:tblPr>, <w:tc> and <w:tr>, so a document containing a
+    // table returned its own markup as prose — invisible until a file with a
+    // table was tried, since ordinary paragraphs have none of those.
+    [...paragraph.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)]
+      .map((m) => m[1])
+      .join("")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      // &amp; last, so "&amp;lt;" does not become "<".
+      .replace(/&amp;/g, "&")
+      .replace(/[ \t]+/g, " ")
+      .trim()
+  );
+
+  return lines
+    .filter((line, i) => line !== "" || lines[i - 1] !== "")
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * Read a Word document, in parts only when it is too long for one answer.
+ *
+ * A .docx has no pages — pagination is what Word does when rendering, not
+ * something the file records — so nothing here invents them. Measured against
+ * eight real documents, seven fitted in a single answer, so parts are the
+ * exception rather than the shape of the feature. The response says its unit is
+ * a part, because reusing from_page silently would be its own small lie.
+ */
+async function extractDocxContent(bytes: Uint8Array, fromPart = 1) {
+  const xml = await unzipEntry(bytes, "word/document.xml");
+  if (!xml) return null;
+
+  const text = docxToText(new TextDecoder().decode(xml));
+  const parts = Math.max(1, Math.ceil(text.length / MAX_TEXT_CHARS));
+  const part = Math.min(Math.max(1, Math.trunc(fromPart)), parts);
+
+  return {
+    text: text.slice((part - 1) * MAX_TEXT_CHARS, part * MAX_TEXT_CHARS),
+    chars_total: text.length,
+    parts_total: parts,
+    part,
+    next_from_page: part < parts ? part + 1 : null,
   };
 }
 
@@ -1829,6 +2243,11 @@ export {
   connectionFailure,
   decodeBytes,
   describeGaps,
+  docxToText,
+  extractDocxContent,
+  imageResult,
+  imageSize,
+  unsupportedNote,
   extractAttachments,
   extractPdfContent,
   extractPdfMap,
