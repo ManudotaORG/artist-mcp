@@ -301,6 +301,26 @@ const PublicHome = ({ installChannel }: PublicHomeProps) => (
           No notes, messages, or calendars are changed.
         </Typography>
       </div>
+      <div className="mt-5 border border-signal-red p-4">
+        <Typography as="h3" variant="label" color="red">
+          WHAT READ-ONLY DOES NOT COVER
+        </Typography>
+        <Typography as="p" variant="small" className="mt-3">
+          Anyone holding our production database credential can technically reach the OneNote pages
+          of any connected account. That is how an installed MCP keeps working while you are away,
+          and encryption protects a stolen backup rather than a live credential. Today this is
+          bounded by policy and audit, not by cryptography.
+        </Typography>
+        <Typography as="p" variant="small" className="mt-3">
+          Connect an account only if you are willing for a maintainer to be able to read it.
+        </Typography>
+        <a
+          href="https://github.com/ManudotaORG/artist-mcp/issues/22"
+          className="mt-3 inline-block font-mono text-sm font-bold text-signal-yellow underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-signal-yellow"
+        >
+          WHAT WE ARE DOING ABOUT IT →
+        </a>
+      </div>
     </section>
   </>
 );
