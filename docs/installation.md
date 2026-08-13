@@ -100,17 +100,33 @@ Then choose a returned page and ask:
 
 > Read the note titled “Test”.
 
-The MCP server exposes four read-only tools:
+The MCP server exposes eight read-only tools.
+
+OneNote holds the working unit:
 
 - `list_notes` — returns page titles, section names, modification dates, and
   OneNote page IDs.
 - `read_note` — accepts a page ID returned by `list_notes` and returns readable
   page text.
+
+Google is supporting evidence for a page, never a working unit of its own, and
+needs a separate Google connection:
+
+- `list_emails` — searches Gmail with its own query syntax and returns subject,
+  sender, date, and snippet.
+- `read_email` — accepts an id from `list_emails` and returns the message body.
+- `list_events` — lists Google Calendar events in a time window, with recurring
+  occurrences expanded and flagged.
+- `read_event` — accepts an id from `list_events` and returns description and
+  attendees.
+
+The workflow pack:
+
 - `list_agent_workflows` — lists the available artist roles and project types.
 - `load_agent_workflow` — loads one checksummed Markdown playbook.
 
-The local MCP process never receives a Microsoft access token or a Supabase
-service key. It sends only the connection key and an allowed operation to the
+The local MCP process never receives a Microsoft or Google access token, or a
+Supabase service key. It sends only the connection key and an allowed operation to the
 hosted Edge Function.
 
 ## 5. Install the workflow files in a project

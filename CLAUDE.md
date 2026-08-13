@@ -14,10 +14,12 @@ project types are loaded at runtime, and every result stays in chat. If you find
 yourself adding writes, sends, or synchronization, stop.
 
 Sources are read-only and deliberately few. OneNote holds the working unit;
-Gmail is **supporting evidence only** — it corroborates or fills gaps in a page
-and is never itself a working unit. That asymmetry is the whole reason a second
-source did not dissolve the one-page-one-unit rule that every role and playbook
-depends on. Adding a third source means re-deciding it, not repeating it.
+Gmail and Google Calendar are **supporting evidence only** — they corroborate
+or fill gaps in a page and are never themselves a working unit. That asymmetry
+is the whole reason further sources did not dissolve the one-page-one-unit rule
+that every role and playbook depends on. Each new source means re-deciding it,
+not repeating it: Google Tasks was considered and left out, because a task list
+is a rival system of record for the work itself rather than evidence about it.
 
 ## Layout
 

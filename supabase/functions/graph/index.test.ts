@@ -8,7 +8,14 @@
  * Run with: deno test supabase/functions/graph/index.test.ts
  */
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { decodeBody, extractText, htmlToText } from "./index.ts";
+import {
+  decodeBody,
+  eventTime,
+  extractText,
+  htmlToText,
+  shapeEvent,
+  thinRecurring,
+} from "./index.ts";
 
 /** Encode as Gmail does: base64url, padding stripped. */
 const gmailEncode = (text: string): string =>
@@ -107,4 +114,106 @@ Deno.test("extractText tolerates a missing payload", () => {
 Deno.test("htmlToText decodes the entities Gmail and OneNote both emit", () => {
   // Shared with the OneNote path deliberately; a second stripper would drift.
   assertEquals(htmlToText("<p>M&#252;ller &amp; Sons</p>"), "Müller & Sons");
+});
+
+// ------------------------------------------------------------ calendar shaping
+
+Deno.test("eventTime reads a timed event", () => {
+  assertEquals(
+    eventTime({ dateTime: "2026-09-14T19:30:00+02:00", timeZone: "Europe/Madrid" }),
+    { value: "2026-09-14T19:30:00+02:00", all_day: false, time_zone: "Europe/Madrid" },
+  );
+});
+
+Deno.test("eventTime reads an all-day event", () => {
+  // A festival or tour block arrives as `date`, never `dateTime`. Code that
+  // reads only dateTime returns null here and the event looks contentless.
+  assertEquals(
+    eventTime({ date: "2026-09-14" }),
+    { value: "2026-09-14", all_day: true, time_zone: null },
+  );
+});
+
+Deno.test("eventTime tolerates a missing time", () => {
+  assertEquals(eventTime(undefined), { value: null, all_day: false, time_zone: null });
+});
+
+Deno.test("shapeEvent keeps an all-day event's dates", () => {
+  const e = shapeEvent({
+    id: "abc",
+    summary: "Tour block",
+    start: { date: "2026-09-14" },
+    end: { date: "2026-09-18" },
+  });
+  assertEquals(e.start, "2026-09-14");
+  assertEquals(e.end, "2026-09-18");
+  assertEquals(e.all_day, true);
+});
+
+Deno.test("shapeEvent flags a recurring instance", () => {
+  // "every Tuesday" and "this Tuesday" are different claims about a page, so
+  // the distinction has to survive into the output.
+  const once = shapeEvent({ id: "a", start: { dateTime: "2026-09-14T10:00:00Z" } });
+  const series = shapeEvent({
+    id: "b_20260914T100000Z",
+    recurringEventId: "b",
+    start: { dateTime: "2026-09-14T10:00:00Z" },
+  });
+  assertEquals(once.recurring, false);
+  assertEquals(series.recurring, true);
+});
+
+Deno.test("shapeEvent falls back to a placeholder title", () => {
+  assertEquals(shapeEvent({ id: "a" }).summary, "(no title)");
+});
+
+Deno.test("shapeEvent carries the time zone from whichever end has one", () => {
+  const e = shapeEvent({
+    id: "a",
+    start: { dateTime: "2026-09-14T19:30:00+02:00" },
+    end: { dateTime: "2026-09-14T22:00:00+02:00", timeZone: "Europe/Madrid" },
+  });
+  assertEquals(e.time_zone, "Europe/Madrid");
+});
+
+Deno.test("shapeEvent preserves status so a cancelled event reads as cancelled", () => {
+  assertEquals(shapeEvent({ id: "a", status: "cancelled" }).status, "cancelled");
+});
+
+Deno.test("thinRecurring caps one series without touching single events", () => {
+  // The shape a real calendar produced: a weekly rehearsal expanded to 50
+  // occurrences and pushed every other event off the page.
+  const events = [
+    { id: "concert", start: { dateTime: "2026-08-14T15:00:00Z" } },
+    ...Array.from({ length: 50 }, (_, i) => ({
+      id: `r_${i}`,
+      recurringEventId: "rehearsal",
+      start: { dateTime: `2026-09-${String((i % 28) + 1).padStart(2, "0")}T14:00:00Z` },
+    })),
+    { id: "tour", start: { date: "2026-08-20" } },
+  ];
+
+  const { kept, omitted } = thinRecurring(events, 3);
+  assertEquals(omitted, 47);
+  assertEquals(kept.filter((e) => e.recurringEventId).length, 3);
+  // Both one-off events survive, which is the point of the exercise.
+  assertEquals(kept.some((e) => e.id === "concert"), true);
+  assertEquals(kept.some((e) => e.id === "tour"), true);
+});
+
+Deno.test("thinRecurring counts each series separately", () => {
+  const events = [
+    ...Array.from({ length: 5 }, (_, i) => ({ id: `a${i}`, recurringEventId: "a" })),
+    ...Array.from({ length: 5 }, (_, i) => ({ id: `b${i}`, recurringEventId: "b" })),
+  ];
+  const { kept, omitted } = thinRecurring(events, 2);
+  assertEquals(kept.length, 4);
+  assertEquals(omitted, 6);
+});
+
+Deno.test("thinRecurring leaves a calendar of one-offs alone", () => {
+  const events = Array.from({ length: 10 }, (_, i) => ({ id: `x${i}` }));
+  const { kept, omitted } = thinRecurring(events, 3);
+  assertEquals(kept.length, 10);
+  assertEquals(omitted, 0);
 });

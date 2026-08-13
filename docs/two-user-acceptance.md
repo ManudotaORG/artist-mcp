@@ -19,6 +19,16 @@ or note contents into GitHub, chat, screenshots, or the evidence record.
 The marker can be a harmless sentence created only for this test. Record only
 whether it was found, never the marker itself.
 
+OneNote shares whole notebooks, not pages, so a page cannot be made private
+inside a notebook the other account already has. The private page needs its own
+unshared notebook.
+
+Do not treat overlapping page lists as evidence of a leak. Two accounts sharing
+a notebook see the same pages because Microsoft intends them to; a run on
+2026-08-12 found sixteen of seventeen pages shared, where an intersection check
+would have reported an isolation failure that was not one. The assertion needs a
+page the other account genuinely cannot reach.
+
 ## User A baseline
 
 On User A's machine:
