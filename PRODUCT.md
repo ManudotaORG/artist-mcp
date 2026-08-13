@@ -36,6 +36,7 @@ Users move between live performance, studio work, and practical production admin
 - Results appear only in chat.
 - No writes to any source: no OneNote edits, message sending, replying, drafting, labelling, calendar creation or editing, RSVP responses, background jobs, synchronization, or workflow state in Supabase.
 - No availability computation or scheduling suggestions; reading a calendar is not planning against it.
+- Operator access is a live limit, not a solved problem: the production service role resolves any connection key to the credential behind it, so anyone holding that credential can technically reach connected account data. This is inherent to refreshing tokens while the user is absent. Encryption at rest guards a stolen database dump and is not a control against a live credential. Bounded today by policy and audit rather than cryptography, stated on the front page of the README before anyone connects, and tracked as hardening in #22.
 - The existing authentication, connection-key, Claude Desktop, and Codex installation flows must remain functional.
 
 ## Brand Commitments
@@ -57,7 +58,7 @@ Users move between live performance, studio work, and practical production admin
 - Read live source context instead of creating a stale copy.
 - Make every external action human-reviewed and human-executed.
 - Keep workflow policy legible and changeable as Markdown.
-- Explain trust boundaries in plain language.
+- Explain trust boundaries in plain language, including the ones not yet solved. Never claim a stronger guarantee than the architecture provides.
 
 ## Accessibility & Inclusion
 
