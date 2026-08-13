@@ -100,7 +100,7 @@ Then choose a returned page and ask:
 
 > Read the note titled “Test”.
 
-The MCP server exposes nine read-only tools.
+The MCP server exposes ten read-only tools.
 
 OneNote holds the working unit:
 
@@ -118,6 +118,9 @@ needs a separate Google connection:
   plus a list of what is attached by name, type and size, each with a short id
   such as `2` or `1.2` giving its position in the message. Attachment contents
   are not read.
+- `map_attachment` — accepts an attachment id from `read_email` and returns what
+  is on each page of a PDF — length, an apparent heading, and whether the page is
+  a picture — without reading it. Use it to choose pages before reading them.
 - `read_attachment` — accepts an attachment id from `read_email` and extracts
   the text of a PDF. Diagrams such as stage plans come back as images to look
   at, since the text does not describe them; anything that could be neither

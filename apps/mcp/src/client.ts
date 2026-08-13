@@ -30,6 +30,7 @@ export type Operation =
   | 'list_emails'
   | 'read_email'
   | 'read_attachment'
+  | 'map_attachment'
   | 'list_events'
   | 'read_event'
   | 'verify';

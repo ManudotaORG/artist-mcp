@@ -9,7 +9,8 @@
  * a field.
  *
  * Request:  { op: "list_notes" | "read_note" | "list_emails" | "read_email"
- *                 | "read_attachment" | "list_events" | "read_event" | "verify",
+ *                 | "read_attachment" | "map_attachment" | "list_events"
+ *                 | "read_event" | "verify",
  *              note_id?, email_id?, attachment_id?, from_page?, page_count?,
  *              event_id?,
  *              calendar_id?, query?, time_min?, time_max? }
@@ -60,6 +61,7 @@ const OPERATIONS = new Set([
   "list_emails",
   "read_email",
   "read_attachment",
+  "map_attachment",
   "list_events",
   "read_event",
   "verify",
@@ -72,6 +74,7 @@ const PROVIDER_FOR: Record<string, "microsoft" | "google"> = {
   list_emails: "google",
   read_email: "google",
   read_attachment: "google",
+  map_attachment: "google",
   list_events: "google",
   read_event: "google",
 };
@@ -892,6 +895,128 @@ type PdfImage = {
  * unpdf is imported here rather than at module load so that reading a note or
  * an email never pays for a PDF parser it does not use.
  */
+/**
+ * Where things are in a document, so pages can be chosen rather than walked.
+ *
+ * Reading a long contract from page 1 to find one clause spends a call and a
+ * chunk of context per few pages. The information needed to go straight there
+ * is nearly free: the page loop already reads text, and a map keeps almost none
+ * of it — a character count, an apparent heading, and whether the page is a
+ * picture.
+ *
+ * Headings are guessed from font size, which is the only structural signal
+ * available without a layout model: an item set larger than the page's median
+ * is a candidate. That alone picks the letterhead, because a running header is
+ * also set large, so anything repeating across most pages is dropped — the same
+ * reasoning that excludes a repeated logo from the images.
+ *
+ * A scan cannot be mapped. There is no text to summarise, so every page comes
+ * back as a picture and the caller is told plainly rather than handed a list of
+ * empty rows.
+ */
+/**
+ * Compare running headers by shape, not by their text.
+ *
+ * "(page 1 / 7)" and "(page 2 / 7)" are the same furniture wearing different
+ * numbers, and counting them literally makes each one unique, so the repetition
+ * filter never sees them. Folding digits together is what makes a page counter
+ * recognisable as boilerplate.
+ */
+/**
+ * A heading is noticeably larger than the text around it, not marginally.
+ *
+ * Bold body copy sits a point above the median and would otherwise win on a
+ * page with no real heading, offering a sentence fragment as the title. At this
+ * ratio the section headings of a measured rider (13-14pt against an 11pt
+ * median) qualify and emphasised prose at 12pt does not, so a cover page
+ * honestly reports no heading instead of inventing one.
+ */
+const HEADING_SIZE_RATIO = 1.15;
+
+const boilerplateKey = (text: string) => text.toLowerCase().replace(/\d+/g, "#");
+
+async function extractPdfMap(bytes: Uint8Array) {
+  const { getDocumentProxy } = await import("npm:unpdf@1");
+  const pdf = await getDocumentProxy(new Uint8Array(bytes));
+
+  type Candidate = { text: string; size: number };
+  const pages: {
+    page: number;
+    chars: number;
+    heading: string | null;
+    image_only: boolean;
+  }[] = [];
+  const candidates: Candidate[][] = [];
+  // How many pages each string appears on, which is what marks it boilerplate.
+  const appearances = new Map<string, number>();
+
+  for (let n = 1; n <= pdf.numPages; n++) {
+    const page = await pdf.getPage(n);
+    const content = await page.getTextContent();
+    const items = (content.items as { str?: string; transform?: number[] }[])
+      .map((item) => ({
+        text: (item.str ?? "").trim(),
+        // transform[3] is the vertical scale, which is the rendered font size.
+        size: Math.abs(item.transform?.[3] ?? 0),
+      }))
+      .filter((item) => item.text.length > 0);
+    page.cleanup();
+
+    const chars = items.map((i) => i.text).join(" ").replace(/[ \t]+/g, " ").trim().length;
+    const sizes = items.map((i) => i.size).sort((a, b) => a - b);
+    const median = sizes[Math.floor(sizes.length / 2)] ?? 0;
+
+    // Emphasised body text is also set large, so length does the rest of the
+    // work: a heading is short. Without this a bold sentence in the middle of a
+    // paragraph is offered as the page's title.
+    const large = items.filter(
+      (i) =>
+        i.size >= median * HEADING_SIZE_RATIO &&
+        i.text.length >= 3 && i.text.length <= 80,
+    );
+
+    // Count every large item, not only the few in contention for the heading.
+    // A running header loses to the section titles on a busy page, so counting
+    // just the top few means it is seen on too few pages to look repetitive —
+    // which is how a letterhead ended up as page one's heading.
+    for (const text of new Set(large.map((c) => boilerplateKey(c.text)))) {
+      appearances.set(text, (appearances.get(text) ?? 0) + 1);
+    }
+
+    const pageCandidates = [...large].sort((a, b) => b.size - a.size).slice(0, 6);
+
+    candidates.push(pageCandidates);
+    pages.push({
+      page: n,
+      chars,
+      heading: null,
+      image_only: chars < MIN_PAGE_CHARS,
+    });
+  }
+
+  // Anything on more than half the pages is furniture, not a heading. The
+  // threshold needs at least two sightings so a two-page document does not
+  // discard its only real heading.
+  const boilerplate = new Set(
+    [...appearances.entries()]
+      .filter(([, count]) => count >= Math.max(2, Math.ceil(pdf.numPages / 2)))
+      .map(([text]) => text),
+  );
+
+  pages.forEach((entry, i) => {
+    const heading = candidates[i].find(
+      (c) => !boilerplate.has(boilerplateKey(c.text)),
+    );
+    entry.heading = heading ? heading.text.slice(0, 120) : null;
+  });
+
+  return {
+    pages_total: pdf.numPages,
+    pages,
+    scanned: pages.every((p) => p.image_only),
+  };
+}
+
 async function extractPdfContent(
   bytes: Uint8Array,
   fromPage = 1,
@@ -1090,7 +1215,12 @@ function describeGaps(extracted: {
         `and ${extracted.images.length} of its ${extracted.pages_total} ` +
         `${extracted.pages_total === 1 ? "page is" : "pages are"} attached ` +
         `below. Read ${extracted.images.length === 1 ? "it" : "them"} as the ` +
-        `contents, and treat the rest of the document as unread.`
+        `contents` +
+        // Only when there is a rest. A one-page file returned whole was being
+        // told to treat the remainder as unread, of a document with none.
+        (extracted.images.length < extracted.pages_total
+          ? `, and treat the rest of the document as unread.`
+          : `.`)
       : null,
     !scanned && recovered.length > 0
       ? `${list(recovered)} carried little or no text and ${
@@ -1170,6 +1300,143 @@ function describeGaps(extracted: {
  * from being read out of a message it does not belong to — a property of the
  * lookup rather than a check bolted on beside it.
  */
+/**
+ * Resolve an attachment and fetch its bytes, or report that it is too large.
+ *
+ * Shared by reading and mapping, because both need the same three things: a
+ * live Gmail id resolved from the stable MIME position, the filename and type
+ * that the attachment endpoint does not return, and the size — so an oversized
+ * file is refused before its bytes are moved rather than after.
+ */
+async function loadAttachment(
+  token: string,
+  emailId: unknown,
+  attachmentId: unknown,
+): Promise<
+  | { oversized: true; meta: AttachmentMeta }
+  | { oversized: false; meta: AttachmentMeta; bytes: Uint8Array }
+> {
+  if (typeof emailId !== "string" || !GMAIL_ID.test(emailId)) {
+    throw new HttpError(400, "email_id is missing or malformed.");
+  }
+  if (typeof attachmentId !== "string" || !ATTACHMENT_ID.test(attachmentId)) {
+    throw new HttpError(400, "attachment_id is missing or malformed.");
+  }
+  const id = encodeURIComponent(emailId);
+
+  const msgRes = await gmailGet(`/users/me/messages/${id}?format=full`, token);
+  const msg = (await msgRes.json()) as GmailMessage;
+  const attachments = extractAttachments(msg.payload);
+  const meta = attachments.find((a) => a.id === attachmentId);
+  if (!meta) {
+    // Name what is there. A bare "not found" invites the caller to retry with
+    // the same id, and this is the one error a caller can actually act on.
+    const available = attachments.length
+      ? attachments.map((a) => `${a.id} (${a.filename})`).join(", ")
+      : "none";
+    throw new HttpError(
+      404,
+      `That message has no attachment ${attachmentId}. Available: ${available}.`,
+    );
+  }
+
+  if (meta.size !== null && meta.size > MAX_ATTACHMENT_BYTES) {
+    return { oversized: true, meta };
+  }
+
+  const attRes = await gmailGet(
+    `/users/me/messages/${id}/attachments/${encodeURIComponent(meta.gmail_id)}`,
+    token,
+  );
+  const payload = (await attRes.json()) as { data?: string; size?: number };
+  if (typeof payload.data !== "string") {
+    throw new HttpError(502, "Gmail returned no data for that attachment.");
+  }
+  return { oversized: false, meta, bytes: decodeBytes(payload.data) };
+}
+
+type AttachmentMeta = ReturnType<typeof extractAttachments>[number];
+
+/** The refusal, worded once so reading and mapping cannot drift apart. */
+function tooLargeResult(meta: AttachmentMeta) {
+  return {
+    filename: meta.filename,
+    mime_type: meta.mime_type,
+    size: meta.size ?? 0,
+    kind: "too_large" as const,
+    text: "",
+    note:
+      // One decimal: rounding 13.8 to "14" overstates a file sitting near
+      // the limit, and near the limit is exactly when the number is read.
+      `This file is ${((meta.size ?? 0) / (1024 * 1024)).toFixed(1)} MB, above the ` +
+      `${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB limit for reading in chat. ` +
+      `It was not fetched.`,
+  };
+}
+
+/**
+ * Map an attachment: what is on each page, without reading any of it.
+ *
+ * The answer to "what does it say about cancellation" should not be a walk from
+ * page one. This costs one text pass and returns a few hundred bytes, so a
+ * caller can name the pages worth reading and then read only those.
+ */
+async function mapAttachment(
+  token: string,
+  emailId: unknown,
+  attachmentId: unknown,
+) {
+  const loaded = await loadAttachment(token, emailId, attachmentId);
+  if (loaded.oversized) return tooLargeResult(loaded.meta);
+  const { meta, bytes } = loaded;
+
+  const base = {
+    filename: meta.filename,
+    mime_type: meta.mime_type,
+    size: meta.size ?? bytes.byteLength,
+  };
+
+  if (meta.mime_type.toLowerCase() !== "application/pdf") {
+    return {
+      ...base,
+      kind: "unsupported" as const,
+      pages: [],
+      note: `Only PDF attachments can be mapped; this one is ${meta.mime_type}.`,
+    };
+  }
+
+  let map;
+  try {
+    map = await extractPdfMap(bytes);
+  } catch (err) {
+    console.error("pdf map failed", err);
+    return {
+      ...base,
+      kind: "unreadable" as const,
+      pages: [],
+      note:
+        "This PDF could not be parsed. It may be encrypted, password " +
+        "protected, or damaged.",
+    };
+  }
+
+  return {
+    ...base,
+    kind: map.scanned ? ("scan" as const) : ("text" as const),
+    pages_total: map.pages_total,
+    pages: map.pages,
+    note: map.scanned
+      ? (map.pages_total === 1
+        ? `This file is a single page image, so there is nothing to map. `
+        : `Every page of this ${map.pages_total}-page file is a picture, so ` +
+          `there is nothing to map. `) +
+        `A scan cannot be searched without reading the pages themselves — ask ` +
+        `read_attachment for them.`
+      : `${map.pages_total} pages. Use read_attachment with from_page and ` +
+        `page_count to read the ones that matter, rather than reading it all.`,
+  };
+}
+
 async function readAttachment(
   token: string,
   emailId: unknown,
@@ -1195,49 +1462,9 @@ async function readAttachment(
   ) {
     throw new HttpError(400, "page_count must be a number of pages, 1 or greater.");
   }
-  const id = encodeURIComponent(emailId);
-
-  const msgRes = await gmailGet(`/users/me/messages/${id}?format=full`, token);
-  const msg = (await msgRes.json()) as GmailMessage;
-  const attachments = extractAttachments(msg.payload);
-  const meta = attachments.find((a) => a.id === attachmentId);
-  if (!meta) {
-    // Name what is there. A bare "not found" invites the caller to retry with
-    // the same id, and this is the one error a caller can actually act on.
-    const available = attachments.length
-      ? attachments.map((a) => `${a.id} (${a.filename})`).join(", ")
-      : "none";
-    throw new HttpError(
-      404,
-      `That message has no attachment ${attachmentId}. Available: ${available}.`,
-    );
-  }
-
-  if (meta.size !== null && meta.size > MAX_ATTACHMENT_BYTES) {
-    return {
-      filename: meta.filename,
-      mime_type: meta.mime_type,
-      size: meta.size,
-      kind: "too_large" as const,
-      text: "",
-      note:
-        // One decimal: rounding 13.8 to "14" overstates a file sitting near
-        // the limit, and near the limit is exactly when the number is read.
-        `This file is ${(meta.size / (1024 * 1024)).toFixed(1)} MB, above the ` +
-        `${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB limit for reading in chat. ` +
-        `It was not fetched.`,
-    };
-  }
-
-  const attRes = await gmailGet(
-    `/users/me/messages/${id}/attachments/${encodeURIComponent(meta.gmail_id)}`,
-    token,
-  );
-  const payload = (await attRes.json()) as { data?: string; size?: number };
-  if (typeof payload.data !== "string") {
-    throw new HttpError(502, "Gmail returned no data for that attachment.");
-  }
-  const bytes = decodeBytes(payload.data);
+  const loaded = await loadAttachment(token, emailId, attachmentId);
+  if (loaded.oversized) return tooLargeResult(loaded.meta);
+  const { meta, bytes } = loaded;
 
   const mime = meta.mime_type.toLowerCase();
   const base = {
@@ -1550,6 +1777,9 @@ export const handleRequest = async (req: Request): Promise<Response> => {
       case "read_email":
         result = await readEmail(token, body.email_id);
         break;
+      case "map_attachment":
+        result = await mapAttachment(token, body.email_id, body.attachment_id);
+        break;
       case "read_attachment":
         result = await readAttachment(
           token,
@@ -1601,6 +1831,7 @@ export {
   describeGaps,
   extractAttachments,
   extractPdfContent,
+  extractPdfMap,
   extractText,
   htmlToText,
   eventTime,
