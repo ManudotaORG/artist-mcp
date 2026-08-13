@@ -500,6 +500,31 @@ Deno.test("describeGaps still names unrecovered pages of a partly recovered scan
   assertStringIncludes(note!, "Pages 2, 3");
 });
 
+Deno.test("describeGaps does not claim recovery failed on pages it never searched", () => {
+  // An 8-page scan: the image cap stops the search at page 3, so pages 4-8
+  // were never attempted. Reporting them as "could not be recovered" is false,
+  // contradicts the sentence that says they were not searched, and is the more
+  // reassuring of the two readings.
+  const note = describeGaps(extraction({
+    text: "",
+    pages_total: 8,
+    pages_read: 8,
+    pages_without_text: [1, 2, 3, 4, 5, 6, 7, 8],
+    pages_searched_for_images: 3,
+    images: [1, 2, 3].map((page) => ({
+      page,
+      width: 900,
+      height: 1200,
+      media_type: "image/png" as const,
+      data: "",
+    })),
+  }));
+  assertEquals(note!.includes("could not be recovered"), false);
+  assertStringIncludes(note!, "pages 4 to 8 were not searched");
+  // And it should say how much of the document actually came back.
+  assertStringIncludes(note!, "3 of its 8 pages are attached");
+});
+
 Deno.test("describeGaps calls a scan a scan", () => {
   const note = describeGaps(extraction({
     text: "",

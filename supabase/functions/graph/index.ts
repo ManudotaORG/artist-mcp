@@ -956,7 +956,14 @@ function describeGaps(extracted: {
   const list = (pages: number[]) =>
     `${pages.length === 1 ? "Page" : "Pages"} ${pages.join(", ")}`;
 
-  const blind = extracted.pages_without_text.filter((p) => !shown.has(p));
+  // "Could not be recovered" must mean tried and failed. A page past the point
+  // where the image search stopped was never attempted, and saying recovery
+  // failed there is both false and the more reassuring of the two readings —
+  // it implies someone looked. Those pages belong to the "not searched"
+  // sentence alone.
+  const blind = extracted.pages_without_text.filter(
+    (p) => !shown.has(p) && p <= extracted.pages_searched_for_images,
+  );
   const recovered = extracted.pages_without_text.filter((p) => shown.has(p));
   const alongside = [...shown].filter(
     (p) => !extracted.pages_without_text.includes(p),
@@ -969,9 +976,12 @@ function describeGaps(extracted: {
         "not been read."
       : null,
     scanned && extracted.images.length > 0
-      ? "No text layer: this file is page images rather than text — a scan, " +
-        "or something exported as a picture. Those images are attached below; " +
-        "read them as the contents."
+      ? `No text layer: this file is page images rather than text — a scan, ` +
+        `or something exported as a picture. Its contents are the pictures, ` +
+        `and ${extracted.images.length} of its ${extracted.pages_total} ` +
+        `${extracted.pages_total === 1 ? "page is" : "pages are"} attached ` +
+        `below. Read ${extracted.images.length === 1 ? "it" : "them"} as the ` +
+        `contents, and treat the rest of the document as unread.`
       : null,
     !scanned && recovered.length > 0
       ? `${list(recovered)} carried little or no text and ${
