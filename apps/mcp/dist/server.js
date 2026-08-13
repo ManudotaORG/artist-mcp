@@ -12,6 +12,14 @@ const when = (e) => {
     const zone = e.time_zone ? ` ${e.time_zone}` : '';
     return `${e.start}${e.end ? ` → ${e.end}` : ''}${zone}`;
 };
+/** Size is a judgement aid — "2.4 MB" decides a read where "2517892" does not. */
+const describeSize = (bytes) => {
+    if (bytes < 1024)
+        return `${bytes} B`;
+    if (bytes < 1024 * 1024)
+        return `${Math.round(bytes / 1024)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
 const serverVersion = '0.5.0'; // x-release-please-version
 const errorResult = (err) => {
     const message = err instanceof GraphError ? err.message : `Unexpected error: ${err}`;
@@ -191,8 +199,9 @@ const runServer = async () => {
         }
     });
     server.tool("read_email", "Read one Gmail message in full, including its body. Takes the id from " +
-        "list_emails. Read-only: this never sends, replies, drafts, labels, or " +
-        "deletes anything.", {
+        "list_emails. Any attachments are listed by name, type and size but not " +
+        "read — say what is attached, never what it says. Read-only: this never " +
+        "sends, replies, drafts, labels, or deletes anything.", {
         email_id: z
             .string()
             .describe("The id of the message, as returned by list_emails"),
@@ -207,7 +216,23 @@ const runServer = async () => {
                 ...(mail.cc ? [`Cc: ${mail.cc}`] : []),
                 `Date: ${mail.date ?? "unknown"}`,
             ].join("\n");
-            return { content: [{ type: "text", text: `${head}\n\n${mail.text}` }] };
+            // The manifest says what exists, not what it says. Nothing here is
+            // fetched: the ids are handles for a later, deliberate read.
+            const attached = mail.attachments ?? [];
+            const tail = attached.length
+                ? [
+                    "",
+                    "## Attachments",
+                    "",
+                    "Not read — listed only. Their contents are not available yet.",
+                    "",
+                    ...attached.map((a) => `- ${a.filename} (${a.mime_type}` +
+                        `${a.size === null ? "" : `, ${describeSize(a.size)}`}) — id: ${a.id}`),
+                ].join("\n")
+                : "";
+            return {
+                content: [{ type: "text", text: `${head}\n\n${mail.text}${tail}` }],
+            };
         }
         catch (err) {
             return errorResult(err);

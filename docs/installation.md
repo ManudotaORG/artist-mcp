@@ -114,7 +114,9 @@ needs a separate Google connection:
 
 - `list_emails` — searches Gmail with its own query syntax and returns subject,
   sender, date, and snippet.
-- `read_email` — accepts an id from `list_emails` and returns the message body.
+- `read_email` — accepts an id from `list_emails` and returns the message body,
+  plus a list of what is attached by name, type and size. Attachment contents
+  are not read.
 - `list_events` — lists Google Calendar events in a time window, with recurring
   occurrences expanded and flagged.
 - `read_event` — accepts an id from `list_events` and returns description and

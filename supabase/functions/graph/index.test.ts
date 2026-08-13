@@ -11,6 +11,7 @@ import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import {
   decodeBody,
   eventTime,
+  extractAttachments,
   extractText,
   htmlToText,
   shapeEvent,
@@ -109,6 +110,55 @@ Deno.test("extractText returns empty string for an attachment-only message", () 
 
 Deno.test("extractText tolerates a missing payload", () => {
   assertEquals(extractText(undefined), "");
+});
+
+Deno.test("extractAttachments finds attachments nested beside the body", () => {
+  const part = {
+    mimeType: "multipart/mixed",
+    parts: [
+      {
+        mimeType: "multipart/alternative",
+        parts: [
+          { mimeType: "text/plain", body: { data: gmailEncode("Contract attached.") } },
+        ],
+      },
+      {
+        mimeType: "application/pdf",
+        filename: "contract.pdf",
+        body: { size: 240_000, attachmentId: "att-1" },
+      },
+    ],
+  };
+  assertEquals(extractAttachments(part), [
+    { id: "att-1", filename: "contract.pdf", mime_type: "application/pdf", size: 240_000 },
+  ]);
+});
+
+Deno.test("extractAttachments ignores body parts, which carry no attachmentId", () => {
+  const part = {
+    mimeType: "multipart/alternative",
+    parts: [
+      { mimeType: "text/plain", body: { data: gmailEncode("No files here.") } },
+      { mimeType: "text/html", body: { data: gmailEncode("<p>No files here.</p>") } },
+    ],
+  };
+  assertEquals(extractAttachments(part), []);
+});
+
+Deno.test("extractAttachments names an attachment that arrives without a filename", () => {
+  // Some senders omit it; "(unnamed)" is still fetchable by id, an empty
+  // string in a list of files is not.
+  const part = {
+    mimeType: "multipart/mixed",
+    parts: [{ mimeType: "image/jpeg", body: { size: 900, attachmentId: "att-2" } }],
+  };
+  assertEquals(extractAttachments(part), [
+    { id: "att-2", filename: "(unnamed)", mime_type: "image/jpeg", size: 900 },
+  ]);
+});
+
+Deno.test("extractAttachments tolerates a missing payload", () => {
+  assertEquals(extractAttachments(undefined), []);
 });
 
 Deno.test("htmlToText decodes the entities Gmail and OneNote both emit", () => {

@@ -363,7 +363,8 @@ type GmailHeader = { name?: string; value?: string };
 
 type GmailPart = {
   mimeType?: string;
-  body?: { data?: string; size?: number };
+  filename?: string;
+  body?: { data?: string; size?: number; attachmentId?: string };
   parts?: GmailPart[];
 };
 
@@ -435,6 +436,42 @@ function extractText(part: GmailPart | undefined): string {
 }
 
 /**
+ * List what is attached, without fetching any of it.
+ *
+ * Everything here is already in the payload `read_email` fetches, so the
+ * manifest costs nothing: a part is an attachment when Gmail has given it an
+ * attachmentId, which is also the handle needed to fetch the bytes later.
+ * Inline images carry one too and are listed the same way — the model can see
+ * a signature logo for what it is, and a stage plot pasted into the body is
+ * exactly as interesting as one clipped to it.
+ */
+function extractAttachments(part: GmailPart | undefined) {
+  const found: {
+    id: string;
+    filename: string;
+    mime_type: string;
+    size: number | null;
+  }[] = [];
+  if (!part) return found;
+
+  const walk = (node: GmailPart) => {
+    const id = node.body?.attachmentId;
+    if (typeof id === "string" && id) {
+      found.push({
+        id,
+        filename: node.filename || "(unnamed)",
+        mime_type: node.mimeType ?? "application/octet-stream",
+        size: typeof node.body?.size === "number" ? node.body.size : null,
+      });
+    }
+    for (const child of node.parts ?? []) walk(child);
+  };
+  walk(part);
+
+  return found;
+}
+
+/**
  * List recent messages, newest first.
  *
  * Gmail's list endpoint returns ids and nothing else, so each message needs a
@@ -496,6 +533,7 @@ async function readEmail(token: string, emailId: unknown) {
     cc: header(msg.payload?.headers, "Cc"),
     date: header(msg.payload?.headers, "Date"),
     text: extractText(msg.payload) || (msg.snippet ?? ""),
+    attachments: extractAttachments(msg.payload),
   };
 }
 
@@ -798,4 +836,12 @@ if (import.meta.main) {
 
 // Exported for tests only. These are the parts with no network and no auth:
 // pure transformations where a bug is silent rather than loud.
-export { decodeBody, extractText, htmlToText, eventTime, shapeEvent, thinRecurring };
+export {
+  decodeBody,
+  extractAttachments,
+  extractText,
+  htmlToText,
+  eventTime,
+  shapeEvent,
+  thinRecurring,
+};
