@@ -870,6 +870,29 @@ function resolveImage(
   });
 }
 
+/**
+ * Pages whose images pdf.js gave up on, collected from the only signal it gives.
+ *
+ * When an image cannot be decoded — JPEG 2000 is the common case, and 4 of 88
+ * real documents here contain one — pdf.js drops the paint operation entirely,
+ * so the operator list shows no trace and nothing downstream can tell the
+ * picture apart from a page that never had one. It does log a warning, so the
+ * warning is listened to.
+ *
+ * Patched once at module load rather than around each call: two reads sharing
+ * an isolate would otherwise restore each other's patch and leak it. The sink
+ * is swapped per read, so concurrent reads at worst leave one of them detecting
+ * nothing — under-reporting, never attributing a page to the wrong document.
+ */
+let undecodableSink: Set<number> | null = null;
+const originalWarn = console.warn;
+console.warn = (...args: unknown[]) => {
+  const found = /Unable to decode image "img_p(\d+)_/.exec(String(args[0] ?? ""));
+  // The object id counts pages from zero.
+  if (found && undecodableSink) undecodableSink.add(Number(found[1]) + 1);
+  originalWarn(...args);
+};
+
 type PdfImage = {
   page: number;
   width: number;
@@ -1046,6 +1069,13 @@ async function extractPdfContent(
   const images: PdfImage[] = [];
   const skipped: number[] = [];
   const unreadable: number[] = [];
+
+  // See undecodableSink: a picture pdf.js cannot decode leaves no trace in the
+  // operator list, and naming it is the difference between "no picture here"
+  // and "a picture nobody could read".
+  const undecodable = new Set<number>();
+  const outerSink = undecodableSink;
+  undecodableSink = undecodable;
   let chars = 0;
   let read = first - 1;
   // One before the start, so "searched as far as read" holds when the very
@@ -1055,6 +1085,7 @@ async function extractPdfContent(
   // the image budget to match; the default stays deliberately small.
   const imageBudget = window ?? MAX_IMAGES_PER_CALL;
 
+  try {
   for (let n = first; n <= last; n++) {
     const page = await pdf.getPage(n);
 
@@ -1131,6 +1162,16 @@ async function extractPdfContent(
     // permanently unreachable — a page range that could not reach them.
     if (chars >= MAX_TEXT_CHARS || images.length >= imageBudget) break;
   }
+  } finally {
+    undecodableSink = outerSink;
+  }
+
+  for (const page of undecodable) {
+    if (page >= first && page <= read && !unreadable.includes(page)) {
+      unreadable.push(page);
+    }
+  }
+  unreadable.sort((a, b) => a - b);
 
   // Image-only and longer than anyone can read here: see WALKABLE_SCAN_PAGES.
   const unwalkable = chars === 0 && pdf.numPages > WALKABLE_SCAN_PAGES;
