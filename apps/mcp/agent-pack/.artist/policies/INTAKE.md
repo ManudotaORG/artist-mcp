@@ -26,6 +26,11 @@ named. That is ordinary Orchestrator work.
    evidence.
 4. Stay inside the chosen scope. Do not read a page from another notebook to
    settle a question unless the musician asks for it.
+5. Survey OneNote only. Gmail, Calendar, and attachments are not part of intake:
+   a mailbox cannot tell you what the musician considers a working unit, and
+   classifying from evidence rather than from pages invents structure they never
+   wrote. If a page is too thin to classify, say so and ask — do not go looking
+   for the missing context in another source.
 
 ## Classify
 
@@ -107,4 +112,6 @@ doing first and why. Once that item is agreed, intake is over.
 - Treat a hedged value as unknown. "Might be 0204" is not a phone number.
 - Surface contradictions with both sources named. Do not pick a winner.
 - Cite the page title behind every material fact.
+- A gap stays a gap. Never close one by reading email or calendar, even when the
+  musician has connected them — record it in the inventory instead.
 - Never write, send, book, or edit anything. The musician pastes.

@@ -1,7 +1,21 @@
 project_id = "zxiemadwrkcoovvpscfb"
 
-# Local Auth defaults. Hosted environments override these below so redirects
-# stay deterministic and never depend on dashboard-only configuration.
+# Local Auth defaults. Hosted environments override these in the remote blocks
+# below, and those blocks are applied with
+#
+#   supabase config push --project-ref <ref>
+#
+# which selects the matching [remotes.*] block by project_id. Both refs were
+# pushed on 2026-08-13, so the auth settings here are the settings that are
+# live. Change them here and push; do not edit auth URLs in the dashboard,
+# because a dashboard-only change is invisible to this file and the next push
+# silently reverts it.
+#
+# `config push` covers api, db, auth, and storage — it does NOT apply the
+# [functions.*] block below. Edge Function settings take effect at deploy time.
+#
+# Local development runs against staging, not production. See the Supabase
+# section of docs/operations.md.
 [auth]
 site_url = "http://localhost:3000"
 additional_redirect_urls = ["http://localhost:3000/**"]
@@ -13,6 +27,9 @@ project_id = "zxiemadwrkcoovvpscfb"
 site_url = "https://artist-mcp.vercel.app"
 additional_redirect_urls = [
   "https://artist-mcp.vercel.app/**",
+  # No localhost entry here, deliberately. A magic link that may redirect to a
+  # developer's machine is a way to hand someone else a production session.
+  # Local development points at staging instead, which does allow it.
 ]
 
 [remotes.production.auth.mfa.totp]
@@ -29,7 +46,12 @@ project_id = "cakkwvxwlkdfzqjbvrpa"
 
 [remotes.staging.auth]
 site_url = "https://artist-mcp-staging.vercel.app"
-additional_redirect_urls = ["https://artist-mcp-staging.vercel.app/**"]
+additional_redirect_urls = [
+  "https://artist-mcp-staging.vercel.app/**",
+  # Local development runs against staging, so the magic-link redirect to a
+  # developer's machine is allowed here and deliberately not in production.
+  "http://localhost:3000/**",
+]
 
 [remotes.staging.auth.mfa.totp]
 enroll_enabled = true
