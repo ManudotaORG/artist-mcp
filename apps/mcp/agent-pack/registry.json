@@ -7,7 +7,7 @@
       "name": "Intake",
       "description": "Turn an unorganized notebook into working units without inventing anything.",
       "file": ".artist/policies/INTAKE.md",
-      "sha256": "6aa1000987b57b06d8bf08810b3e2f946f754eee7e46cf52ab4a533309580a84"
+      "sha256": "289744808b2b111445613060b564a65d41937e28109106ee5863d7b706cb2567"
     },
     {
       "id": "policy:local-state",
@@ -55,7 +55,7 @@
       "name": "Archivist",
       "description": "Find the smallest set of OneNote pages that answers a focused question.",
       "file": ".artist/roles/ARCHIVIST.md",
-      "sha256": "c9deb6aa6a87367a27b7a6368f2ce461c41583564f441f885246055f07309152"
+      "sha256": "33ad68cd1520b2badf3dd2e0df84176f8a814ac3ddd9b340d7f34e633cbb8f0b"
     },
     {
       "id": "role:auditor",
@@ -63,7 +63,7 @@
       "name": "Auditor",
       "description": "Check a proposed answer or draft against the OneNote evidence before the user acts on it.",
       "file": ".artist/roles/AUDITOR.md",
-      "sha256": "a73a51fc16ec141f6abacf383147e71476d28016a02ba0233add1aa6e038d26b"
+      "sha256": "3d2f530728bc6548325f8618228b67827c05663a0f20a2bc0609bdbee7b1dfe9"
     },
     {
       "id": "role:envoy",
@@ -71,7 +71,7 @@
       "name": "Envoy",
       "description": "Draft concise outreach or coordination copy from verified OneNote facts.",
       "file": ".artist/roles/ENVOY.md",
-      "sha256": "4989a3fbd1be1c4c08d9046a9eace3d847f9aa27fb5583b1271c158d4576363c"
+      "sha256": "3dadc3065f93b93a578071fa296941a9d8d8a33253442c65d278abaa16a37d64"
     },
     {
       "id": "role:janitor",
@@ -87,7 +87,7 @@
       "name": "Orchestrator",
       "description": "Turn the user's request and live OneNote evidence into one useful next action.",
       "file": ".artist/roles/ORCHESTRATOR.md",
-      "sha256": "829f0aedab80cc78243d3d967fd5bc9eac7bd6462ee05ebf691297450d6f25be"
+      "sha256": "4aa639019e9894b262afa2f967a517b037d9596c7d00a361b36b3c08b36b5bfa"
     },
     {
       "id": "role:project-manager",
@@ -103,7 +103,7 @@
       "name": "Registrar",
       "description": "Extract the people, organizations, roles, and contact details required for the current action.",
       "file": ".artist/roles/REGISTRAR.md",
-      "sha256": "c9968a574dbe16aa412993569795c9f96c015562e3f7735072a8afe918d96db2"
+      "sha256": "5c1948f96c194487d38eef46ee393bdf6a1a450a169bdf798bee74669759d356"
     }
   ]
 }
