@@ -257,6 +257,27 @@ useful security evidence but does not replace this real Microsoft/OneNote test.
 - [x] Registry generated during package build with SHA-256 checksums
 - [x] Results shown only in chat; no write, send, sync, calendar, or background execution capability
 
+### Playbooks a user can edit — beyond the original brief, deliberate
+
+The brief said the pack is installable, not that it is the user's to change. It
+became worth doing once the playbooks were the thing being tuned per musician:
+a fixed pack means every adjustment is a package release.
+
+- [x] `agents edit <id> <directory>` copies one shipped playbook out for editing and refuses to overwrite a file that already differs — verified: seeding sparsely leaves 12 of 13 ids tracking the package, where `agents install` made all 14 local and stopped tracking anything
+- [x] `init --agents <directory>` records an absolute path in the Claude Desktop entry's args, and counts the playbooks before writing the config — verified: a path that is not a pack fails with the config byte-for-byte untouched
+- [x] Local entries shadow the bundled pack by id, so an edit to one project type neither forks the other twelve nor blocks a playbook added by a later version
+- [x] `agents status` prints every entry with its source, and `list_agent_workflows` names the entries that are the user's own so a transcript never presents edited rules as shipped ones
+- [x] A missing or broken local directory fails loudly rather than falling back to the bundle the way an unreachable remote registry does
+- [x] Files capped at 64 KiB, empty files refused, paths contained against the local root
+- [x] Derivation shared by the build script and the runtime, with a test asserting the committed registry still matches it — two copies would give the same file different ids, and a user's edit would then shadow nothing
+
+Checksums mean something narrower for a local file: derived from the directory as
+it is read, they prove only that it did not change between being listed and being
+loaded. The user is the authority on their own files. **The read-only boundary
+does not rest on the Markdown** — it holds because no write tool exists, so an
+edited playbook can make the analysis worse but cannot write to OneNote, send
+outreach, or touch a calendar.
+
 ## Not in scope
 
 No autonomous agent processes. No OneNote writes. No message sending. No calendar. No Google. No scheduled jobs. No teams or organisations. No billing. No web app deployment. No copying or synchronizing source data. No workflow state in Supabase.
@@ -332,6 +353,22 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
    Deferred rather than dismissed. A `read_thread` operation is a small addition
    on the same connection and scope; what needs deciding first is how a thread
    is summarised without pouring quoted history into chat.
+
+7. **The published server reports the wrong version.** `dist/` is committed, and
+   release-please rewrites the `x-release-please-version` line in `src/` and
+   `package.json` without rebuilding it. On `main` at v1.0.1 the source says
+   `1.0.1` and the committed `dist/server.js` says `0.8.0`, so that is the
+   version the MCP handshake announces to every client.
+
+   Harmless until something depends on the number, and then confusing in the
+   worst way: a bug report naming 0.8.0 sends you to a release from months
+   earlier. Any real build fixes it locally, which is why it keeps going
+   unnoticed — the drift only exists in the committed copy.
+
+   Two ways out: build `dist/` in the release job so the committed copy is
+   never the one that ships, or stop tracking `dist/` and build on publish.
+   The second is the ordinary answer for a published package; the first is
+   smaller. Either way it recurs every release until one is chosen.
 
 ## Confirm before registering the Microsoft app
 
