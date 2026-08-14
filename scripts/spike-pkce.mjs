@@ -195,9 +195,44 @@ const tokenRequest = async (provider, form) => {
   return body;
 };
 
+/**
+ * Negative tests for PKCE enforcement.
+ *
+ * A public client secret is only defensible if the authorization server refuses
+ * an exchange that cannot prove possession of the verifier. If it does not, then
+ * anyone holding the shipped secret and an intercepted authorization code can
+ * mint tokens, and PKCE was decoration rather than the control the design leans
+ * on. Documentation saying PKCE is "supported" does not answer this — only the
+ * server's behaviour does.
+ *
+ * Both run a real consent and then deliberately botch the exchange. They pass
+ * when the provider REJECTS, which inverts the meaning of every message, so the
+ * mode is printed loudly and the verdict says which question was asked.
+ */
+const NEGATIVE_MODES = {
+  '--wrong-verifier': {
+    describe: 'exchanging with a verifier that does not match the challenge',
+    // A well-formed verifier for a different challenge — what an attacker who
+    // captured the code and holds the public secret would have to try.
+    mutate: () => ({ code_verifier: randomBytes(32).toString('base64url') }),
+  },
+  '--no-verifier': {
+    describe: 'exchanging with no verifier at all',
+    // The pre-PKCE request shape. Accepting this would mean the challenge sent
+    // at authorize time is not binding, so sending one buys nothing.
+    mutate: () => ({}),
+  },
+};
+
 const main = async () => {
   const name = process.argv[2];
   const provider = PROVIDERS[name];
+  const negative = NEGATIVE_MODES[process.argv[3]];
+
+  if (process.argv[3] !== undefined && negative === undefined) {
+    console.error(`Unknown mode ${process.argv[3]}. Expected one of ${Object.keys(NEGATIVE_MODES).join(', ')}.`);
+    process.exit(1);
+  }
 
   if (!provider) {
     console.error(`Usage: node scripts/spike-pkce.mjs <${Object.keys(PROVIDERS).join('|')}>`);
@@ -233,7 +268,12 @@ const main = async () => {
     ...provider.extraAuthParams,
   }).toString();
 
-  console.log(`\n${provider.label} public-client PKCE spike`);
+  console.log(
+    negative === undefined
+      ? `\n${provider.label} public-client PKCE spike`
+      : `\n${provider.label} PKCE ENFORCEMENT test — ${negative.describe}.\n` +
+          'This passes only if the provider REFUSES the exchange.',
+  );
   console.log(`redirect  ${REDIRECT_URI}`);
   console.log(`scope     ${provider.scope}`);
   console.log(
@@ -245,6 +285,41 @@ const main = async () => {
   console.log(`  ${authUrl}\n`);
 
   const code = await awaitCallback(state).catch((err) => die(`callback: ${err.message}`));
+
+  // Negative mode ends here: the question is only whether the exchange is
+  // refused, so nothing is stored and no API is called.
+  if (negative !== undefined) {
+    const outcome = await tokenRequest(provider, {
+      client_id: clientId,
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: REDIRECT_URI,
+      ...negative.mutate(),
+      ...secretForm,
+    }).then(
+      (body) => ({ accepted: true, detail: `refresh token: ${body.refresh_token ? 'yes' : 'no'}` }),
+      (err) => ({ accepted: false, detail: err.message }),
+    );
+
+    if (outcome.accepted) {
+      console.error(`\n  INSECURE  ${provider.label} ACCEPTED the exchange ${negative.describe}.`);
+      console.error(`            ${outcome.detail}`);
+      console.error(
+        `            PKCE is not being enforced, so the shipped client secret is\n` +
+          `            the only thing standing between an intercepted code and a\n` +
+          `            token. Do not ship a public secret against this provider.\n`,
+      );
+      process.exit(1);
+    }
+
+    console.log(`  ok      rejected: ${outcome.detail}`);
+    console.log(
+      `\n${provider.label}: enforces PKCE — ${negative.describe} is refused.\n` +
+        'An intercepted authorization code is not redeemable without the verifier,\n' +
+        'which is what makes a public client secret survivable.\n',
+    );
+    return;
+  }
 
   // 1. Authorization code for tokens, no secret.
   const first = await tokenRequest(provider, {
