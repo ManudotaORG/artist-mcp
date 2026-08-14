@@ -93,7 +93,8 @@ export const runInit = async ({ local = false, agentsDir }: InitOptions = {}): P
 
   console.log(`\nWrote "${ENTRY_NAME}" to ${path}`);
   if (agentsDir !== undefined) {
-    console.log(`Reading ${playbooks} playbooks from ${resolve(agentsDir)}`);
+    const count = playbooks === 1 ? '1 playbook' : `${playbooks} playbooks`;
+    console.log(`Reading ${count} from ${resolve(agentsDir)}`);
     console.log("Files there override the shipped ones; the rest stay bundled.");
   }
   if (local) {
