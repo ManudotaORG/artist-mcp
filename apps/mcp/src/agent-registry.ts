@@ -240,18 +240,17 @@ const deriveRegistry = async (
   return { schemaVersion: 1, entries };
 };
 
+// Only what another module actually consumes. The container names, the file walk,
+// and the option and kind types are this module's business: exporting them
+// invited a second caller to infer the layout rule instead of calling `kindOf`,
+// which is the drift this file exists to prevent.
 export {
-  PACK_SUBDIRECTORIES,
-  PACK_SUBDIRECTORY,
   VISIBLE_PACK_SUBDIRECTORY,
-  collectMarkdown,
   deriveEntry,
   deriveRegistry,
   packSubdirectory,
   parseRegistry,
   resolveWithin,
-  type AgentKind,
-  type DeriveOptions,
   type AgentRegistry,
   type AgentRegistryEntry,
 };

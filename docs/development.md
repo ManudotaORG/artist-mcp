@@ -2,8 +2,8 @@
 
 This guide is the maintainer path from a fresh clone to a verified staging or
 production change. Read [mvp-brief.md](mvp-brief.md) for product scope and
-[manu-handoff.md](manu-handoff.md) for infrastructure ownership and current
-external state.
+[operations.md](operations.md) for infrastructure ownership and external
+state.
 
 ## Repository layout
 
@@ -56,11 +56,13 @@ cp apps/web/.env.example apps/web/.env.local
 
 Set every variable:
 
-| Variable                        | Runtime        | Purpose                            |
-| ------------------------------- | -------------- | ---------------------------------- |
-| `NEXT_PUBLIC_SUPABASE_URL`      | Browser/server | Supabase project URL               |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser/server | Public Supabase API key            |
-| `GOOGLE_DESKTOP_CLIENT_SECRET`  | Server only    | Served by `/api/client-config`     |
+| Variable                        | Runtime        | Purpose                             |
+| ------------------------------- | -------------- | ----------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Browser/server | Supabase project URL                |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser/server | Public Supabase API key             |
+| `NEXT_PUBLIC_SITE_URL`          | Browser/server | Absolute base for magic-link redirects |
+| `GOOGLE_DESKTOP_CLIENT_SECRET`  | Server only    | Served by `/api/client-config`      |
+| `DEPLOY_ENV`                    | Server only    | Optional; `staging` shows staging metadata |
 
 Only the first two may use the `NEXT_PUBLIC_` prefix. Never commit `.env.local`
 or real values.
@@ -169,9 +171,56 @@ package.
 - Develop and commit on `release` using Conventional Commits.
 - Push early to `origin/release`; CI runs lint, tests, and builds there.
 - Pull-request CI runs only when the target is `staging` or `main`.
+
+**Verify on `release`. Do not promote in order to test.** Promotion is for
+shipping, and using it as a test loop is expensive in both Actions minutes and
+attention: each round trip is two pull requests, four workflow runs, and a
+published npm prerelease that can never be reused. Since 1.0.x shipped there is
+also a real cost to churning the staging dist-tag.
+
+Cheapest sufficient check first:
+
+1. `pnpm test` — lint, both test suites, and every build. This is exactly what CI
+   runs, so a pass here means a pass there.
+2. The CLI directly, against the built output:
+   `node apps/mcp/dist/index.js agents status ~/artist-mcp`. Most behaviour is
+   observable here without a client at all.
+3. Claude Desktop on the local build, when the behaviour needs a model to
+   exercise it: `pnpm --filter @manudota/artist-mcp build` then
+   `node apps/mcp/dist/index.js init --local` (add `--editable` to keep an
+   editable pack registered). This runs the same code an npm install would.
+
+Restart rules for that third loop, which are not symmetrical: a **code** change
+needs Claude Desktop fully quit and reopened, because the server process loaded
+its modules at spawn. A **playbook** edit needs nothing — the directory is re-read
+on every tool call — but a conversation already holding a `list_agent_workflows`
+result will not notice a playbook you add mid-conversation, so start a new one.
+
+Promote only when the thing you need to check cannot be checked locally:
+
+- **The published artifact** — that `dist/` and `agent-pack/` arrive in the
+  tarball, that `npx` resolves and runs. Worth doing after packaging changes
+  (`files`, build order, dependencies, the publish workflow) and before a stable
+  release. Verify it with `npm pack @manudota/artist-mcp@staging` and by running
+  the published binary, not by reading the workflow log.
+- **The staging website**, for `apps/web` changes.
+
+Otherwise batch several verified changes into one promotion.
 - Promote a verified snapshot with a `release` → `staging` pull request.
 - After staging verification, promote the same snapshot with a `release` →
   `main` pull request.
+- Never promote by pushing a branch directly. `staging` and `main` both require
+  the `Lint and build` check with `enforce_admins`, so a direct push is rejected
+  — and the commit-message check runs only on `pull_request`, so a push that did
+  land would skip Commitlint entirely.
+- Both protected branches are `strict`, meaning the pull request must be up to
+  date before it can merge, and `release` always trails after a promotion. Two
+  separate causes, so expect this every time rather than only at releases:
+  merging a promotion pull request creates a merge commit on the target that
+  `release` does not have, and Release Please additionally bumps `package.json`
+  and `src/server.ts` on `main` only. Either way the next promotion is refused as
+  `BEHIND`. Merge `origin/main` into `release` first — a `chore: sync ...` commit
+  — then push and retry.
 
 Vercel is connected directly to GitHub. `artist-mcp-staging` tracks only
 `staging`; `artist-mcp` tracks only `main`. Preview branch tracking is disabled
@@ -215,7 +264,7 @@ runtime uses the registry and playbooks bundled into the installed npm version.
 point to a registry whose Markdown files are resolvable relative to that URL.
 
 Ids, kinds, and descriptions are derived in `src/agent-registry.ts`, which is
-why `tsc` runs *before* `scripts/build-agent-registry.mjs` — the script imports
+why `tsc` runs *before* `apps/mcp/scripts/build-agent-registry.mjs` — the script imports
 the compiled module rather than reimplementing the rule. Keep it that way: the
 runtime reads directories through the same derivation, and a second copy would
 drift into giving the same file two different ids. A test asserts the committed

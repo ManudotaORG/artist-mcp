@@ -1,57 +1,76 @@
-# Contributing to This Project
+# Contributing
 
-First off, thank you for considering contributing to this project! We appreciate your time and effort.
+Thank you for considering it. This file describes what this repository actually
+does, which is not the generic fork-and-PR-to-`develop` flow — following that
+would produce a pull request that cannot merge.
 
-## How Can I Contribute?
+## Reporting bugs
 
-### Reporting Bugs
+Search [the issues](https://github.com/ManudotaORG/artist-mcp/issues) first, then
+open one with a title, a clear description, and the smallest thing that
+reproduces it.
 
-- **Ensure the bug was not already reported** by searching on the project's issue tracker (e.g., GitHub Issues).
-- If you're unable to find an open issue addressing the problem, open a new one. Be sure to include a **title and clear description**, as much relevant information as possible, and a **code sample or an executable test case** demonstrating the expected behavior that is not occurring.
+**Never paste OneNote page ids, note titles or contents, email subjects or
+bodies, tokens, or refresh tokens into an issue.** The tool reads private
+material, and a bug report is public. Describe the shape of the problem instead:
+"a page with two conflicting dates", not the page.
 
-### Suggesting Enhancements
+## Suggesting enhancements
 
-- Open a new issue to discuss your suggested enhancement. Provide a clear description of the enhancement and why it would be beneficial.
+Open an issue first. Scope here is deliberately narrow and stated in
+[CLAUDE.md](CLAUDE.md) and [docs/mvp-brief.md](docs/mvp-brief.md): everything is
+read-only, one OneNote page is one working unit, and Gmail and Calendar are
+supporting evidence rather than working units of their own. Proposals that add
+writes, sending, synchronization, or background execution will be declined on
+principle rather than on quality, so it is worth checking before building.
 
-### Pull Requests
+## Pull requests
 
-We use a Gitflow-like workflow. Please follow these steps:
+There is no `develop` branch and no forking needed for maintainers.
 
-1.  **Fork the repository** on the platform it is hosted (e.g., GitHub, GitLab).
-2.  **Clone your fork** locally:
-    ```bash
-    git clone <Repository URL>
-    cd <Repository Name>
-    ```
-3.  **Create a new branch** for your changes. Branch from `develop` if it exists, otherwise from `main` or `master`. Name your branch descriptively (e.g., `feature/your-feature-name` or `fix/your-bug-fix-name`).
-    ```bash
-    git checkout -b feature/your-feature-name develop  # or main/master
-    ```
-4.  **Make your changes** locally.
-    - Ensure your code adheres to the existing style to keep the codebase consistent.
-    - Include tests that cover your changes, if applicable.
-5.  **Commit your changes**. Write clear, concise commit messages.
-    ```bash
-    git add .
-    git commit -m "feat: Describe your feature or fix"
-    ```
-    We loosely follow the [Conventional Commits](https://www.conventionalcommits.org/) specification.
-6.  **Push your branch** to your fork:
-    ```bash
-    git push origin feature/your-feature-name
-    ```
-7.  **Open a Pull Request (PR)** from your fork's branch to the `develop` branch (or `main`/`master` if `develop` doesn't exist) of the original repository.
-    - Provide a clear title and description for your PR, explaining the changes and referencing any related issues.
-8.  **Address any code review feedback** you receive.
-9.  Once your PR is approved and passes any automated checks, it will be merged.
+- Work on `release`. It is the integration branch and the only one that accepts
+  pushes; CI runs lint, both test suites, and every build there.
+- `staging` and `main` are protected and receive work only through pull requests
+  from `release`. A direct push is rejected, and would skip the commit-message
+  check, which runs only on pull requests.
+- Outside contributors: fork, branch from `release`, and open the pull request
+  against `release`.
 
-## Styleguides
+Before pushing:
 
-- Try to match the coding style of the existing codebase.
-- Follow common best practices for the language(s) and framework(s) used in the project.
+```bash
+pnpm install
+pnpm test
+```
 
-## Questions?
+`pnpm test` runs exactly what CI runs, so a pass locally is a pass there. Verify
+behaviour locally too rather than promoting to test it — see the branch and
+deployment workflow in [docs/development.md](docs/development.md).
 
-If you have any questions, feel free to open an issue and tag the maintainers.
+## Commit messages
 
-Thank you for your contribution!
+[Conventional Commits](https://www.conventionalcommits.org/), **enforced** — not
+loosely followed. Husky checks the message on commit and CI checks every commit
+in a pull request, so a non-conforming message fails rather than being tidied
+later.
+
+The scope is the workspace: `feat(mcp):`, `fix(web):`, or bare `docs:` and
+`chore:` for repository-wide changes. Release Please reads these to decide the
+next version, so `feat` and `fix` are not interchangeable, and a `!` or a
+`BREAKING CHANGE:` footer cuts a major — do not add one for a change no released
+version exposed.
+
+Say why in the body, not just what. The diff already shows what changed.
+
+## Style
+
+- Read the closest `AGENTS.md` to the code you are touching. `apps/web` has
+  enforced conventions of its own; `apps/mcp` is plain Node and must not import
+  from other workspace packages, because it ships to npm standalone.
+- Workflow Markdown under `apps/mcp/agent-pack` is executable policy, not
+  documentation. Changing it means regenerating `registry.json` — the build does
+  this — and a test asserts the committed registry still matches.
+
+## Questions
+
+Open an issue.

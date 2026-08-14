@@ -22,6 +22,19 @@ that every role and playbook depends on. Each new source means re-deciding it,
 not repeating it: Google Tasks was considered and left out, because a task list
 is a rival system of record for the work itself rather than evidence about it.
 
+## Verify on `release`; promote only to ship
+
+Promotion is not a test loop. `pnpm test` runs exactly what CI runs, and
+`init --local` runs the same code an npm install would, so almost everything is
+checkable on `release` without touching `staging` or `main`. Each promotion round
+trip costs two pull requests, four workflow runs, and an npm prerelease that can
+never be reused.
+
+Promote only for what cannot be checked locally: the published tarball (after
+packaging changes, or before a stable release) and the staging website. Otherwise
+batch verified work into one promotion. Full loop in
+[docs/development.md](docs/development.md).
+
 ## Layout
 
 ```
