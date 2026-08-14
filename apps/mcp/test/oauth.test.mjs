@@ -158,6 +158,10 @@ test('a connection stored without a secret fetches one rather than failing', asy
     assert.equal(await accessTokenFor('google'), 'access-five');
     assert.match(seen[0], /\/api\/client-config$/);
     assert.equal(seen.at(-1), 'fetched-secret');
+
+    // Written back, or this install would fetch it again on every refresh and
+    // depend on the web app being reachable for as long as it existed.
+    assert.equal((await readProvider('google')).clientSecret, 'fetched-secret');
   });
 });
 

@@ -37,7 +37,13 @@ import { createServer } from 'node:http';
 import { platform } from 'node:os';
 
 import { GraphError, isStagingVersion, packageVersion } from './client.js';
-import { type ProviderName, readProvider, saveProvider, updateRefreshToken } from './tokens.js';
+import {
+  type ProviderName,
+  readProvider,
+  saveProvider,
+  updateClientSecret,
+  updateRefreshToken,
+} from './tokens.js';
 
 /**
  * Fixed because Microsoft matches redirect URIs exactly, so the port is part of
@@ -376,12 +382,17 @@ export const accessTokenFor = async (provider: ProviderName): Promise<string> =>
   }
 
   // Cached at connect time. Only fetched here for a connection stored before
-  // this was cached, so an existing install does not need reconnecting.
-  const clientSecret = config.needsClientSecret
-    ? (process.env.ARTIST_MCP_GOOGLE_CLIENT_SECRET ??
-      stored.clientSecret ??
-      (await fetchGoogleClientSecret()))
-    : undefined;
+  // this was cached, so an existing install does not need reconnecting — and
+  // the result is written back, or that install would fetch it again on every
+  // refresh and depend on our web app for as long as it lived.
+  let clientSecret: string | undefined;
+  if (config.needsClientSecret) {
+    clientSecret = process.env.ARTIST_MCP_GOOGLE_CLIENT_SECRET ?? stored.clientSecret;
+    if (clientSecret === undefined) {
+      clientSecret = await fetchGoogleClientSecret();
+      await updateClientSecret(provider, clientSecret);
+    }
+  }
 
   const tokens = await postToken(
     config,
