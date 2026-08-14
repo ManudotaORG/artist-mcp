@@ -67,6 +67,28 @@ type ProviderConfig = {
  */
 const env = (name: string, fallback: string): string => process.env[name] ?? fallback;
 
+/**
+ * Replaced in dist/ at publish time by scripts/inject-secret.mjs, from a CI
+ * secret. It has to ship in the package to work on a user's machine, and it is
+ * readable by anyone who installs it — that is inherent, and the documentation
+ * says so rather than implying otherwise.
+ *
+ * Kept out of the repository for one practical reason and not a security one:
+ * a live credential in a public repo gets found by secret scanners, and a
+ * revocation would break Google for every install at once.
+ *
+ * A build that was never injected keeps the sentinel, which reads as absent, so
+ * a development build refuses to connect Google instead of failing at the
+ * exchange with a provider error nobody can act on.
+ */
+const INJECTED_GOOGLE_CLIENT_SECRET: string = '__GOOGLE_CLIENT_SECRET__';
+
+/** An un-injected build still carries the sentinel, which counts as no secret. */
+const bakedGoogleClientSecret = (): string => {
+  const value = INJECTED_GOOGLE_CLIENT_SECRET;
+  return value.startsWith('__') && value.endsWith('__') ? '' : value;
+};
+
 export const PROVIDERS: Readonly<Record<ProviderName, ProviderConfig>> = {
   microsoft: {
     label: 'Microsoft',
@@ -93,7 +115,7 @@ export const PROVIDERS: Readonly<Record<ProviderName, ProviderConfig>> = {
       'ARTIST_MCP_GOOGLE_CLIENT_ID',
       '993381632576-33o752gthtkehtcbhoe2djssi1kepm03.apps.googleusercontent.com',
     ),
-    clientSecret: env('ARTIST_MCP_GOOGLE_CLIENT_SECRET', ''),
+    clientSecret: env('ARTIST_MCP_GOOGLE_CLIENT_SECRET', bakedGoogleClientSecret()),
     // Google's equivalent of offline_access. Without access_type=offline it
     // returns an access token and no refresh token; prompt=consent forces the
     // refresh token to be re-issued rather than only on the very first consent.

@@ -4,7 +4,7 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { PROVIDERS, accessTokenFor } from '../dist/oauth.js';
+import { PROVIDERS, accessTokenFor, connect } from '../dist/oauth.js';
 import { readProvider, saveProvider } from '../dist/tokens.js';
 
 const withTempStore = async (body) => {
@@ -106,6 +106,21 @@ test('a server-side failure does not tell the user to reconnect', async () => {
       return true;
     });
   });
+});
+
+/**
+ * The secret is injected into dist/ at publish time, so a local build has none.
+ * Refusing up front beats opening a browser, taking the user through consent,
+ * and only then failing at the exchange with a provider error nobody can act on.
+ */
+test('an un-injected build refuses to connect Google before opening a browser', async (t) => {
+  if (process.env.ARTIST_MCP_GOOGLE_CLIENT_SECRET) {
+    t.skip('a secret is set in the environment, so this build is not un-injected');
+    return;
+  }
+
+  assert.equal(PROVIDERS.google.clientSecret, '');
+  await assert.rejects(() => connect('google'), /no Google client secret compiled in/);
 });
 
 test('a provider that was never connected names the command that fixes it', async () => {
