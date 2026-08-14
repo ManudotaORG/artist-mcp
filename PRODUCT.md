@@ -16,7 +16,7 @@ artist-mcp connects a musician's OneNote pages to Claude Desktop or Codex. The u
 
 ## Positioning
 
-The product adds narrow, installable musician-workflow playbooks to live OneNote context without copying the artist's project data into a second system. Roles and project types are plain Markdown loaded at runtime.
+The product adds narrow, installable musician-workflow playbooks to live OneNote context without copying the artist's project data into a second system. Roles and project types are plain Markdown loaded at runtime, and a musician can run their own instead: one install keeps the shipped, checksummed pack, the other copies all of it somewhere they own, where every playbook is theirs to edit and they can add their own.
 
 ## Operating Context
 
@@ -32,7 +32,7 @@ Users move between live performance, studio work, and practical production admin
 - Read-only Google Calendar event listing and reading, as supporting evidence. Recurring occurrences are expanded and flagged; times are always reported with their zone. A calendar entry is never itself a working unit.
 - Where a page and a source disagree, both are reported with their source named. Nothing picks a winner.
 - Either connection stands alone: a user may connect OneNote, Gmail, or both, and disconnecting one leaves the other working.
-- Checksummed runtime registry of seven roles and four starter project types.
+- Checksummed runtime registry of seven roles and four starter project types, or a directory of the musician's own layered over it.
 - Results appear only in chat.
 - No writes to any source: no OneNote edits, message sending, replying, drafting, labelling, calendar creation or editing, RSVP responses, background jobs, synchronization, or workflow state in Supabase.
 - No availability computation or scheduling suggestions; reading a calendar is not planning against it.

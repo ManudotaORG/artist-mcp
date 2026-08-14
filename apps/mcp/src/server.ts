@@ -1,7 +1,8 @@
+import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { listAgentWorkflows, loadAgentWorkflow } from "./agents.js";
+import { listAgentWorkflows, loadAgentWorkflow, type ResolvedEntry } from "./agents.js";
 import { GraphError } from "./client.js";
 import { call } from "./dispatch.js";
 
@@ -122,6 +123,110 @@ const errorResult = (err: unknown) => {
   return { content: [{ type: "text" as const, text: message }], isError: true };
 };
 
+/**
+ * Compose the briefing `list_agent_workflows` returns.
+ *
+ * Split out from the handler so the not-in-force path can be tested without
+ * tampering with the installed pack, which is how it was found in the first
+ * place.
+ */
+const renderWorkflowBriefing = async (
+  entries: ResolvedEntry[],
+  load: (id: string) => Promise<{ content: string }>,
+): Promise<string> => {
+
+  // A one-line summary is enough to pick a role to load, but not to
+  // classify a page: the rules that separate one project type from
+  // another live in the body of the file. Intake is here for the same
+  // reason — it governs the survey, the classification and the templates,
+  // all of which happen before anything would think to load a policy.
+  // A run that loaded nothing at all classified five pages and then
+  // offered to write template files, which intake forbids.
+  const alwaysInFull = (entry: (typeof entries)[number]) =>
+    entry.kind === "project-type" || entry.id === "policy:intake";
+  const upfront = entries.filter(alwaysInFull);
+  const rest = entries.filter((entry) => !alwaysInFull(entry));
+
+  // A playbook that cannot be read is not a playbook with a shorter
+  // description: its rules are absent. This used to fall back to the
+  // one-line summary and succeed, so a checksum failure — a user editing
+  // the installed package instead of a local directory — removed a project
+  // type from the classification with nothing said. Silence was defensible
+  // when the only cause was disk corruption; once playbooks are documented
+  // as the user's to edit, editing the wrong copy is the likely cause and
+  // has to be named. The summary is still shown, marked as not the
+  // playbook, because the id is worth knowing about even unusable.
+  const failed: string[] = [];
+  const loaded = await Promise.all(
+    upfront.map(async (entry) => {
+      try {
+        const { content } = await load(entry.id);
+        return `## ${entry.id}\n\n${content.trim()}`;
+      } catch (err) {
+        failed.push(entry.id);
+        const reason = err instanceof Error ? err.message : String(err);
+        return (
+          `## ${entry.id} — NOT IN FORCE\n\n` +
+          `This playbook could not be read, so its rules are not applied: ${reason}\n` +
+          "Tell the user before answering anything that depends on it. If they " +
+          "edited the installed package, that copy is verified against a " +
+          "checksum and is replaced on upgrade — playbooks are edited by " +
+          "pointing the server at a directory instead: " +
+          "`artist-mcp init --editable`.\n" +
+          `Description only, not the playbook: ${entry.name} — ${entry.description}`
+        );
+      }
+    }),
+  );
+
+  const summary = rest.map(
+    (entry) => `- ${entry.id}: ${entry.name} — ${entry.description}`,
+  );
+
+  // At the top, where it will not be missed: the rules below are incomplete.
+  const alarm =
+    failed.length > 0
+      ? [
+          `WARNING: ${failed.length} playbook(s) could not be read and are ` +
+            `NOT in force: ${failed.join(", ")}. The work is proceeding ` +
+            "without them. Say so rather than answering as if the full set " +
+            "applied.",
+          "",
+        ]
+      : [];
+
+  // Say when the rules are the user's own, and name the files. They carry
+  // the same authority either way — that is the point of pointing the
+  // server at a directory — but a run that silently differs from the
+  // documented pack is painful to debug, and the difference belongs in the
+  // transcript. The paths are here so that a request to improve a playbook
+  // can be answered with the file to change rather than loose prose; this
+  // server cannot write them, and the user edits them itself.
+  const local = entries.filter((entry) => entry.source === "local");
+  const provenance =
+    local.length > 0
+      ? [
+          "",
+          `Note: ${local.length} of these are this user's own edited ` +
+            "files, not the versions shipped with the package. Suggest " +
+            "revisions as replacement text for the file named; these " +
+            "files are the user's to change, and this server cannot " +
+            "write them.",
+          ...local.map((entry) => `- ${entry.id} — ${join(entry.origin, entry.file)}`),
+        ]
+      : [];
+
+  return [
+    ...alarm,
+    "# Roles and policies (load by id when needed)",
+    summary.join("\n"),
+    "",
+    "# In force now (full text — these govern the work before anything is loaded)",
+    loaded.join("\n\n"),
+    ...provenance,
+  ].join("\n");
+};
+
 const runServer = async (): Promise<void> => {
   // Nothing is checked here on purpose. The server starts whether or not a
   // provider is connected, and a tool that needs one says so when it is called:
@@ -141,42 +246,10 @@ const runServer = async (): Promise<void> => {
     {},
     async () => {
       try {
-        const entries = await listAgentWorkflows();
-
-        // A one-line summary is enough to pick a role to load, but not to
-        // classify a page: the rules that separate one project type from
-        // another live in the body of the file. Intake is here for the same
-        // reason — it governs the survey, the classification and the templates,
-        // all of which happen before anything would think to load a policy.
-        // A run that loaded nothing at all classified five pages and then
-        // offered to write template files, which intake forbids.
-        const alwaysInFull = (entry: (typeof entries)[number]) =>
-          entry.kind === "project-type" || entry.id === "policy:intake";
-        const upfront = entries.filter(alwaysInFull);
-        const rest = entries.filter((entry) => !alwaysInFull(entry));
-
-        const loaded = await Promise.all(
-          upfront.map(async (entry) => {
-            try {
-              const { content } = await loadAgentWorkflow(entry.id);
-              return `## ${entry.id}\n\n${content.trim()}`;
-            } catch {
-              return `## ${entry.id}: ${entry.name} — ${entry.description}`;
-            }
-          }),
+        const text = await renderWorkflowBriefing(
+          await listAgentWorkflows(),
+          loadAgentWorkflow,
         );
-
-        const summary = rest.map(
-          (entry) => `- ${entry.id}: ${entry.name} — ${entry.description}`,
-        );
-
-        const text = [
-          "# Roles and policies (load by id when needed)",
-          summary.join("\n"),
-          "",
-          "# In force now (full text — these govern the work before anything is loaded)",
-          loaded.join("\n\n"),
-        ].join("\n");
 
         return { content: [{ type: "text", text }] };
       } catch (err) {
@@ -192,11 +265,18 @@ const runServer = async (): Promise<void> => {
     async ({ workflow_id }) => {
       try {
         const workflow = await loadAgentWorkflow(workflow_id);
+        // Naming the file only for a local one. A bundled path points inside an
+        // npx cache: noise the user cannot act on and should not be told to edit.
+        const provenance =
+          workflow.source === "local"
+            ? `\n\nThis is the user's own file, not the shipped version: ` +
+              `${join(workflow.origin, workflow.file)}`
+            : "";
         return {
           content: [
             {
               type: "text",
-              text: `# ${workflow.name}\n\n${workflow.content}`,
+              text: `# ${workflow.name}${provenance}\n\n${workflow.content}`,
             },
           ],
         };
@@ -681,4 +761,4 @@ const runServer = async (): Promise<void> => {
   await server.connect(new StdioServerTransport());
 };
 
-export { runServer };
+export { renderWorkflowBriefing, runServer };

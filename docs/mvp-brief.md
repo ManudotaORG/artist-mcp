@@ -257,9 +257,40 @@ useful security evidence but does not replace this real Microsoft/OneNote test.
 - [x] Registry generated during package build with SHA-256 checksums
 - [x] Results shown only in chat; no write, send, sync, calendar, or background execution capability
 
+### Playbooks a user can edit — beyond the original brief, deliberate
+
+The brief said the pack is installable, not that it is the user's to change. It
+became worth doing once the playbooks were the thing being tuned per musician:
+a fixed pack means every adjustment is a package release.
+
+- [x] Two installs and nothing between them: the default runs the shipped checksummed pack, and `init --editable [directory]` copies all of it somewhere the user owns, where every playbook is theirs — per-file opt-in was built first and removed, because it kept ids tracking the package only by making the user remember which files were theirs
+- [x] The editable install is re-runnable, which is what replaces that bookkeeping: playbooks new in a later version are added, edited files are left alone and named in the summary, and nothing is ever overwritten — verified on a seeded directory with one file edited and one removed to stand in for a new release
+- [x] `init --editable` records an absolute path in the Claude Desktop entry's args and seeds before writing the config — verified: a directory it cannot use fails with the config byte-for-byte untouched
+- [x] Local entries shadow the bundled pack by id, so an edit to one project type neither forks the other twelve nor blocks a playbook added by a later version
+- [x] `agents status [directory]` prints every entry with its source, and `list_agent_workflows` names the entries that are the user's own, with the file to edit, so a transcript never presents edited rules as shipped ones
+- [x] A playbook that cannot be read is reported as NOT IN FORCE rather than falling back to its one-line summary — the old behaviour dropped a project type from the classification silently, which is what this layer exists to prevent
+- [x] The layout is exact — `<.artist|artist>/<roles|project-types|policies>/<name>.md` — and a misfiled file is refused by name rather than silently becoming a policy; a standalone directory gets the visible container so the folder does not look empty in a file browser
+- [x] A missing or broken local directory fails loudly rather than falling back to the bundle the way an unreachable remote registry does
+- [x] Files capped at 64 KiB, empty files refused, paths contained against the local root
+- [x] Derivation shared by the build script and the runtime, with a test asserting the committed registry still matches it — two copies would give the same file different ids, and a user's edit would then shadow nothing
+
+Checksums mean something narrower for a local file: derived from the directory as
+it is read, they prove only that it did not change between being listed and being
+loaded. The user is the authority on their own files. **The read-only boundary
+does not rest on the Markdown** — it holds because no write tool exists, so an
+edited playbook can make the analysis worse but cannot write to OneNote, send
+outreach, or touch a calendar.
+
 ## Not in scope
 
-No autonomous agent processes. No OneNote writes. No message sending. No calendar. No Google. No scheduled jobs. No teams or organisations. No billing. No web app deployment. No copying or synchronizing source data. No workflow state in Supabase.
+No autonomous agent processes. No writes to any source — not OneNote, Gmail, or Calendar. No message sending. No scheduled jobs. No teams or organisations. No billing. No copying or synchronizing source data. No workflow state in Supabase.
+
+This line originally also read "No calendar. No Google. No web app deployment." All three have since shipped, so it is corrected here rather than quietly left standing:
+
+- **Google is connected**, and Gmail and Calendar are read as **supporting evidence only** — they corroborate or fill gaps in a OneNote page and are never themselves a working unit. Reads only: `list_emails`, `read_email`, `list_events`, `read_event`, and the attachment pair. That asymmetry is what kept the one-page-one-unit rule intact when the sources grew; see [CLAUDE.md](../CLAUDE.md).
+- **The web app deploys** to two Vercel projects, staging and production, connected to the repository through the Vercel GitHub App. See [operations.md](operations.md).
+
+Each new source means re-deciding the rule, not repeating it. Google Tasks was considered and deliberately left out: a task list is a rival system of record for the work itself, not evidence about it.
 
 ## Known gaps — deferred, not forgotten
 
@@ -332,6 +363,31 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
    Deferred rather than dismissed. A `read_thread` operation is a small addition
    on the same connection and scope; what needs deciding first is how a thread
    is summarised without pouring quoted history into chat.
+
+7. **`apps/mcp/dist/` is no longer tracked.** Resolved. It had drifted from
+   `src/`: release-please rewrites the `x-release-please-version` line in `src/`
+   and `package.json`, nothing rebuilt the committed copy, so on `main` at
+   v1.0.1 the source said `1.0.1` and the committed `dist/server.js` said
+   `0.8.0`.
+
+   **No published version was ever affected**, which is worth stating because
+   the opposite was assumed at first. The release job's test step runs
+   `pnpm run build` before publishing and `prepublishOnly` builds again; the
+   v1.0.1 tarball on npm was pulled and checked, and reports `1.0.1`. The drift
+   existed only in git.
+
+   What it cost was local: generated files turning up as diffs and conflicts,
+   and `init --local` running stale code for anyone who checked out without
+   building. Fixed by untracking it rather than by building in the release job —
+   CI already builds, which is precisely why users never saw it. `files` in
+   `package.json` is an allowlist that overrides `.gitignore`, so the tarball is
+   unaffected; verified with `npm pack --dry-run`, and the suite passes with
+   `dist/` deleted outright.
+
+   `agent-pack/registry.json` stays tracked despite also being generated. It is
+   small, reviewable, and regenerating it is part of changing executable policy,
+   so a test asserts the committed copy still matches what the derivation
+   produces — a review signal rather than noise.
 
 ## Confirm before registering the Microsoft app
 
