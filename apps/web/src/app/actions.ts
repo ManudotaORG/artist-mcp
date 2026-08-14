@@ -2,9 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { connectionKey, hashKey } from '@/lib/crypto';
 import { getSiteUrl } from '@/lib/siteUrl';
-import { supabaseAdmin, supabaseServer } from '@/lib/supabase/server';
+import { supabaseServer } from '@/lib/supabase/server';
 
 export const signIn = async (_prev: unknown, formData: FormData) => {
   const email = String(formData.get('email') ?? '').trim();
@@ -27,49 +26,11 @@ export const signOut = async () => {
 };
 
 /**
- * Issues a connection key, replacing any existing one.
- *
- * Returned to the caller once and never stored — only the sha256 goes in the
- * database, so a dump yields nothing usable and we cannot show it again.
+ * Key issuance lived here. It is gone: an installed copy holds its own provider
+ * tokens now and authenticates directly, so there is no key for this app to
+ * mint and nothing for the edge function to resolve. The mcp_keys table is left
+ * in place and dormant — see docs/operations.md for why it was not dropped.
  */
-export const createKey = async (): Promise<{ key?: string; error?: string }> => {
-  const supabase = await supabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: 'Sign in first.' };
-
-  const key = connectionKey();
-  const admin = supabaseAdmin();
-
-  // One key per user keeps revocation unambiguous: generating a new one
-  // invalidates every installed copy of the old.
-  await admin.from('mcp_keys').delete().eq('user_id', user.id);
-
-  const { error } = await admin
-    .from('mcp_keys')
-    .insert({ user_id: user.id, key_hash: hashKey(key) });
-
-  if (error) return { error: error.message };
-
-  revalidatePath('/');
-  return { key };
-};
-
-export const revokeKey = async (): Promise<{ error?: string }> => {
-  const supabase = await supabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: 'Sign in first.' };
-
-  const { error } = await supabaseAdmin().from('mcp_keys').delete().eq('user_id', user.id);
-
-  if (error) return { error: error.message };
-
-  revalidatePath('/');
-  return {};
-};
 
 /**
  * Removes one provider's token, and revokes every MCP key only when it was the

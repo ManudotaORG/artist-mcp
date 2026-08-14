@@ -3,7 +3,6 @@ import { Typography } from '@/components/ui/Typography';
 import { getDeploymentMetadata } from '@/lib/deployment';
 import { supabaseServer } from '@/lib/supabase/server';
 import { signOut } from './actions';
-import { KeyPanel } from './key-panel';
 import { ConnectionPanel } from './connection-panel';
 import { SignInForm } from './sign-in-form';
 
@@ -328,7 +327,6 @@ const PublicHome = ({ installChannel }: PublicHomeProps) => (
 type DashboardProps = {
   connection: { updated_at: string } | null;
   googleConnection: { updated_at: string } | null;
-  hasKey: boolean;
   email?: string;
   connected?: string;
   error?: string;
@@ -338,7 +336,6 @@ type DashboardProps = {
 const Dashboard = ({
   connection,
   googleConnection,
-  hasKey,
   email,
   connected,
   error,
@@ -369,7 +366,6 @@ const Dashboard = ({
     <ConnectionPanel provider="microsoft" connection={connection} />
     <ConnectionPanel provider="google" connection={googleConnection} />
     {/* Either connection stands alone, so a key is worth issuing once one exists. */}
-    <KeyPanel hasKey={hasKey} canGenerate={Boolean(connection || googleConnection)} />
     <section className="border-t border-signal-cyan pt-5">
       <Typography as="h2" variant="sectionTitle" color="yellow">
         INSTALL CLAUDE DESKTOP
@@ -405,13 +401,12 @@ const Home = async ({ searchParams }: HomeProps) => {
   // a user may now hold a row per provider, and an unfiltered single-row read
   // both attributed whichever row existed to Microsoft and failed outright
   // (PGRST116) once two were connected.
-  const [{ data: connection }, { data: googleConnection }, { data: keyRow }] = user
+  const [{ data: connection }, { data: googleConnection }] = user
     ? await Promise.all([
         supabase.from('connections').select('updated_at').eq('provider', 'microsoft').maybeSingle(),
         supabase.from('connections').select('updated_at').eq('provider', 'google').maybeSingle(),
-        supabase.from('mcp_keys').select('last_used_at').maybeSingle(),
       ])
-    : [{ data: null }, { data: null }, { data: null }];
+    : [{ data: null }, { data: null }];
   const deployment = await getDeploymentMetadata();
   const installChannel: InstallChannel = deployment?.environment ?? 'local';
 
@@ -422,7 +417,6 @@ const Home = async ({ searchParams }: HomeProps) => {
         <Dashboard
           connection={connection}
           googleConnection={googleConnection}
-          hasKey={Boolean(keyRow)}
           email={user.email}
           connected={connected}
           error={error}
