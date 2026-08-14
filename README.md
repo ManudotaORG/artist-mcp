@@ -14,8 +14,11 @@ Everything is read-only. No writes to any source, no sending, no sync.
 
 The project has three parts:
 
-- `apps/web` — sign-in, Microsoft and Google OAuth, and connection-key management.
-- `apps/mcp` — the npm-published stdio MCP server.
+- `apps/web` — magic-link sign-in, the install instructions, and one open
+  endpoint serving Google's Desktop client secret. It performs no provider OAuth
+  and holds nothing that can read an account.
+- `apps/mcp` — the npm-published stdio MCP server. It signs in to Microsoft and
+  Google on the user's own machine and keeps the tokens there.
 - `supabase` — sign-in, and dormant schema from the previous hosted design.
 
 ## Where your credentials live
@@ -59,10 +62,8 @@ on the OAuth test-user list can consent at all.
 
 - [Install for Claude Desktop or Codex](docs/installation.md)
 - [Run and develop the project locally](docs/development.md)
-- [Infrastructure and maintainer handoff for Manu](docs/manu-handoff.md)
 - [Operate, publish, and rotate credentials](docs/operations.md)
 - [MVP scope, verification record, and remaining roadmap](docs/mvp-brief.md)
-- [Final two-user acceptance test](docs/two-user-acceptance.md)
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
 
@@ -136,7 +137,9 @@ npx @manudota/artist-mcp agents install
 ```
 
 Use `npx @manudota/artist-mcp@staging agents install` for staging, or
-`node apps/mcp/dist/index.js agents install` for the checked-out local build.
+`node apps/mcp/dist/index.js agents install` for the checked-out local build. It
+writes into the directory you run it from and refuses your home directory, where
+the files would sit unread.
 
 One OneNote page is treated as one working unit, with Gmail and Calendar read as
 supporting evidence for it. The playbooks can produce plans, recommendations,
@@ -153,7 +156,7 @@ where every playbook is yours to change:
 npx @manudota/artist-mcp init --editable
 ```
 
-They land in `~/artist-playbooks/artist/`, or a directory you name. Add your own
+They land in `~/artist-mcp/artist/`, or a directory you name. Add your own
 alongside them — a new file under `project-types/`, `roles/` or `policies/`
 becomes available under an id taken from its filename. Re-run the command after
 upgrading and it adds playbooks new in that version while leaving your edits

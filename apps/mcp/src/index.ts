@@ -88,7 +88,7 @@ try {
           '  artist-mcp init --editable [directory]\n' +
           '                       the same, but with every playbook copied\n' +
           '                       somewhere you can edit them, and add your own\n' +
-          '                       (default ~/artist-playbooks)\n' +
+          '                       (default ~/artist-mcp)\n' +
           '  artist-mcp connect [microsoft|google]\n' +
           '                       sign in to a provider in your browser\n' +
           '  artist-mcp disconnect [microsoft|google]\n' +

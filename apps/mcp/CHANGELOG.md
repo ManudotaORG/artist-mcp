@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.0.0...artist-mcp-v1.0.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* **mcp:** cache the Google client secret after fetching it ([94a9a5a](https://github.com/ManudotaORG/artist-mcp/commit/94a9a5a4f4c6dc953140c0a1fc75549df107673e))
+
 ## [1.0.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v0.8.0...artist-mcp-v1.0.0) (2026-08-14)
 
 

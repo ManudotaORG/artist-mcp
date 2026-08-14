@@ -6,7 +6,7 @@ import test from 'node:test';
 
 import {
   DEFAULT_EDITABLE_DIRECTORY,
-  assertLocalAgentPack,
+  installAgentPack,
   listAgentWorkflows,
   loadAgentWorkflow,
   resolveRegistry,
@@ -166,19 +166,31 @@ test('re-running adds what is new and never touches an edit', async () => {
   }
 });
 
-test('the default directory is under the home directory, not the cwd', () => {
-  assert.match(DEFAULT_EDITABLE_DIRECTORY, /artist-playbooks$/);
-  assert.ok(DEFAULT_EDITABLE_DIRECTORY.startsWith(homedir()));
+test('the default is a folder of its own in the home directory, not the cwd', () => {
+  assert.equal(DEFAULT_EDITABLE_DIRECTORY, resolve(homedir(), 'artist-mcp'));
+  // Beside the hidden token store, not inside it and not the home directory.
+  assert.notEqual(DEFAULT_EDITABLE_DIRECTORY, resolve(homedir(), '.artist-mcp'));
+  assert.notEqual(DEFAULT_EDITABLE_DIRECTORY, resolve(homedir()));
 });
 
-test('a pack is counted before init will write it into the config', async () => {
-  await withLocalPack(
-    { '.artist/project-types/CONCERT.md': '# Concert\n\nMine.\n' },
-    async (root) => {
-      assert.equal(await assertLocalAgentPack(root), 1);
-    },
-  );
-  await assert.rejects(assertLocalAgentPack(tmpdir()), /No \.artist\/ or artist\/ directory/);
+/**
+ * `agents install` defaults to the working directory, which is right in a project
+ * and ruinous in a home folder: running it from `~` once put AGENTS.md and
+ * .artist/ straight into it, where they sat unread until someone noticed.
+ */
+test('neither command will write a pack into the home directory', async () => {
+  for (const [run, command] of [
+    [() => installAgentPack(homedir()), 'agents install'],
+    [() => seedEditablePack(homedir()), 'init --editable'],
+  ]) {
+    await assert.rejects(run, (err) => {
+      assert.match(err.message, /Refusing to write a workflow pack directly into your home/);
+      assert.match(err.message, new RegExp(command));
+      // Names somewhere to put it instead of only refusing.
+      assert.match(err.message, /artist-mcp/);
+      return true;
+    });
+  }
 });
 
 /**
