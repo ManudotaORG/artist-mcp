@@ -133,8 +133,27 @@ npx @manudota/artist-mcp init --agents ~/artist-playbooks
 
 Entries there shadow the bundled pack **by id**, so editing one project type does
 not fork the other twelve, and a playbook added by a later package version still
-arrives. Ids come from where a file sits, so the layout must match:
-`.artist/roles/`, `.artist/project-types/`, `.artist/policies/`.
+arrives. A file whose id is not in the bundled pack is **added** rather than
+shadowing anything, so a user can write their own project types and roles, not
+only edit the shipped ones.
+
+Ids come from where a file sits, so the layout is exact:
+`.artist/<roles|project-types|policies>/<name>.md`. Anything else — a file loose
+in `.artist/`, an invented subdirectory, a nested path — is refused by name.
+That fallback used to make such a file a `policy`, which was harmless while the
+only inputs were three reviewed directories here and a trap once the directory
+belongs to the user: policies other than intake are summarised rather than
+returned in full, so a misfiled playbook loaded, appeared in `agents status`, and
+was then largely ignored. That reads as the model disregarding the user's rules
+rather than as a file in the wrong place. Nesting is refused for a related
+reason — two files with one name under different subdirectories derive one id,
+and the loser would disappear silently.
+
+A new **project type** is the strongest case: project types are returned in full
+before anything is loaded, so it competes for classification immediately. A new
+**role** is listed as a name and description and loaded on demand, so it competes
+with seven established ones on that line alone; wiring it in reliably means
+copying out `ORCHESTRATOR.md` too and naming it there.
 
 `agents edit` copies one file on purpose. `agents install` copies all thirteen,
 which is right for handing a coding agent the whole set to read inside a repo,

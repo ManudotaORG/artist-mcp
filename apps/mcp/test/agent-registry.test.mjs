@@ -34,6 +34,28 @@ test('kind and id come from where the file sits, not its contents', () => {
   assert.equal(deriveEntry('.artist/policies/INTAKE.md', '# Intake\n').kind, 'policy');
 });
 
+/**
+ * The old fallback made anything outside roles/ and project-types/ a policy.
+ * Harmless for three reviewed directories in this repo; a trap once the
+ * directory is the user's, because policies other than intake are summarised
+ * rather than returned in full — so a misfiled playbook loaded, listed, and was
+ * then largely ignored, which reads as the model disregarding the user's rules.
+ */
+test('a file outside the three known directories is refused, not called a policy', () => {
+  for (const file of [
+    '.artist/custom/MISFILED.md',
+    '.artist/LOOSE.md',
+    '.artist/roles/nested/DEEP.md',
+    'roles/NO_PACK_DIR.md',
+  ]) {
+    assert.throws(() => deriveEntry(file, '# Thing\n\nBody.\n'), (err) => {
+      assert.match(err.message, /not in a recognised directory/);
+      assert.match(err.message, /roles\|project-types\|policies/);
+      return true;
+    });
+  }
+});
+
 test('the description is the first whole paragraph, unwrapped', () => {
   const entry = deriveEntry(
     '.artist/roles/ENVOY.md',

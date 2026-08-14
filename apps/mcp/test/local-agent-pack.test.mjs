@@ -210,6 +210,29 @@ test('a bundled playbook is marked bundled so no path is offered for it', async 
   );
 });
 
+test('a playbook a user adds becomes a first-class entry', async () => {
+  await withLocalPack(
+    { '.artist/project-types/WEDDING.md': '# Wedding\n\nOne page describing one wedding.\n' },
+    async () => {
+      const entries = await listAgentWorkflows();
+      assert.equal(entries.length, 14);
+      const wedding = entries.find((entry) => entry.id === 'project-type:wedding');
+      assert.equal(wedding.kind, 'project-type');
+      assert.equal(wedding.description, 'One page describing one wedding.');
+    },
+  );
+});
+
+test('a playbook filed in an invented directory is refused by name', async () => {
+  await withLocalPack({ '.artist/custom/MISFILED.md': '# Misfiled\n\nMine.\n' }, async () => {
+    await assert.rejects(listAgentWorkflows(), (err) => {
+      assert.match(err.message, /not in a recognised directory: \.artist\/custom\/MISFILED\.md/);
+      assert.match(err.message, /roles\|project-types\|policies/);
+      return true;
+    });
+  });
+});
+
 test('no local directory means the bundled pack, unchanged', async () => {
   delete process.env.ARTIST_MCP_AGENTS_DIR;
   const entries = await listAgentWorkflows();

@@ -83,8 +83,39 @@ const collectMarkdown = async (directory: string): Promise<string[]> => {
   return found.sort();
 };
 
-const kindOf = (file: string): AgentKind =>
-  file.includes('/roles/') ? 'role' : file.includes('/project-types/') ? 'project-type' : 'policy';
+/** The directory a file sits in *is* its kind. There is no other signal. */
+const KIND_DIRECTORIES: Record<string, AgentKind> = {
+  roles: 'role',
+  'project-types': 'project-type',
+  policies: 'policy',
+};
+
+/**
+ * Require the exact layout `.artist/<kind>/<name>.md`.
+ *
+ * This used to fall back to `policy` for anything that was not under `roles/` or
+ * `project-types/`, which was harmless while the only inputs were three reviewed
+ * directories in this repo. Once the directory belongs to the user it is a trap:
+ * a playbook dropped into `.artist/` or into an invented subdirectory became a
+ * policy, and policies other than intake are summarised rather than returned in
+ * full — so the file loaded, `agents status` listed it, and the rules in it were
+ * then largely ignored. That reads as the model disregarding the user's playbook
+ * rather than as a misfiled file, which is the wrong thing to go looking for.
+ *
+ * Nesting is refused for the same reason: two files with one name in different
+ * subdirectories would derive one id, and the loser would vanish silently.
+ */
+const kindOf = (file: string): AgentKind => {
+  const segments = file.split('/');
+  const kind = segments.length === 3 ? KIND_DIRECTORIES[segments[1] ?? ''] : undefined;
+  if (segments[0] !== PACK_SUBDIRECTORY || !kind) {
+    throw new Error(
+      `Workflow file is not in a recognised directory: ${file}. ` +
+        `Expected ${PACK_SUBDIRECTORY}/<${Object.keys(KIND_DIRECTORIES).join('|')}>/<name>.md`,
+    );
+  }
+  return kind;
+};
 
 /**
  * Build one entry from a pack-relative path and its contents.
