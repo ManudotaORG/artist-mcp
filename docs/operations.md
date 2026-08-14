@@ -238,6 +238,28 @@ workspaces, or anything scheduled — and the schema is the cheap part of that t
 keep. Reviving it would still cost every user a reconnect, because the tokens
 are deliberately not here any more.
 
+That is a live intention, not sentiment:
+[#55](https://github.com/ManudotaORG/artist-mcp/issues/55) proposes a hosted MCP
+for a few named users, isolated from the public product. While that is open, this
+path is a head start rather than a tax, and **removing any part of it should be
+decided together with #55 rather than as cleanup.**
+
+### What is kept, in one place
+
+Listed here so a reader can confirm dormancy without inferring it four times.
+Every item is unwritten, unimported, or undeployed:
+
+| Kept | State |
+| --- | --- |
+| `connections`, `mcp_keys` tables | In the schema, RLS on, no rows, nothing writes them |
+| `apps/web/src/lib/crypto.ts` | Imported nowhere; encrypted the stored refresh tokens |
+| `supabase/functions/graph/` | Source and tests only, not deployed |
+| `verify_jwt = false` for `graph` in `supabase/config.toml` | Configuration for a function that is not deployed |
+| Dummy provider env vars in `ci.yml` | Needed by the Deno tests above, whose module scope reads them at import; the values are the string `unused` |
+
+Each of these has looked like dead code to a reader at some point, which is the
+cost of keeping it. Adding to the list is fine; removing from it is a decision.
+
 The credentials that made the old design dangerous were **not** kept. Done on
 2026-08-14, in this order:
 

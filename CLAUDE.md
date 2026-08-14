@@ -83,6 +83,12 @@ docs/           the brief
   checkout or the playbook directory leaves it launching something that no longer
   exists, and nothing says so until a workflow tool fails naming a directory the
   user has forgotten. Re-run `init` after moving either.
+- **A re-run of the editable install adds, and never changes.** An unedited
+  playbook in a user's directory has been accepted, not left awaiting updates, so
+  refreshing it would silently alter rules in force on a file they own. Tracking
+  seed hashes to make that possible was considered and rejected — see
+  `docs/releases-and-agents.md`. Deleting a copy and re-running is the explicit
+  way back to the shipped version.
 - **A local playbook directory must never fall back silently.** An unreachable
   remote registry falls back to the bundle; a broken local directory does not.
   The user said which rules govern their work, and quietly running different

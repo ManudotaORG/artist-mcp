@@ -180,6 +180,23 @@ that version are added, anything edited is left alone, and the summary says whic
 files were treated as the user's. Nothing is ever overwritten, because a file
 that differs cannot be told apart from a deliberate edit.
 
+**A file the user has *not* edited is not refreshed either, and that is the
+decision rather than a limitation.** Recording the shipped hash each file was
+seeded from would make it possible: untouched files could then track later
+versions while edited ones stayed put. It was considered and rejected.
+
+Choosing the editable install is choosing to own the pack. An unedited file in
+that directory has been read and accepted, not left in a queue awaiting updates —
+a musician may simply be content with it. Refreshing it on their behalf would
+change rules that are in force, silently, on a file they own, which is the one
+thing this layer must never do; the same principle already forbids a broken local
+directory falling back to the bundle. Adding an id the user has never seen is a
+different act from rewriting one they have.
+
+So the contract is narrow and worth stating plainly: **a re-run adds, and never
+changes.** A user who does want the shipped version of a playbook back can delete
+their copy and re-run, which is explicit and theirs to choose.
+
 `agents install` still copies the pack into a repository for a coding agent to
 read, which is a different job and unchanged.
 
