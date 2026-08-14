@@ -263,10 +263,13 @@ The brief said the pack is installable, not that it is the user's to change. It
 became worth doing once the playbooks were the thing being tuned per musician:
 a fixed pack means every adjustment is a package release.
 
-- [x] `agents edit <id> <directory>` copies one shipped playbook out for editing and refuses to overwrite a file that already differs — verified: seeding sparsely leaves 12 of 13 ids tracking the package, where `agents install` made all 14 local and stopped tracking anything
-- [x] `init --agents <directory>` records an absolute path in the Claude Desktop entry's args, and counts the playbooks before writing the config — verified: a path that is not a pack fails with the config byte-for-byte untouched
+- [x] Two installs and nothing between them: the default runs the shipped checksummed pack, and `init --editable [directory]` copies all of it somewhere the user owns, where every playbook is theirs — per-file opt-in was built first and removed, because it kept ids tracking the package only by making the user remember which files were theirs
+- [x] The editable install is re-runnable, which is what replaces that bookkeeping: playbooks new in a later version are added, edited files are left alone and named in the summary, and nothing is ever overwritten — verified on a seeded directory with one file edited and one removed to stand in for a new release
+- [x] `init --editable` records an absolute path in the Claude Desktop entry's args and seeds before writing the config — verified: a directory it cannot use fails with the config byte-for-byte untouched
 - [x] Local entries shadow the bundled pack by id, so an edit to one project type neither forks the other twelve nor blocks a playbook added by a later version
-- [x] `agents status` prints every entry with its source, and `list_agent_workflows` names the entries that are the user's own so a transcript never presents edited rules as shipped ones
+- [x] `agents status [directory]` prints every entry with its source, and `list_agent_workflows` names the entries that are the user's own, with the file to edit, so a transcript never presents edited rules as shipped ones
+- [x] A playbook that cannot be read is reported as NOT IN FORCE rather than falling back to its one-line summary — the old behaviour dropped a project type from the classification silently, which is what this layer exists to prevent
+- [x] The layout is exact — `<.artist|artist>/<roles|project-types|policies>/<name>.md` — and a misfiled file is refused by name rather than silently becoming a policy; a standalone directory gets the visible container so the folder does not look empty in a file browser
 - [x] A missing or broken local directory fails loudly rather than falling back to the bundle the way an unreachable remote registry does
 - [x] Files capped at 64 KiB, empty files refused, paths contained against the local root
 - [x] Derivation shared by the build script and the runtime, with a test asserting the committed registry still matches it — two copies would give the same file different ids, and a user's edit would then shadow nothing

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { access, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -355,57 +356,81 @@ const existingContainer = async (root: string): Promise<string> => {
   }
 };
 
-/**
- * Copy one shipped playbook out for editing.
- *
- * Deliberately one file, not the pack. `agents install` copies all thirteen,
- * which is right for handing a coding agent the whole set to read — but as a
- * seed for a local pack it defeats the overlay: every id becomes local, so a
- * playbook improved in a later package version never reaches the user again.
- * Copy only what you actually intend to change.
- */
-const copyWorkflowForEditing = async (id: string, directory: string): Promise<void> => {
-  const registry = await readBundledRegistry();
-  const entry = registry.entries.find((item) => item.id === id);
-  if (!entry) {
-    const available = registry.entries.map((item) => item.id).join('\n  ');
-    throw new Error(`Unknown workflow: ${id}\n\nAvailable:\n  ${available}`);
-  }
+/** The default home for an editable pack, when the user names no directory. */
+const DEFAULT_EDITABLE_DIRECTORY = join(homedir(), 'artist-playbooks');
 
-  const destinationRoot = resolve(directory);
+type SeedResult = {
+  root: string;
+  container: string;
+  /** Written now: a first install, or a playbook new in this version. */
+  added: string[];
+  /** Present and identical to the shipped text. */
+  unchanged: string[];
+  /** Present and different. The user's work; never touched. */
+  yours: string[];
+};
+
+/**
+ * Copy the whole pack into a directory the user owns, and say what happened.
+ *
+ * All of it, not a file at a time. Per-file opt-in made the user keep track of
+ * which playbooks were theirs and which were still the package's, which is book-
+ * keeping the tool should be doing — and the reason it existed, that a full copy
+ * stops a later version's improvements arriving, is answered by this being
+ * re-runnable rather than by pushing the problem outward: run it again after an
+ * upgrade and playbooks new in that version are added, while anything edited is
+ * left exactly as it is.
+ *
+ * Never overwrites. A file that differs from the shipped text is the user's, and
+ * this cannot tell a deliberate edit from an experiment, so it reports and moves
+ * on rather than deciding.
+ */
+const seedEditablePack = async (
+  directory: string = DEFAULT_EDITABLE_DIRECTORY,
+): Promise<SeedResult> => {
+  const registry = await readBundledRegistry();
+  const root = resolve(directory);
   // A fresh directory gets the visible container. The hidden one is right in a
   // repository, beside AGENTS.md; here the user opens this folder in a file
   // browser to edit what is in it, and a leading dot makes it look empty.
-  const container = await existingContainer(destinationRoot);
-  const withinPack = entry.file.split('/').slice(1).join('/');
-  const destination = resolveWithin(destinationRoot, `${container}/${withinPack}`);
-  const bundled = await readFile(assertSafePackPath(entry.file), 'utf8');
+  const container = await existingContainer(root);
+  const result: SeedResult = { root, container, added: [], unchanged: [], yours: [] };
 
-  if (await exists(destination)) {
-    const current = await readFile(destination, 'utf8');
-    if (current !== bundled) {
-      throw new Error(
-        `${destination} already exists and differs from the shipped version. ` +
-          'Refusing to overwrite your edits.',
-      );
+  for (const entry of registry.entries) {
+    const withinPack = entry.file.split('/').slice(1).join('/');
+    const destination = resolveWithin(root, `${container}/${withinPack}`);
+    const bundled = await readFile(assertSafePackPath(entry.file), 'utf8');
+
+    if (await exists(destination)) {
+      const current = await readFile(destination, 'utf8');
+      (current === bundled ? result.unchanged : result.yours).push(entry.id);
+      continue;
     }
-    console.log(`Already current ${container}/${withinPack}`);
-    return;
+    await mkdir(dirname(destination), { recursive: true });
+    await writeFile(destination, bundled, 'utf8');
+    result.added.push(entry.id);
   }
 
-  await mkdir(dirname(destination), { recursive: true });
-  await writeFile(destination, bundled, 'utf8');
-  // The destination path, not the pack-relative source. They differ whenever the
-  // visible container is used, and naming a `.artist/` the user does not have
-  // sends them looking for a hidden directory that was never created.
-  console.log(`Copied ${entry.file} to ${destination}`);
-  console.log('Edit it, then point this machine at the directory:');
-  console.log(`  artist-mcp init --agents ${destinationRoot}`);
+  return result;
+};
+
+/** Report a seed in the terms the user cares about: what moved, what was kept. */
+const describeSeed = ({ root, container, added, unchanged, yours }: SeedResult): void => {
+  const total = added.length + unchanged.length + yours.length;
+  console.log(`${total} playbooks in ${join(root, container)}`);
+  if (added.length > 0) console.log(`  ${added.length} copied in`);
+  if (unchanged.length > 0) console.log(`  ${unchanged.length} already matched the shipped text`);
+  if (yours.length > 0) {
+    console.log(`  ${yours.length} you have edited, left untouched: ${yours.join(', ')}`);
+  }
+  console.log('Edit any of them, or add your own alongside them.');
 };
 
 export {
+  DEFAULT_EDITABLE_DIRECTORY,
   assertLocalAgentPack,
-  copyWorkflowForEditing,
+  describeSeed,
+  seedEditablePack,
   installAgentPack,
   listAgentWorkflows,
   loadAgentWorkflow,

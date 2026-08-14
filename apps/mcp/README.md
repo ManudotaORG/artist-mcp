@@ -109,17 +109,14 @@ npx @manudota/artist-mcp agents status
 
 ### Editing the playbooks
 
-Copy out the one you want to change, edit it, then point this machine at the
-directory:
-
 ```bash
-npx @manudota/artist-mcp agents edit project-type:concert ~/artist-playbooks
-npx @manudota/artist-mcp init --agents ~/artist-playbooks
+npx @manudota/artist-mcp init --editable
 ```
 
-Your file overrides the shipped one of the same id; everything you did not copy
-stays bundled and keeps improving with the package. Copy one file rather than
-the whole pack for exactly that reason.
+That copies every playbook to `~/artist-playbooks/artist/`, where all of them are
+yours to edit, and you can add your own alongside them. Re-run it after upgrading
+and it adds playbooks new in that version while leaving your edits alone. Without
+`--editable`, the shipped playbooks are used and verified by checksum.
 
 Editing a playbook cannot widen what the server can do. The read-only boundary
 is not written in the Markdown — it holds because no tool exists that writes to

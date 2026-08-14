@@ -54,7 +54,7 @@ test('a playbook that cannot be read is reported, not quietly summarised', async
   assert.match(text, /## project-type:concert — NOT IN FORCE/);
   assert.match(text, /Checksum verification failed/);
   // Names the correct route rather than leaving the user to guess.
-  assert.match(text, /agents edit <id> <directory>/);
+  assert.match(text, /init --editable/);
   // The description is still shown, but never as if it were the playbook.
   assert.match(text, /Description only, not the playbook/);
   // The rest of the pack is unaffected.

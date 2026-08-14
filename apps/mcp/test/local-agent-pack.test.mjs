@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
-import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import test from 'node:test';
 
 import {
+  DEFAULT_EDITABLE_DIRECTORY,
   assertLocalAgentPack,
-  copyWorkflowForEditing,
   listAgentWorkflows,
   loadAgentWorkflow,
   resolveRegistry,
+  seedEditablePack,
 } from '../dist/agents.js';
 
 const concertPath = (root) => resolve(root, '.artist/project-types/CONCERT.md');
@@ -82,7 +83,7 @@ test('a directory with no pack container fails loudly, not silently bundled', as
     await assert.rejects(listAgentWorkflows(), (err) => {
       assert.match(err.message, /No \.artist\/ or artist\/ directory/);
       assert.match(err.message, new RegExp(root.replaceAll('\\', '\\\\')));
-      assert.match(err.message, /agents edit/);
+      assert.match(err.message, /init --editable/);
       return true;
     });
   });
@@ -120,53 +121,54 @@ test('a local path may not escape the local root', async () => {
 });
 
 /**
- * The point of copying one file rather than the pack: `agents install` makes
- * every id local, so a playbook improved in a later package version stops
- * reaching the user. Seeding sparsely is what keeps the overlay worth having.
+ * One install copies everything. Per-file opt-in made the user track which
+ * playbooks were theirs and which were still the package's, which is bookkeeping
+ * the tool should do — and the reason it existed, that a full copy stops a later
+ * version's improvements arriving, is answered by this being re-runnable.
  */
-test('editing one playbook leaves the other twelve tracking the package', async () => {
+test('the editable install copies the whole pack', async () => {
   const root = await mkdtemp(resolve(tmpdir(), 'artist-seed-'));
   try {
-    const quiet = console.log;
-    console.log = () => {};
-    try {
-      await copyWorkflowForEditing('project-type:concert', root);
-    } finally {
-      console.log = quiet;
-    }
+    const { added, unchanged, yours, container } = await seedEditablePack(root);
+    assert.equal(added.length, 13);
+    assert.deepEqual(unchanged, []);
+    assert.deepEqual(yours, []);
+    assert.equal(container, 'artist');
 
     process.env.ARTIST_MCP_AGENTS_DIR = root;
     const entries = await listAgentWorkflows();
     assert.equal(entries.length, 13);
-    assert.equal(entries.filter((entry) => entry.source === 'local').length, 1);
-    assert.equal(
-      entries.find((entry) => entry.id === 'project-type:concert').source,
-      'local',
-    );
+    assert.ok(entries.every((entry) => entry.source === 'local'));
   } finally {
     delete process.env.ARTIST_MCP_AGENTS_DIR;
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test('an unknown id to copy lists what is available', async () => {
-  await assert.rejects(copyWorkflowForEditing('project-type:nope', tmpdir()), (err) => {
-    assert.match(err.message, /Unknown workflow: project-type:nope/);
-    assert.match(err.message, /project-type:concert/);
-    return true;
-  });
+test('re-running adds what is new and never touches an edit', async () => {
+  const root = await mkdtemp(resolve(tmpdir(), 'artist-reseed-'));
+  try {
+    await seedEditablePack(root);
+
+    const edited = resolve(root, 'artist/project-types/CONCERT.md');
+    await writeFile(edited, '# Concert\n\nMy own rules.\n');
+    // Stands in for a playbook that did not exist in the version first installed.
+    await rm(resolve(root, 'artist/project-types/REHEARSAL.md'));
+
+    const { added, unchanged, yours } = await seedEditablePack(root);
+    assert.deepEqual(added, ['project-type:rehearsal']);
+    assert.deepEqual(yours, ['project-type:concert']);
+    assert.equal(unchanged.length, 11);
+    // The edit survived verbatim.
+    assert.equal(await readFile(edited, 'utf8'), '# Concert\n\nMy own rules.\n');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
-test('copying refuses to overwrite an edit already made', async () => {
-  await withLocalPack(
-    { '.artist/project-types/CONCERT.md': '# Concert\n\nMy careful edit.\n' },
-    async (root) => {
-      await assert.rejects(
-        copyWorkflowForEditing('project-type:concert', root),
-        /Refusing to overwrite your edits/,
-      );
-    },
-  );
+test('the default directory is under the home directory, not the cwd', () => {
+  assert.match(DEFAULT_EDITABLE_DIRECTORY, /artist-playbooks$/);
+  assert.ok(DEFAULT_EDITABLE_DIRECTORY.startsWith(homedir()));
 });
 
 test('a pack is counted before init will write it into the config', async () => {
@@ -270,13 +272,7 @@ test('the id is the same whichever container holds the file', async () => {
 test('a fresh directory is seeded with the visible container', async () => {
   const root = await mkdtemp(resolve(tmpdir(), 'artist-visible-'));
   try {
-    const quiet = console.log;
-    console.log = () => {};
-    try {
-      await copyWorkflowForEditing('project-type:concert', root);
-    } finally {
-      console.log = quiet;
-    }
+    await seedEditablePack(root);
     await access(resolve(root, 'artist/project-types/CONCERT.md'));
     await assert.rejects(access(resolve(root, '.artist')));
   } finally {
@@ -293,13 +289,7 @@ test('a directory already on .artist/ keeps it rather than gaining a second', as
   await withLocalPack(
     { '.artist/policies/LOCAL_STATE.md': '# Local State\n\nMine.\n' },
     async (root) => {
-      const quiet = console.log;
-      console.log = () => {};
-      try {
-        await copyWorkflowForEditing('project-type:concert', root);
-      } finally {
-        console.log = quiet;
-      }
+      await seedEditablePack(root);
       await access(resolve(root, '.artist/project-types/CONCERT.md'));
       await assert.rejects(access(resolve(root, 'artist')));
     },

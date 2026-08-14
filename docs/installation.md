@@ -166,23 +166,29 @@ outputs remain in chat.
 
 ## 5. Use your own playbooks
 
-The roles and project types are plain Markdown, and you can run your own instead
-of the shipped ones. Copy out the one you want to change, edit it, then point
-this machine at the directory:
+There are two installs and nothing in between. The one in step 1 runs the shipped
+playbooks, verified by checksum and not editable. The other copies every playbook
+somewhere you own, and all of them become yours to change:
 
 ```bash
-npx @manudota/artist-mcp agents edit project-type:concert ~/artist-playbooks
-npx @manudota/artist-mcp init --agents ~/artist-playbooks
+npx @manudota/artist-mcp init --editable
 ```
 
-Restart Claude Desktop. Your file now overrides the shipped one; anything you
-did not copy stays bundled and keeps improving with the package — which is why
-this copies one file rather than the whole pack.
+That writes the whole pack to `~/artist-playbooks/artist/`, or to a directory you
+name — `init --editable ~/somewhere-else`. Restart Claude Desktop afterwards.
 
-The playbooks land in `~/artist-playbooks/artist/project-types/`, and that folder
-is visible — open it in Finder and edit the Markdown in whatever you like. A
-directory that already uses a hidden `.artist/` keeps working and is left as it
-is; don't create both, which is refused rather than merged.
+The folder is visible, so open it in Finder and edit the Markdown in whatever you
+like. Add your own playbooks alongside them: a new file under `project-types/`,
+`roles/`, or `policies/` becomes available under an id taken from its filename. A
+new project type is in force immediately, since project types are read in full
+before anything else happens. A new role is offered by name and description and
+loaded when it looks relevant, so if you want one used reliably, say so in
+`roles/ORCHESTRATOR.md`, which is now yours too.
+
+Re-run the same command after upgrading the package. It adds playbooks that are
+new in that version, leaves everything you have edited exactly as it is, and
+tells you which files it treated as yours. That is how an editable install keeps
+receiving improvements without anyone tracking files by hand.
 
 Edits and new files are picked up on the next question, with no restart. What a
 running conversation will *not* notice is a playbook you add or change
@@ -192,13 +198,18 @@ conversation after editing.
 To check what is actually in force:
 
 ```bash
-npx @manudota/artist-mcp agents status --agents ~/artist-playbooks
+npx @manudota/artist-mcp agents status ~/artist-playbooks
 ```
 
-If the directory is missing or a file in it is empty or unreasonably large, the
-workflow tools say so rather than quietly using the shipped versions. Editing a
-playbook changes the advice you get; it cannot let the server write to OneNote,
-send mail, or change a calendar, because no such tool exists.
+If the directory is missing, or a file in it is empty, unreasonably large, or
+filed outside `roles/`, `project-types/` or `policies/`, the workflow tools say so
+rather than quietly using the shipped versions.
+
+To go back to the shipped playbooks, run `init` again without `--editable`. Your
+directory is left where it is, so the same command re-adopts it later.
+
+Editing a playbook changes the advice you get. It cannot let the server write to
+OneNote, send mail, or change a calendar, because no such tool exists.
 
 ## Reconnect or disconnect
 

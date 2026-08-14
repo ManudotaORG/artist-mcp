@@ -127,8 +127,7 @@ back to the installed bundle.
 A user can point the server at a directory of their own:
 
 ```bash
-npx @manudota/artist-mcp agents edit project-type:concert ~/artist-playbooks
-npx @manudota/artist-mcp init --agents ~/artist-playbooks
+npx @manudota/artist-mcp init --editable [directory]
 ```
 
 Entries there shadow the bundled pack **by id**, so editing one project type does
@@ -144,8 +143,8 @@ The container may be hidden or visible, and that is not cosmetic. `.artist/` is
 right inside a repository, where it sits beside `AGENTS.md` as tool configuration
 and the policies refer to `.artist/local/`. It is wrong for a standalone
 directory the user keeps their playbooks in and opens in a file browser: the
-folder they were told to edit appears to be empty. So `agents edit` seeds a fresh
-directory with the visible `artist/`, keeps `.artist/` on any directory that
+folder they were told to edit appears to be empty. So the editable install seeds a
+fresh directory with the visible `artist/`, keeps `.artist/` on any directory that
 already has one — writing the other name beside it would split the pack in two —
 and `agents install`, which targets a repository, is unchanged. Both containers
 present at once is refused rather than merged, since a playbook the user thought
@@ -168,10 +167,21 @@ before anything is loaded, so it competes for classification immediately. A new
 with seven established ones on that line alone; wiring it in reliably means
 copying out `ORCHESTRATOR.md` too and naming it there.
 
-`agents edit` copies one file on purpose. `agents install` copies all thirteen,
-which is right for handing a coding agent the whole set to read inside a repo,
-but as a seed for a local pack it defeats the overlay — every id becomes local,
-so nothing tracks the package any more.
+There are two installs and no middle setting. The default runs the shipped,
+checksummed pack. `--editable` copies all of it into a directory the user owns,
+where every playbook is theirs.
+
+Per-file opt-in was tried first and removed. It kept most ids tracking the
+package, but only by making the user remember which files were theirs and which
+were not, and that bookkeeping is the tool's job. The reason it existed — that a
+full copy stops a later version's improvements arriving — is answered instead by
+the install being re-runnable: run it again after an upgrade and playbooks new in
+that version are added, anything edited is left alone, and the summary says which
+files were treated as the user's. Nothing is ever overwritten, because a file
+that differs cannot be told apart from a deliberate edit.
+
+`agents install` still copies the pack into a repository for a coding agent to
+read, which is a different job and unchanged.
 
 `init` records an absolute path in the Claude Desktop entry's own args. It cannot
 be discovered at runtime: the server is spawned with no cwd worth trusting. Args

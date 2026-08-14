@@ -172,7 +172,7 @@ const renderWorkflowBriefing = async (
           "edited the installed package, that copy is verified against a " +
           "checksum and is replaced on upgrade — playbooks are edited by " +
           "pointing the server at a directory instead: " +
-          "`artist-mcp agents edit <id> <directory>`.\n" +
+          "`artist-mcp init --editable`.\n" +
           `Description only, not the playbook: ${entry.name} — ${entry.description}`
         );
       }

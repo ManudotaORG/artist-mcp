@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertLocalAgentPack } from "./agents.js";
+import { DEFAULT_EDITABLE_DIRECTORY, describeSeed, seedEditablePack } from "./agents.js";
 import { isStagingVersion, packageVersion } from "./client.js";
 import { configPath, ENTRY_NAME, readConfig, writeConfig } from "./config.js";
 import { connectedProviders } from "./dispatch.js";
@@ -22,8 +22,16 @@ const packageSpec = (version: string = packageVersion): string =>
 
 type InitOptions = {
   local?: boolean;
-  /** A directory of the user's own playbooks, layered over the bundled pack. */
-  agentsDir?: string;
+  /**
+   * Install the editable pack in this directory instead of running the shipped,
+   * checksummed one.
+   *
+   * There are two installs and no middle setting. The alternative was letting a
+   * user mark playbooks editable one at a time, which made them track which
+   * files were theirs and which were still the package's — bookkeeping the tool
+   * should do. An empty string means "editable, in the default directory".
+   */
+  editableDir?: string;
 };
 
 /**
@@ -76,26 +84,31 @@ const createServerEntry = ({
  * failing inside Claude — so it says plainly which providers are connected and
  * names the command for the ones that are not.
  */
-export const runInit = async ({ local = false, agentsDir }: InitOptions = {}): Promise<void> => {
-  // Check the pack before touching the config. A typo in the path should fail
-  // here, while the user is still looking at the terminal — not later, as every
-  // workflow tool failing inside Claude Desktop.
-  const playbooks = agentsDir ? await assertLocalAgentPack(agentsDir) : undefined;
+export const runInit = async ({ local = false, editableDir }: InitOptions = {}): Promise<void> => {
+  // Seed before touching the config, so a directory that cannot be written fails
+  // here, while the user is still looking at the terminal — rather than later, as
+  // every workflow tool failing inside Claude Desktop.
+  const seeded =
+    editableDir === undefined
+      ? undefined
+      : await seedEditablePack(editableDir === "" ? DEFAULT_EDITABLE_DIRECTORY : editableDir);
 
   const path = configPath();
   const config = await readConfig(path);
   const servers = (config.mcpServers ?? {}) as Record<string, unknown>;
 
-  servers[ENTRY_NAME] = createServerEntry({ local, agentsDir });
+  servers[ENTRY_NAME] = createServerEntry({ local, agentsDir: seeded?.root });
   config.mcpServers = servers;
 
   await writeConfig(path, config);
 
   console.log(`\nWrote "${ENTRY_NAME}" to ${path}`);
-  if (agentsDir !== undefined) {
-    const count = playbooks === 1 ? '1 playbook' : `${playbooks} playbooks`;
-    console.log(`Reading ${count} from ${resolve(agentsDir)}`);
-    console.log("Files there override the shipped ones; the rest stay bundled.");
+  if (seeded) {
+    console.log("");
+    describeSeed(seeded);
+  } else {
+    console.log("Playbooks are the shipped, checksummed ones. Re-run with");
+    console.log("`--editable` to install a copy you can edit.");
   }
   if (local) {
     console.log(`Using local build: ${LOCAL_ENTRY}`);

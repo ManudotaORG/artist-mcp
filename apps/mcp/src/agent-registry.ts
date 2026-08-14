@@ -36,8 +36,8 @@ type AgentRegistry = {
  * tool configuration and the policies refer to `.artist/local/`. It is wrong for
  * a standalone directory the user keeps their own playbooks in and opens in a
  * file browser: the folder they were told to edit appears to be empty, because
- * a leading dot hides it. So a local pack may use either, and `agents edit`
- * creates the visible one when starting a fresh directory.
+ * a leading dot hides it. So a local pack may use either, and the editable
+ * install creates the visible one when starting a fresh directory.
  *
  * Exactly one container level, and only these two names — the strictness that
  * stops a loose or misfiled playbook being silently reclassified still holds.
@@ -114,7 +114,7 @@ const packSubdirectory = async (root: string): Promise<string> => {
   if (!found) {
     throw new Error(
       `No ${PACK_SUBDIRECTORIES.join('/ or ')}/ directory in ${root}. ` +
-        'Run `artist-mcp agents edit <workflow-id> <directory>` to copy a playbook there.',
+        'Run `artist-mcp init --editable <directory>` to install a pack there.',
     );
   }
   return found;
