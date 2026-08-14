@@ -361,21 +361,30 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
    on the same connection and scope; what needs deciding first is how a thread
    is summarised without pouring quoted history into chat.
 
-7. **The published server reports the wrong version.** `dist/` is committed, and
-   release-please rewrites the `x-release-please-version` line in `src/` and
-   `package.json` without rebuilding it. On `main` at v1.0.1 the source says
-   `1.0.1` and the committed `dist/server.js` says `0.8.0`, so that is the
-   version the MCP handshake announces to every client.
+7. **`apps/mcp/dist/` is no longer tracked.** Resolved. It had drifted from
+   `src/`: release-please rewrites the `x-release-please-version` line in `src/`
+   and `package.json`, nothing rebuilt the committed copy, so on `main` at
+   v1.0.1 the source said `1.0.1` and the committed `dist/server.js` said
+   `0.8.0`.
 
-   Harmless until something depends on the number, and then confusing in the
-   worst way: a bug report naming 0.8.0 sends you to a release from months
-   earlier. Any real build fixes it locally, which is why it keeps going
-   unnoticed — the drift only exists in the committed copy.
+   **No published version was ever affected**, which is worth stating because
+   the opposite was assumed at first. The release job's test step runs
+   `pnpm run build` before publishing and `prepublishOnly` builds again; the
+   v1.0.1 tarball on npm was pulled and checked, and reports `1.0.1`. The drift
+   existed only in git.
 
-   Two ways out: build `dist/` in the release job so the committed copy is
-   never the one that ships, or stop tracking `dist/` and build on publish.
-   The second is the ordinary answer for a published package; the first is
-   smaller. Either way it recurs every release until one is chosen.
+   What it cost was local: generated files turning up as diffs and conflicts,
+   and `init --local` running stale code for anyone who checked out without
+   building. Fixed by untracking it rather than by building in the release job —
+   CI already builds, which is precisely why users never saw it. `files` in
+   `package.json` is an allowlist that overrides `.gitignore`, so the tarball is
+   unaffected; verified with `npm pack --dry-run`, and the suite passes with
+   `dist/` deleted outright.
+
+   `agent-pack/registry.json` stays tracked despite also being generated. It is
+   small, reviewable, and regenerating it is part of changing executable policy,
+   so a test asserts the committed copy still matches what the derivation
+   produces — a review signal rather than noise.
 
 ## Confirm before registering the Microsoft app
 

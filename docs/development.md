@@ -99,6 +99,11 @@ node apps/mcp/dist/index.js init --local
 node apps/mcp/dist/index.js agents install
 ```
 
+The build is not optional: `apps/mcp/dist/` is generated and untracked, so a
+fresh checkout has no `dist/index.js` to run at all. The tarball still carries
+one — `files` in `package.json` is an allowlist that overrides `.gitignore`, and
+`prepublishOnly` rebuilds before every publish.
+
 `init --local` writes an absolute Node entry point into Claude Desktop, so a
 restart continues to run this checkout rather than silently switching to npm
 `latest`. To exercise the staging presentation locally, build with:
