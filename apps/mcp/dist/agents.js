@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { access, copyFile, mkdir, readFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PACK_SUBDIRECTORY, deriveRegistry, parseRegistry, resolveWithin, } from './agent-registry.js';
@@ -59,7 +59,7 @@ const fetchRemoteRegistry = async () => {
 const readLocalRegistry = async (root) => {
     if (!(await exists(resolve(root, PACK_SUBDIRECTORY)))) {
         throw new Error(`No ${PACK_SUBDIRECTORY}/ directory in ${root}. ` +
-            'Run `artist-mcp agents install <directory>` to seed one.');
+            'Run `artist-mcp agents edit <workflow-id> <directory>` to copy a playbook there.');
     }
     const registry = await deriveRegistry(root, {
         maxFileBytes: MAX_LOCAL_FILE_BYTES,
@@ -260,4 +260,46 @@ const runAgentsStatus = async () => {
         console.log(`  ${entry.id.padEnd(28)} ${entry.source.padEnd(8)} ${entry.file}`);
     }
 };
-export { installAgentPack, listAgentWorkflows, loadAgentWorkflow, resolveRegistry, runAgentsStatus, setLocalAgentRoot, };
+/**
+ * Check a directory is a usable pack, and say how much is in it.
+ *
+ * Called by `init` so a typo in the path fails while the user is still looking
+ * at the terminal. Otherwise the mistake surfaces later as every workflow tool
+ * failing inside Claude Desktop, which is a much worse sentence to act on.
+ */
+const assertLocalAgentPack = async (directory) => (await readLocalRegistry(resolve(directory))).entries.length;
+/**
+ * Copy one shipped playbook out for editing.
+ *
+ * Deliberately one file, not the pack. `agents install` copies all thirteen,
+ * which is right for handing a coding agent the whole set to read — but as a
+ * seed for a local pack it defeats the overlay: every id becomes local, so a
+ * playbook improved in a later package version never reaches the user again.
+ * Copy only what you actually intend to change.
+ */
+const copyWorkflowForEditing = async (id, directory) => {
+    const registry = await readBundledRegistry();
+    const entry = registry.entries.find((item) => item.id === id);
+    if (!entry) {
+        const available = registry.entries.map((item) => item.id).join('\n  ');
+        throw new Error(`Unknown workflow: ${id}\n\nAvailable:\n  ${available}`);
+    }
+    const destinationRoot = resolve(directory);
+    const destination = resolveWithin(destinationRoot, entry.file);
+    const bundled = await readFile(assertSafePackPath(entry.file), 'utf8');
+    if (await exists(destination)) {
+        const current = await readFile(destination, 'utf8');
+        if (current !== bundled) {
+            throw new Error(`${destination} already exists and differs from the shipped version. ` +
+                'Refusing to overwrite your edits.');
+        }
+        console.log(`Already current ${entry.file}`);
+        return;
+    }
+    await mkdir(dirname(destination), { recursive: true });
+    await writeFile(destination, bundled, 'utf8');
+    console.log(`Copied ${entry.file} to ${destinationRoot}`);
+    console.log(`Edit it, then point this machine at the directory:`);
+    console.log(`  artist-mcp init --agents ${destinationRoot}`);
+};
+export { assertLocalAgentPack, copyWorkflowForEditing, installAgentPack, listAgentWorkflows, loadAgentWorkflow, resolveRegistry, runAgentsStatus, setLocalAgentRoot, };

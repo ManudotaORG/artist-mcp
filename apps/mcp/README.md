@@ -107,6 +107,24 @@ came from:
 npx @manudota/artist-mcp agents status
 ```
 
+### Editing the playbooks
+
+Copy out the one you want to change, edit it, then point this machine at the
+directory:
+
+```bash
+npx @manudota/artist-mcp agents edit project-type:concert ~/artist-playbooks
+npx @manudota/artist-mcp init --agents ~/artist-playbooks
+```
+
+Your file overrides the shipped one of the same id; everything you did not copy
+stays bundled and keeps improving with the package. Copy one file rather than
+the whole pack for exactly that reason.
+
+Editing a playbook cannot widen what the server can do. The read-only boundary
+is not written in the Markdown — it holds because no tool exists that writes to
+OneNote, sends mail, or changes a calendar.
+
 The playbooks produce plans, recommendations, audits, and drafts in chat. They
 cannot write to OneNote, send mail, or touch a calendar. Gmail and Calendar are
 read only when you ask for them — a connected account is not a standing

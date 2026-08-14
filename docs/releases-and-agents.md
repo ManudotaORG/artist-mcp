@@ -124,11 +124,30 @@ back to the installed bundle.
 
 ## Playbooks a user edits
 
-A user can point the server at a directory of their own. Entries there shadow
-the bundled pack **by id**, so editing one project type does not fork the other
-twelve, and a playbook added by a later package version still arrives. Ids come
-from where a file sits, so the layout must match: `.artist/roles/`,
-`.artist/project-types/`, `.artist/policies/`.
+A user can point the server at a directory of their own:
+
+```bash
+npx @manudota/artist-mcp agents edit project-type:concert ~/artist-playbooks
+npx @manudota/artist-mcp init --agents ~/artist-playbooks
+```
+
+Entries there shadow the bundled pack **by id**, so editing one project type does
+not fork the other twelve, and a playbook added by a later package version still
+arrives. Ids come from where a file sits, so the layout must match:
+`.artist/roles/`, `.artist/project-types/`, `.artist/policies/`.
+
+`agents edit` copies one file on purpose. `agents install` copies all thirteen,
+which is right for handing a coding agent the whole set to read inside a repo,
+but as a seed for a local pack it defeats the overlay — every id becomes local,
+so nothing tracks the package any more.
+
+`init` records an absolute path in the Claude Desktop entry's own args. It cannot
+be discovered at runtime: the server is spawned with no cwd worth trusting. Args
+rather than `env` or a hidden state file, so that reading the entry tells you
+this machine is running the user's rules. `init` counts the playbooks before it
+writes the config, so a mistyped path fails while the user is still in the
+terminal instead of surfacing later as every workflow tool failing inside Claude.
+`ARTIST_MCP_AGENTS_DIR` does the same thing for development.
 
 Checksums mean something narrower here. Bundled ones prove a file is what was
 published; a local file has no such authority to check against, because the user

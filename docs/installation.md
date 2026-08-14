@@ -164,6 +164,32 @@ The installer preserves a differing root `AGENTS.md` and stops before changing
 any differing workflow file. One OneNote page remains one working unit, and all
 outputs remain in chat.
 
+## 5. Use your own playbooks
+
+The roles and project types are plain Markdown, and you can run your own instead
+of the shipped ones. Copy out the one you want to change, edit it, then point
+this machine at the directory:
+
+```bash
+npx @manudota/artist-mcp agents edit project-type:concert ~/artist-playbooks
+npx @manudota/artist-mcp init --agents ~/artist-playbooks
+```
+
+Restart Claude Desktop. Your file now overrides the shipped one; anything you
+did not copy stays bundled and keeps improving with the package — which is why
+this copies one file rather than the whole pack.
+
+To check what is actually in force:
+
+```bash
+npx @manudota/artist-mcp agents status --agents ~/artist-playbooks
+```
+
+If the directory is missing or a file in it is empty or unreasonably large, the
+workflow tools say so rather than quietly using the shipped versions. Editing a
+playbook changes the advice you get; it cannot let the server write to OneNote,
+send mail, or change a calendar, because no such tool exists.
+
 ## Reconnect or disconnect
 
 ```bash

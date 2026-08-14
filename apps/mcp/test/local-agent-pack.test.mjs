@@ -4,7 +4,13 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import test from 'node:test';
 
-import { listAgentWorkflows, loadAgentWorkflow, resolveRegistry } from '../dist/agents.js';
+import {
+  assertLocalAgentPack,
+  copyWorkflowForEditing,
+  listAgentWorkflows,
+  loadAgentWorkflow,
+  resolveRegistry,
+} from '../dist/agents.js';
 
 /** A pack-shaped directory, seeded with whatever the test needs. */
 const withLocalPack = async (files, run) => {
@@ -74,7 +80,7 @@ test('a directory with no .artist/ fails loudly instead of using the bundled pac
     await assert.rejects(listAgentWorkflows(), (err) => {
       assert.match(err.message, /No \.artist\/ directory/);
       assert.match(err.message, new RegExp(root.replaceAll('\\', '\\\\')));
-      assert.match(err.message, /agents install/);
+      assert.match(err.message, /agents edit/);
       return true;
     });
   });
@@ -109,6 +115,66 @@ test('a local path may not escape the local root', async () => {
   await withLocalPack({ '.artist/roles/ENVOY.md': '# Envoy\n\nMine.\n' }, async () => {
     await assert.rejects(loadAgentWorkflow('role:../../../etc/passwd'), /Unknown agent workflow/);
   });
+});
+
+/**
+ * The point of copying one file rather than the pack: `agents install` makes
+ * every id local, so a playbook improved in a later package version stops
+ * reaching the user. Seeding sparsely is what keeps the overlay worth having.
+ */
+test('editing one playbook leaves the other twelve tracking the package', async () => {
+  const root = await mkdtemp(resolve(tmpdir(), 'artist-seed-'));
+  try {
+    const quiet = console.log;
+    console.log = () => {};
+    try {
+      await copyWorkflowForEditing('project-type:concert', root);
+    } finally {
+      console.log = quiet;
+    }
+
+    process.env.ARTIST_MCP_AGENTS_DIR = root;
+    const entries = await listAgentWorkflows();
+    assert.equal(entries.length, 13);
+    assert.equal(entries.filter((entry) => entry.source === 'local').length, 1);
+    assert.equal(
+      entries.find((entry) => entry.id === 'project-type:concert').source,
+      'local',
+    );
+  } finally {
+    delete process.env.ARTIST_MCP_AGENTS_DIR;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('an unknown id to copy lists what is available', async () => {
+  await assert.rejects(copyWorkflowForEditing('project-type:nope', tmpdir()), (err) => {
+    assert.match(err.message, /Unknown workflow: project-type:nope/);
+    assert.match(err.message, /project-type:concert/);
+    return true;
+  });
+});
+
+test('copying refuses to overwrite an edit already made', async () => {
+  await withLocalPack(
+    { '.artist/project-types/CONCERT.md': '# Concert\n\nMy careful edit.\n' },
+    async (root) => {
+      await assert.rejects(
+        copyWorkflowForEditing('project-type:concert', root),
+        /Refusing to overwrite your edits/,
+      );
+    },
+  );
+});
+
+test('a pack is counted before init will write it into the config', async () => {
+  await withLocalPack(
+    { '.artist/project-types/CONCERT.md': '# Concert\n\nMine.\n' },
+    async (root) => {
+      assert.equal(await assertLocalAgentPack(root), 1);
+    },
+  );
+  await assert.rejects(assertLocalAgentPack(tmpdir()), /No \.artist\/ directory/);
 });
 
 test('no local directory means the bundled pack, unchanged', async () => {
