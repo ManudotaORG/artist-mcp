@@ -143,6 +143,27 @@ supporting evidence for it. The playbooks can produce plans, recommendations,
 audits, and drafts in chat; they cannot write to OneNote, send mail, or touch a
 calendar.
 
+### Playbooks you can edit
+
+There are two installs and nothing between them. The one above runs the shipped
+playbooks, verified by checksum. This one copies all of them somewhere you own,
+where every playbook is yours to change:
+
+```bash
+npx @manudota/artist-mcp init --editable
+```
+
+They land in `~/artist-playbooks/artist/`, or a directory you name. Add your own
+alongside them — a new file under `project-types/`, `roles/` or `policies/`
+becomes available under an id taken from its filename. Re-run the command after
+upgrading and it adds playbooks new in that version while leaving your edits
+alone.
+
+`artist-mcp agents status [directory]` prints which playbooks are in force and
+where each came from. Editing one changes the advice you get; it cannot widen what
+the server can do, because no tool exists that writes to OneNote, sends mail, or
+changes a calendar.
+
 ## Local development
 
 Requirements: Node 20 or newer, pnpm 11, a Supabase project, and a Microsoft
