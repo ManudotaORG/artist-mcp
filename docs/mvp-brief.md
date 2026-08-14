@@ -389,6 +389,31 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
    so a test asserts the committed copy still matches what the derivation
    produces — a review signal rather than noise.
 
+8. **Node 20 reaches Vercel's build cutoff on 1 October 2026.** Vercel emailed
+   on 14 August 2026: Node 20 is end-of-life, and after that date new builds
+   using it fail. The mail named one affected project, `nextjs` in
+   `highnets-projects` — **not** `artist-mcp` or `artist-mcp-staging` — so on the
+   evidence available neither of this project's deployments is on 20. That has
+   not been confirmed: the Node version is a Vercel dashboard setting and cannot
+   be read from this repository.
+
+   Nothing here overrides it, which is the part worth knowing. Vercel warns that
+   an explicit `engines.node` in `package.json` beats the dashboard, and
+   `apps/web` sets none — so whatever the dashboard says is what builds, and a
+   repo change would not fix a project left on 20.
+
+   Separately, the versions this repo names disagree: `.nvmrc` pins `22.22.2`,
+   CI and the release workflow both use `24`, the root and `apps/mcp`
+   `engines.node` say `>=20`, and the README tells users "Node 20 or newer".
+   The `engines` floor is a real compatibility promise about *users'* machines
+   rather than untidiness, so raising it decides who can still install the
+   package — but it currently promises support on a runtime with no security
+   updates. Aligning `.nvmrc` with the 24 that CI actually uses is the smaller,
+   separate half.
+
+   Action before 1 October 2026: read the Node version on both Vercel projects
+   and upgrade either one still on 20 from the dashboard.
+
 ## Confirm before registering the Microsoft app
 
 Are the notes **OneNote notebooks** or **files in a OneDrive folder**? This brief assumes files. If it's OneNote the scope becomes `Notes.Read` and it's a different API — ask before registering, because changing scopes later means dragging users back through consent.
