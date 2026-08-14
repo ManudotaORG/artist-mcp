@@ -184,6 +184,31 @@ Important invariants:
   `--db-url` for the branch you mean: the CLI is linked to production, so
   `--linked` targets production whatever you intended.
 
+## Dormant hosted credential storage
+
+`connections` and `mcp_keys` are still in the schema and are no longer written
+to. They belonged to the hosted design, where this service held every user's
+refresh token and resolved a connection key on their behalf. An installed copy
+now holds its own tokens and calls Microsoft and Google directly, so there is
+nothing for this service to store or resolve.
+
+They were left in place rather than dropped, deliberately. Bringing hosted
+custody back would mean acting for a user while their machine is off — shared
+workspaces, or anything scheduled — and the schema is the cheap part of that to
+keep. Reviving it would still cost every user a reconnect, because the tokens
+are deliberately not here any more.
+
+What is **not** worth keeping is the credentials that made the old design
+dangerous. `SUPABASE_SERVICE_ROLE_KEY` and `TOKEN_ENCRYPTION_KEY` exist to read
+and decrypt those rows; while they are deployed, an operator can still reach
+whatever the tables hold. Empty tables plus a live service-role key is not the
+same as no exposure — the risk ends when the secrets leave the deployment, not
+when the rows are deleted.
+
+If you revive any of this, say so on the public page in the same breath. The
+"WHAT READ-ONLY DOES NOT COVER" callout was rewritten when custody moved, and a
+revival makes the old wording true again (#22).
+
 ## Publish the MCP package
 
 Release Please owns production versioning. Conventional commits merged to
