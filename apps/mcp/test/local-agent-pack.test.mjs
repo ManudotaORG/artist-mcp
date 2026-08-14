@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import test from 'node:test';
@@ -77,10 +77,10 @@ test('a local-only playbook is added to the pack', async () => {
   );
 });
 
-test('a directory with no .artist/ fails loudly instead of using the bundled pack', async () => {
+test('a directory with no pack container fails loudly, not silently bundled', async () => {
   await withLocalPack({ 'README.md': 'not a pack\n' }, async (root) => {
     await assert.rejects(listAgentWorkflows(), (err) => {
-      assert.match(err.message, /No \.artist\/ directory/);
+      assert.match(err.message, /No \.artist\/ or artist\/ directory/);
       assert.match(err.message, new RegExp(root.replaceAll('\\', '\\\\')));
       assert.match(err.message, /agents edit/);
       return true;
@@ -176,7 +176,7 @@ test('a pack is counted before init will write it into the config', async () => 
       assert.equal(await assertLocalAgentPack(root), 1);
     },
   );
-  await assert.rejects(assertLocalAgentPack(tmpdir()), /No \.artist\/ directory/);
+  await assert.rejects(assertLocalAgentPack(tmpdir()), /No \.artist\/ or artist\/ directory/);
 });
 
 /**
@@ -231,6 +231,95 @@ test('a playbook filed in an invented directory is refused by name', async () =>
       return true;
     });
   });
+});
+
+/**
+ * `.artist/` is right inside a repository, beside AGENTS.md. It is wrong for a
+ * directory the user opens in a file browser to edit what is in it: a leading dot
+ * makes the folder they were told to edit look empty.
+ */
+test('a visible artist/ container is read just like the hidden one', async () => {
+  await withLocalPack(
+    { 'artist/project-types/CONCERT.md': '# Concert\n\nVisible container.\n' },
+    async (root) => {
+      const workflow = await loadAgentWorkflow('project-type:concert');
+      assert.equal(workflow.source, 'local');
+      assert.equal(workflow.file, 'artist/project-types/CONCERT.md');
+      assert.match(workflow.content, /Visible container/);
+      assert.equal(resolve(root, workflow.file), resolve(root, 'artist/project-types/CONCERT.md'));
+    },
+  );
+});
+
+test('the id is the same whichever container holds the file', async () => {
+  for (const container of ['.artist', 'artist']) {
+    await withLocalPack(
+      { [`${container}/project-types/CONCERT.md`]: '# Concert\n\nMine.\n' },
+      async () => {
+        const entries = await listAgentWorkflows();
+        assert.equal(entries.length, 13);
+        assert.equal(
+          entries.find((entry) => entry.id === 'project-type:concert').source,
+          'local',
+        );
+      },
+    );
+  }
+});
+
+test('a fresh directory is seeded with the visible container', async () => {
+  const root = await mkdtemp(resolve(tmpdir(), 'artist-visible-'));
+  try {
+    const quiet = console.log;
+    console.log = () => {};
+    try {
+      await copyWorkflowForEditing('project-type:concert', root);
+    } finally {
+      console.log = quiet;
+    }
+    await access(resolve(root, 'artist/project-types/CONCERT.md'));
+    await assert.rejects(access(resolve(root, '.artist')));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * Writing the visible name beside an existing `.artist/` would split the pack in
+ * two and then greet the user with the doubled-container error for having run the
+ * documented command twice.
+ */
+test('a directory already on .artist/ keeps it rather than gaining a second', async () => {
+  await withLocalPack(
+    { '.artist/policies/LOCAL_STATE.md': '# Local State\n\nMine.\n' },
+    async (root) => {
+      const quiet = console.log;
+      console.log = () => {};
+      try {
+        await copyWorkflowForEditing('project-type:concert', root);
+      } finally {
+        console.log = quiet;
+      }
+      await access(resolve(root, '.artist/project-types/CONCERT.md'));
+      await assert.rejects(access(resolve(root, 'artist')));
+    },
+  );
+});
+
+test('both containers at once is refused rather than merged', async () => {
+  await withLocalPack(
+    {
+      '.artist/project-types/CONCERT.md': '# Concert\n\nHidden copy.\n',
+      'artist/project-types/CONCERT.md': '# Concert\n\nVisible copy.\n',
+    },
+    async () => {
+      await assert.rejects(listAgentWorkflows(), (err) => {
+        assert.match(err.message, /has both \.artist and artist directories/);
+        assert.match(err.message, /hide whichever copy lost/);
+        return true;
+      });
+    },
+  );
 });
 
 test('no local directory means the bundled pack, unchanged', async () => {

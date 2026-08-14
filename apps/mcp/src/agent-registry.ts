@@ -10,7 +10,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 
 type AgentKind = 'role' | 'project-type' | 'policy';
@@ -29,8 +29,22 @@ type AgentRegistry = {
   entries: AgentRegistryEntry[];
 };
 
-/** The pack layout: Markdown lives under `.artist/` and nowhere else. */
+/**
+ * The container Markdown lives in, hidden or visible.
+ *
+ * `.artist/` is right inside a repository, where it sits beside `AGENTS.md` as
+ * tool configuration and the policies refer to `.artist/local/`. It is wrong for
+ * a standalone directory the user keeps their own playbooks in and opens in a
+ * file browser: the folder they were told to edit appears to be empty, because
+ * a leading dot hides it. So a local pack may use either, and `agents edit`
+ * creates the visible one when starting a fresh directory.
+ *
+ * Exactly one container level, and only these two names — the strictness that
+ * stops a loose or misfiled playbook being silently reclassified still holds.
+ */
 const PACK_SUBDIRECTORY = '.artist';
+const VISIBLE_PACK_SUBDIRECTORY = 'artist';
+const PACK_SUBDIRECTORIES = [PACK_SUBDIRECTORY, VISIBLE_PACK_SUBDIRECTORY];
 
 /**
  * Resolve `file` against `root` and refuse anything that escapes it.
@@ -72,6 +86,40 @@ const parseRegistry = (value: unknown): AgentRegistry => {
   return candidate as AgentRegistry;
 };
 
+const directoryExists = async (path: string): Promise<boolean> => {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Which container a pack uses. Both present is an error rather than a
+ * preference: the two would merge silently, and a playbook the user thought they
+ * had replaced would sit in the copy that lost.
+ */
+const packSubdirectory = async (root: string): Promise<string> => {
+  const present = [];
+  for (const name of PACK_SUBDIRECTORIES) {
+    if (await directoryExists(resolve(root, name))) present.push(name);
+  }
+  if (present.length > 1) {
+    throw new Error(
+      `${root} has both ${PACK_SUBDIRECTORIES.join(' and ')} directories. ` +
+        'Keep one — merging them would hide whichever copy lost.',
+    );
+  }
+  const [found] = present;
+  if (!found) {
+    throw new Error(
+      `No ${PACK_SUBDIRECTORIES.join('/ or ')}/ directory in ${root}. ` +
+        'Run `artist-mcp agents edit <workflow-id> <directory>` to copy a playbook there.',
+    );
+  }
+  return found;
+};
+
 /** Every `.md` file under `directory`, recursively, sorted for a stable registry. */
 const collectMarkdown = async (directory: string): Promise<string[]> => {
   const found: string[] = [];
@@ -108,10 +156,10 @@ const KIND_DIRECTORIES: Record<string, AgentKind> = {
 const kindOf = (file: string): AgentKind => {
   const segments = file.split('/');
   const kind = segments.length === 3 ? KIND_DIRECTORIES[segments[1] ?? ''] : undefined;
-  if (segments[0] !== PACK_SUBDIRECTORY || !kind) {
+  if (!PACK_SUBDIRECTORIES.includes(segments[0] ?? '') || !kind) {
     throw new Error(
-      `Workflow file is not in a recognised directory: ${file}. ` +
-        `Expected ${PACK_SUBDIRECTORY}/<${Object.keys(KIND_DIRECTORIES).join('|')}>/<name>.md`,
+      `Workflow file is not in a recognised directory: ${file}. Expected ` +
+        `<${PACK_SUBDIRECTORIES.join('|')}>/<${Object.keys(KIND_DIRECTORIES).join('|')}>/<name>.md`,
     );
   }
   return kind;
@@ -173,7 +221,7 @@ const deriveRegistry = async (
   { maxFileBytes, rejectEmpty = false }: DeriveOptions = {},
 ): Promise<AgentRegistry> => {
   const root = resolve(packRoot);
-  const paths = await collectMarkdown(resolve(root, PACK_SUBDIRECTORY));
+  const paths = await collectMarkdown(resolve(root, await packSubdirectory(root)));
   const entries: AgentRegistryEntry[] = [];
   for (const path of paths) {
     const file = relative(root, path).replaceAll('\\', '/');
@@ -193,10 +241,13 @@ const deriveRegistry = async (
 };
 
 export {
+  PACK_SUBDIRECTORIES,
   PACK_SUBDIRECTORY,
+  VISIBLE_PACK_SUBDIRECTORY,
   collectMarkdown,
   deriveEntry,
   deriveRegistry,
+  packSubdirectory,
   parseRegistry,
   resolveWithin,
   type AgentKind,

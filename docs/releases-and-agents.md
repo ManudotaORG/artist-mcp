@@ -138,7 +138,20 @@ shadowing anything, so a user can write their own project types and roles, not
 only edit the shipped ones.
 
 Ids come from where a file sits, so the layout is exact:
-`.artist/<roles|project-types|policies>/<name>.md`. Anything else — a file loose
+`<.artist|artist>/<roles|project-types|policies>/<name>.md`.
+
+The container may be hidden or visible, and that is not cosmetic. `.artist/` is
+right inside a repository, where it sits beside `AGENTS.md` as tool configuration
+and the policies refer to `.artist/local/`. It is wrong for a standalone
+directory the user keeps their playbooks in and opens in a file browser: the
+folder they were told to edit appears to be empty. So `agents edit` seeds a fresh
+directory with the visible `artist/`, keeps `.artist/` on any directory that
+already has one — writing the other name beside it would split the pack in two —
+and `agents install`, which targets a repository, is unchanged. Both containers
+present at once is refused rather than merged, since a playbook the user thought
+they had replaced would sit in the copy that lost.
+
+Anything else — a file loose
 in `.artist/`, an invented subdirectory, a nested path — is refused by name.
 That fallback used to make such a file a `policy`, which was harmless while the
 only inputs were three reviewed directories here and a trap once the directory

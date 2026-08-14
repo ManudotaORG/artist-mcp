@@ -4,8 +4,9 @@ import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  PACK_SUBDIRECTORY,
+  VISIBLE_PACK_SUBDIRECTORY,
   deriveRegistry,
+  packSubdirectory,
   parseRegistry,
   resolveWithin,
   type AgentRegistry,
@@ -86,18 +87,15 @@ const fetchRemoteRegistry = async (): Promise<{ registry: AgentRegistry; url: UR
  * misreport what is in force — the one thing this layer cannot get wrong.
  */
 const readLocalRegistry = async (root: string): Promise<AgentRegistry> => {
-  if (!(await exists(resolve(root, PACK_SUBDIRECTORY)))) {
-    throw new Error(
-      `No ${PACK_SUBDIRECTORY}/ directory in ${root}. ` +
-        'Run `artist-mcp agents edit <workflow-id> <directory>` to copy a playbook there.',
-    );
-  }
+  // A missing, doubled, or misfiled container is reported by the derivation
+  // itself, which knows which names it accepts. Repeating the check here meant
+  // two messages for one mistake, and only one of them mentioned both layouts.
   const registry = await deriveRegistry(root, {
     maxFileBytes: MAX_LOCAL_FILE_BYTES,
     rejectEmpty: true,
   });
   if (registry.entries.length === 0) {
-    throw new Error(`No workflow Markdown found under ${resolve(root, PACK_SUBDIRECTORY)}.`);
+    throw new Error(`No workflow Markdown found under ${root}.`);
   }
   return registry;
 };
@@ -339,6 +337,25 @@ const assertLocalAgentPack = async (directory: string): Promise<number> =>
   (await readLocalRegistry(resolve(directory))).entries.length;
 
 /**
+ * The container an existing pack uses, or the visible one for a new directory.
+ *
+ * Keeping a directory on `.artist/` once it has one matters more than the
+ * preference does: silently writing the visible name beside it would split the
+ * pack in two, and the doubled-container error would then greet a user who had
+ * only run the documented command twice.
+ */
+const existingContainer = async (root: string): Promise<string> => {
+  try {
+    return await packSubdirectory(root);
+  } catch (err) {
+    // Both present is a real conflict and must not be papered over; nothing
+    // present is the ordinary first run.
+    if (err instanceof Error && err.message.includes('both')) throw err;
+    return VISIBLE_PACK_SUBDIRECTORY;
+  }
+};
+
+/**
  * Copy one shipped playbook out for editing.
  *
  * Deliberately one file, not the pack. `agents install` copies all thirteen,
@@ -356,7 +373,12 @@ const copyWorkflowForEditing = async (id: string, directory: string): Promise<vo
   }
 
   const destinationRoot = resolve(directory);
-  const destination = resolveWithin(destinationRoot, entry.file);
+  // A fresh directory gets the visible container. The hidden one is right in a
+  // repository, beside AGENTS.md; here the user opens this folder in a file
+  // browser to edit what is in it, and a leading dot makes it look empty.
+  const container = await existingContainer(destinationRoot);
+  const withinPack = entry.file.split('/').slice(1).join('/');
+  const destination = resolveWithin(destinationRoot, `${container}/${withinPack}`);
   const bundled = await readFile(assertSafePackPath(entry.file), 'utf8');
 
   if (await exists(destination)) {
@@ -367,14 +389,17 @@ const copyWorkflowForEditing = async (id: string, directory: string): Promise<vo
           'Refusing to overwrite your edits.',
       );
     }
-    console.log(`Already current ${entry.file}`);
+    console.log(`Already current ${container}/${withinPack}`);
     return;
   }
 
   await mkdir(dirname(destination), { recursive: true });
   await writeFile(destination, bundled, 'utf8');
-  console.log(`Copied ${entry.file} to ${destinationRoot}`);
-  console.log(`Edit it, then point this machine at the directory:`);
+  // The destination path, not the pack-relative source. They differ whenever the
+  // visible container is used, and naming a `.artist/` the user does not have
+  // sends them looking for a hidden directory that was never created.
+  console.log(`Copied ${entry.file} to ${destination}`);
+  console.log('Edit it, then point this machine at the directory:');
   console.log(`  artist-mcp init --agents ${destinationRoot}`);
 };
 

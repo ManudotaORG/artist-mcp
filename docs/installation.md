@@ -179,6 +179,16 @@ Restart Claude Desktop. Your file now overrides the shipped one; anything you
 did not copy stays bundled and keeps improving with the package — which is why
 this copies one file rather than the whole pack.
 
+The playbooks land in `~/artist-playbooks/artist/project-types/`, and that folder
+is visible — open it in Finder and edit the Markdown in whatever you like. A
+directory that already uses a hidden `.artist/` keeps working and is left as it
+is; don't create both, which is refused rather than merged.
+
+Edits and new files are picked up on the next question, with no restart. What a
+running conversation will *not* notice is a playbook you add or change
+mid-conversation, because the model reuses the list it already has — start a new
+conversation after editing.
+
 To check what is actually in force:
 
 ```bash
