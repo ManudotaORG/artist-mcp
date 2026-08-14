@@ -100,6 +100,28 @@ Envoy, Auditor, Janitor) and project types (Concert, Large Concert, Studio
 Session, Rehearsal) into the current project as plain Markdown, loaded at
 runtime and verified by checksum.
 
+To see which workflow files the server is actually reading, and where each one
+came from:
+
+```bash
+npx @manudota/artist-mcp agents status
+```
+
+### Editing the playbooks
+
+```bash
+npx @manudota/artist-mcp init --editable
+```
+
+That copies every playbook to `~/artist-playbooks/artist/`, where all of them are
+yours to edit, and you can add your own alongside them. Re-run it after upgrading
+and it adds playbooks new in that version while leaving your edits alone. Without
+`--editable`, the shipped playbooks are used and verified by checksum.
+
+Editing a playbook cannot widen what the server can do. The read-only boundary
+is not written in the Markdown — it holds because no tool exists that writes to
+OneNote, sends mail, or changes a calendar.
+
 The playbooks produce plans, recommendations, audits, and drafts in chat. They
 cannot write to OneNote, send mail, or touch a calendar. Gmail and Calendar are
 read only when you ask for them — a connected account is not a standing

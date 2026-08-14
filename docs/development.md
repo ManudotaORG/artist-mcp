@@ -72,10 +72,12 @@ really a secret — it is served to anyone who asks, because every install needs
 it and PKCE is what makes it harmless. Without it, `/api/client-config` returns
 503 and `artist-mcp connect google` cannot complete.
 
-The MCP package reads two optional overrides during development:
+The MCP package reads three optional overrides during development:
 `ARTIST_MCP_TOKENS` to point the token store somewhere other than
-`~/.artist-mcp/tokens.json`, and `ARTIST_MCP_SITE` to fetch client
-configuration from a site other than the one its version implies.
+`~/.artist-mcp/tokens.json`, `ARTIST_MCP_SITE` to fetch client configuration
+from a site other than the one its version implies, and
+`ARTIST_MCP_AGENTS_DIR` to read playbooks from a directory instead of the
+bundled pack.
 
 ## Run the app
 
@@ -96,6 +98,11 @@ pnpm --filter @manudota/artist-mcp build
 node apps/mcp/dist/index.js init --local
 node apps/mcp/dist/index.js agents install
 ```
+
+The build is not optional: `apps/mcp/dist/` is generated and untracked, so a
+fresh checkout has no `dist/index.js` to run at all. The tarball still carries
+one — `files` in `package.json` is an allowlist that overrides `.gitignore`, and
+`prepublishOnly` rebuilds before every publish.
 
 `init --local` writes an absolute Node entry point into Claude Desktop, so a
 restart continues to run this checkout rather than silently switching to npm
@@ -206,6 +213,15 @@ The build regenerates `agent-pack/registry.json` with SHA-256 checksums. The
 runtime uses the registry and playbooks bundled into the installed npm version.
 `ARTIST_MCP_REGISTRY_URL` is an explicit development/testing override; it must
 point to a registry whose Markdown files are resolvable relative to that URL.
+
+Ids, kinds, and descriptions are derived in `src/agent-registry.ts`, which is
+why `tsc` runs *before* `scripts/build-agent-registry.mjs` — the script imports
+the compiled module rather than reimplementing the rule. Keep it that way: the
+runtime reads directories through the same derivation, and a second copy would
+drift into giving the same file two different ids. A test asserts the committed
+registry still matches what the derivation produces.
+
+`artist-mcp agents status` prints the entries in force and where they came from.
 
 ## Coding conventions
 

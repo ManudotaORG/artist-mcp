@@ -47,6 +47,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# Built by `pnpm build` and by prepublishOnly, so the tarball always carries a
+# fresh copy. Tracking it meant the committed version drifted from src/ — after
+# release-please bumped the version line and nothing rebuilt — and every local
+# build showed up as a diff.
+apps/mcp/dist/
+
 # graphify derived output (regenerate with /graphify .)
 graphify-out/
 

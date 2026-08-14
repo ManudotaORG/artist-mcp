@@ -66,3 +66,7 @@ docs/           the brief
   standalone.
 - **Workflow Markdown is executable policy.** Preserve the read-only boundary,
   regenerate `agent-pack/registry.json`, and verify checksums when it changes.
+- **A local playbook directory must never fall back silently.** An unreachable
+  remote registry falls back to the bundle; a broken local directory does not.
+  The user said which rules govern their work, and quietly running different
+  ones misreports what is in force. See `docs/releases-and-agents.md`.

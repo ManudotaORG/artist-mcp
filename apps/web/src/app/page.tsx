@@ -255,6 +255,11 @@ const PublicHome = ({ installChannel }: PublicHomeProps) => (
         <pre className="mt-5 whitespace-pre-wrap break-all border border-foreground p-3 font-mono text-sm text-signal-cyan">
           <code>{getClaudeCommands(installChannel)}</code>
         </pre>
+        <Typography variant="small" className="mt-5">
+          The playbooks above are the shipped ones, verified by checksum. To run your own instead,
+          add <code className="text-signal-cyan">--editable</code> to <code>init</code>: every
+          playbook is copied to ~/artist-playbooks, yours to change, and you can add more.
+        </Typography>
       </div>
       <div className="min-w-0 bg-background p-5">
         <Typography as="h2" variant="sectionTitle" color="yellow">
@@ -370,6 +375,18 @@ const Dashboard = ({ email, connected, error, installChannel }: DashboardProps) 
           ? 'node apps/mcp/dist/index.js agents install'
           : `npx ${getPackageSpecifier(installChannel)} agents install`}
       </code>
+      <Typography variant="small" className="mt-5">
+        OPTIONAL: PLAYBOOKS YOU CAN EDIT
+      </Typography>
+      <code className="mt-2 block border border-foreground p-3 font-mono text-sm text-signal-cyan">
+        {installChannel === 'local'
+          ? 'node apps/mcp/dist/index.js init --local --editable'
+          : `npx ${getPackageSpecifier(installChannel)} init --editable`}
+      </code>
+      <Typography variant="small" className="mt-2">
+        COPIES EVERY PLAYBOOK TO ~/ARTIST-PLAYBOOKS, YOURS TO EDIT. WITHOUT IT THE SHIPPED ONES ARE
+        USED AND CHECKSUM-VERIFIED.
+      </Typography>
       <Typography variant="small" className="mt-5">
         VERIFY: ASK “LIST MY ONENOTE NOTES.”
       </Typography>

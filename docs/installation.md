@@ -164,6 +164,53 @@ The installer preserves a differing root `AGENTS.md` and stops before changing
 any differing workflow file. One OneNote page remains one working unit, and all
 outputs remain in chat.
 
+## 5. Use your own playbooks
+
+There are two installs and nothing in between. The one in step 1 runs the shipped
+playbooks, verified by checksum and not editable. The other copies every playbook
+somewhere you own, and all of them become yours to change:
+
+```bash
+npx @manudota/artist-mcp init --editable
+```
+
+That writes the whole pack to `~/artist-playbooks/artist/`, or to a directory you
+name — `init --editable ~/somewhere-else`. Restart Claude Desktop afterwards.
+
+The folder is visible, so open it in Finder and edit the Markdown in whatever you
+like. Add your own playbooks alongside them: a new file under `project-types/`,
+`roles/`, or `policies/` becomes available under an id taken from its filename. A
+new project type is in force immediately, since project types are read in full
+before anything else happens. A new role is offered by name and description and
+loaded when it looks relevant, so if you want one used reliably, say so in
+`roles/ORCHESTRATOR.md`, which is now yours too.
+
+Re-run the same command after upgrading the package. It adds playbooks that are
+new in that version, leaves everything you have edited exactly as it is, and
+tells you which files it treated as yours. That is how an editable install keeps
+receiving improvements without anyone tracking files by hand.
+
+Edits and new files are picked up on the next question, with no restart. What a
+running conversation will *not* notice is a playbook you add or change
+mid-conversation, because the model reuses the list it already has — start a new
+conversation after editing.
+
+To check what is actually in force:
+
+```bash
+npx @manudota/artist-mcp agents status ~/artist-playbooks
+```
+
+If the directory is missing, or a file in it is empty, unreasonably large, or
+filed outside `roles/`, `project-types/` or `policies/`, the workflow tools say so
+rather than quietly using the shipped versions.
+
+To go back to the shipped playbooks, run `init` again without `--editable`. Your
+directory is left where it is, so the same command re-adopts it later.
+
+Editing a playbook changes the advice you get. It cannot let the server write to
+OneNote, send mail, or change a calendar, because no such tool exists.
+
 ## Reconnect or disconnect
 
 ```bash

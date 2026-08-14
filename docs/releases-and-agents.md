@@ -121,3 +121,106 @@ older, and local package versions isolated from later playbook changes.
 Set `ARTIST_MCP_REGISTRY_URL` only when explicitly testing a remote registry.
 Remote Markdown paths resolve relative to that registry URL, and failures fall
 back to the installed bundle.
+
+## Playbooks a user edits
+
+A user can point the server at a directory of their own:
+
+```bash
+npx @manudota/artist-mcp init --editable [directory]
+```
+
+Entries there shadow the bundled pack **by id**, so editing one project type does
+not fork the other twelve, and a playbook added by a later package version still
+arrives. A file whose id is not in the bundled pack is **added** rather than
+shadowing anything, so a user can write their own project types and roles, not
+only edit the shipped ones.
+
+Ids come from where a file sits, so the layout is exact:
+`<.artist|artist>/<roles|project-types|policies>/<name>.md`.
+
+The container may be hidden or visible, and that is not cosmetic. `.artist/` is
+right inside a repository, where it sits beside `AGENTS.md` as tool configuration
+and the policies refer to `.artist/local/`. It is wrong for a standalone
+directory the user keeps their playbooks in and opens in a file browser: the
+folder they were told to edit appears to be empty. So the editable install seeds a
+fresh directory with the visible `artist/`, keeps `.artist/` on any directory that
+already has one — writing the other name beside it would split the pack in two —
+and `agents install`, which targets a repository, is unchanged. Both containers
+present at once is refused rather than merged, since a playbook the user thought
+they had replaced would sit in the copy that lost.
+
+Anything else — a file loose
+in `.artist/`, an invented subdirectory, a nested path — is refused by name.
+That fallback used to make such a file a `policy`, which was harmless while the
+only inputs were three reviewed directories here and a trap once the directory
+belongs to the user: policies other than intake are summarised rather than
+returned in full, so a misfiled playbook loaded, appeared in `agents status`, and
+was then largely ignored. That reads as the model disregarding the user's rules
+rather than as a file in the wrong place. Nesting is refused for a related
+reason — two files with one name under different subdirectories derive one id,
+and the loser would disappear silently.
+
+A new **project type** is the strongest case: project types are returned in full
+before anything is loaded, so it competes for classification immediately. A new
+**role** is listed as a name and description and loaded on demand, so it competes
+with seven established ones on that line alone; wiring it in reliably means
+copying out `ORCHESTRATOR.md` too and naming it there.
+
+There are two installs and no middle setting. The default runs the shipped,
+checksummed pack. `--editable` copies all of it into a directory the user owns,
+where every playbook is theirs.
+
+Per-file opt-in was tried first and removed. It kept most ids tracking the
+package, but only by making the user remember which files were theirs and which
+were not, and that bookkeeping is the tool's job. The reason it existed — that a
+full copy stops a later version's improvements arriving — is answered instead by
+the install being re-runnable: run it again after an upgrade and playbooks new in
+that version are added, anything edited is left alone, and the summary says which
+files were treated as the user's. Nothing is ever overwritten, because a file
+that differs cannot be told apart from a deliberate edit.
+
+`agents install` still copies the pack into a repository for a coding agent to
+read, which is a different job and unchanged.
+
+`init` records an absolute path in the Claude Desktop entry's own args. It cannot
+be discovered at runtime: the server is spawned with no cwd worth trusting. Args
+rather than `env` or a hidden state file, so that reading the entry tells you
+this machine is running the user's rules. `init` counts the playbooks before it
+writes the config, so a mistyped path fails while the user is still in the
+terminal instead of surfacing later as every workflow tool failing inside Claude.
+`ARTIST_MCP_AGENTS_DIR` does the same thing for development.
+
+Checksums mean something narrower here. Bundled ones prove a file is what was
+published; a local file has no such authority to check against, because the user
+is the authority — the checksum is derived from the directory as it is read, and
+proves only that the file did not change between being listed and being loaded.
+
+Three rules make that safe rather than sloppy:
+
+- A broken or missing local directory **fails loudly**. It does not fall back to
+  the bundled pack the way an unreachable remote registry does. Running
+  different rules than the user asked for, silently, is the one thing this layer
+  must never do.
+- `list_agent_workflows` says which entries are the user's own **and names the
+  file each one lives in**, so a transcript never presents edited rules as the
+  shipped ones, and a request to improve a playbook can be answered with the file
+  to change rather than loose prose. `load_agent_workflow` names the file too,
+  for a local entry only — a bundled path points inside an npx cache, where an
+  edit would work once and vanish on upgrade.
+
+  This is information, not capability. Nothing in the package writes a playbook,
+  and that is deliberate rather than unfinished: playbooks are executable policy,
+  and note and mail content is attacker-reachable, so a write tool would open a
+  path from text in an email to a permanent change in the rules that govern the
+  analysis. Editing belongs in a coding agent with file access and a diff you
+  review — which is what `agents install` is for.
+- Files are capped at 64 KiB each and empty files are refused. Project types and
+  the intake policy are returned in full, unasked, so an oversized playbook does
+  not fail — it silently spends the context the notes needed.
+
+The read-only boundary does not depend on any of this. It holds because no write
+tool exists: an edited playbook can make the analysis worse, but it cannot write
+to OneNote, send outreach, or touch a calendar.
+
+`artist-mcp agents status` prints every entry and where it came from.
