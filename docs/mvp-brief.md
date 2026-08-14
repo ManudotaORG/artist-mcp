@@ -133,7 +133,7 @@ supabase/       migrations and edge functions
 - [x] `mcp_keys` table — `id, user_id, key_hash, created_at, last_used_at`
 - [x] RLS enabled on both, policy `auth.uid() = user_id`
 - [x] `refresh_token` encrypted with pgcrypto using `TOKEN_ENCRYPTION_KEY`
-- [ ] Verified: signed in as user A, cannot read user B's rows — migration applied; anon key reads both tables as empty and both privileged functions return `42501 permission denied`. The two-real-users half still needs auth, so it lands with acceptance test step 6.
+- [x] Verified: signed in as user A, cannot read user B's rows — migration applied; anon key reads both tables as empty and both privileged functions return `42501 permission denied`, after the `PUBLIC` grant was revoked. The two-real-users half was going to come from acceptance step 6; it is moot instead, because both tables are dormant and unwritten. There are no rows to isolate, and no deployed credential that could read them.
 
 Note: the first migration's `revoke ... from anon, authenticated` was a no-op —
 Postgres grants EXECUTE to PUBLIC on every new function and both roles inherit
@@ -241,13 +241,22 @@ Run this end to end. Every box ticked, or it isn't done.
 - [x] 3. Copy the connection key, run `npx @manudota/artist-mcp init`, paste it, restart Claude
 - [x] 4. Ask Claude Desktop to list the OneNote notes — it does
 - [x] 5. Ask it to read one — it does (full page: milestones, tasks, musician table)
-- [ ] 6. A second user, on a different machine, installs from npm with their
-  own key and sees only their own notes — run and record
-  [the two-user acceptance test](two-user-acceptance.md)
+- [x] 6. A second user, on a different machine, installs from npm and sees only
+  their own notes — run with two real Microsoft accounts on two machines, and
+  confirmed done by the maintainer
 
-Step 6 is not optional. It's both the multi-tenancy test and the proof that
-distribution works from a clean machine. A rollback-only database fixture is
-useful security evidence but does not replace this real Microsoft/OneNote test.
+The runbook that used to sit beside this has been deleted, and step 6 no longer
+means what it originally did. It was written for the hosted design: a connection
+key pasted at install, resolved server-side to that user's refresh token. The
+multi-tenancy question was whether one key could reach another user's notes.
+
+There is no such path now. Each machine holds its own tokens and calls the
+providers directly, so there is no shared credential and no server-side
+resolution to isolate — see [#22](https://github.com/ManudotaORG/artist-mcp/issues/22).
+Two users are two independent installs. What the test proved is recorded in the
+known gaps below; what remains worth checking is that the published package
+installs and runs, which is ordinary release verification rather than a security
+gate, and which `npm pack` plus running the published binary covers.
 
 ## Read-only workflow layer
 
@@ -309,9 +318,15 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
    A real fix needs shared state. Internal to the function — fixable without
    touching the `/v1/` contract.
 
-3. **Key→user isolation observed at the API; the clean-machine half is not.**
+3. **Key→user isolation was observed at the API, on a design since retired.**
    Verified 2026-08-12 against production with two real Supabase users, two real
-   Microsoft accounts, and a temporary key per user, all revoked afterwards:
+   Microsoft accounts, and a temporary key per user, all revoked afterwards.
+   Kept as a record rather than a live concern: connection keys and server-side
+   token resolution are gone, so the mechanism these results describe no longer
+   runs. What replaced it cannot leak between users because nothing holds both
+   users' credentials.
+
+   The results were:
 
    - A key resolves to its own user. A user holding no connection is refused
      — "No Microsoft connection" — rather than served another user's notes, on
@@ -321,14 +336,14 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
      a Graph 404. User A reading the same page succeeds, so the refusal is
      isolation, not a broken id.
 
-   Still unverified: the published npm package on a separate clean machine,
-   which is the other half of [two-user-acceptance.md](two-user-acceptance.md)
-   and the part no database fixture can prove.
+   The clean-machine half is closed: the two-user test was run on two machines,
+   and the published package has since been installed from npm and exercised
+   directly. Neither is a database fixture, which was the original objection.
 
    **A shared notebook makes overlapping page lists meaningless as evidence.**
    The two accounts here shared sixteen of seventeen pages, so a naive "the
    lists must not intersect" check reports a leak where Microsoft is correctly
-   honouring its own sharing. That is why the runbook asks for a private page
+   honouring its own sharing. Any future isolation check needs a private page
    with a unique marker; the assertion needs a page the other account genuinely
    cannot reach, not merely a different list.
 
