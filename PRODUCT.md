@@ -36,8 +36,9 @@ Users move between live performance, studio work, and practical production admin
 - Results appear only in chat.
 - No writes to any source: no OneNote edits, message sending, replying, drafting, labelling, calendar creation or editing, RSVP responses, background jobs, synchronization, or workflow state in Supabase.
 - No availability computation or scheduling suggestions; reading a calendar is not planning against it.
-- Operator access is a live limit, not a solved problem: the production service role resolves any connection key to the credential behind it, so anyone holding that credential can technically reach connected account data. This is inherent to refreshing tokens while the user is absent. Encryption at rest guards a stolen database dump and is not a control against a live credential. Bounded today by policy and audit rather than cryptography, stated on the front page of the README before anyone connects, and tracked as hardening in #22.
-- The existing authentication, connection-key, Claude Desktop, and Codex installation flows must remain functional.
+- Operator access is no longer a limit, and this line used to say it was. The hosted design had a service role that could resolve any connection key to the credential behind it, so anyone holding that credential could technically reach connected account data — bounded by policy rather than cryptography. [#22](https://github.com/ManudotaORG/artist-mcp/issues/22) removed the mechanism: sign-in happens on the user's own machine, the refresh tokens stay there, and no deployed credential can read them. `connections` and `mcp_keys` remain in the schema, dormant and unwritten.
+- The limit that replaced it is smaller and stated plainly to users: tokens sit in a file readable by the user's own account (`~/.artist-mcp/tokens.json`, mode `0600`) rather than the OS keychain, which would need a native dependency the package cannot take. Anything already running as that user can use the token — reading their notes takes code on their specific machine, not a query someone could run against every user at once.
+- The authentication, Claude Desktop, and Codex installation flows must remain functional. There is no connection key to keep working; the installer stopped asking for one.
 
 ## Brand Commitments
 

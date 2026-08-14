@@ -203,8 +203,9 @@ Important invariants:
 - User-facing policies include `auth.uid() = user_id`.
 - Privileged `SECURITY DEFINER` functions revoke execution from `PUBLIC` and
   grant only the required service role.
-- The Graph function keeps `verify_jwt = false`; connection-key verification is
-  performed inside the function.
+- The Graph function, if it is ever redeployed, keeps `verify_jwt = false` and
+  verifies the connection key inside the function. It is not deployed today —
+  see the dormant-storage section below.
 - Refresh-token rotation is written back on every Microsoft token exchange.
 - Callers select only `verify`, `list_notes`, `read_note`, `list_emails`,
   `read_email`, `read_attachment`, `map_attachment`, `list_events`, or

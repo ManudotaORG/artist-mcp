@@ -14,8 +14,11 @@ Everything is read-only. No writes to any source, no sending, no sync.
 
 The project has three parts:
 
-- `apps/web` — sign-in, Microsoft and Google OAuth, and connection-key management.
-- `apps/mcp` — the npm-published stdio MCP server.
+- `apps/web` — magic-link sign-in, the install instructions, and one open
+  endpoint serving Google's Desktop client secret. It performs no provider OAuth
+  and holds nothing that can read an account.
+- `apps/mcp` — the npm-published stdio MCP server. It signs in to Microsoft and
+  Google on the user's own machine and keeps the tokens there.
 - `supabase` — sign-in, and dormant schema from the previous hosted design.
 
 ## Where your credentials live

@@ -102,6 +102,8 @@ TOKEN_ENCRYPTION_KEY=
 
 Do this last — the connection key doesn't exist until the web app is running and Microsoft is connected.
 
+(Recorded as it happened. There is no connection key now: `init` asks for nothing, and `connect` signs in on this machine. The steps below are history, not instructions — follow [installation.md](installation.md).)
+
 - [x] `npx @manudota/artist-mcp init` run, key pasted, config written
 - [x] Claude Desktop restarted (it doesn't reload config on its own) — restarted after the `npx` entry was written; `list_notes` works from the published package
 

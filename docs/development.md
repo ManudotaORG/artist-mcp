@@ -56,11 +56,13 @@ cp apps/web/.env.example apps/web/.env.local
 
 Set every variable:
 
-| Variable                        | Runtime        | Purpose                            |
-| ------------------------------- | -------------- | ---------------------------------- |
-| `NEXT_PUBLIC_SUPABASE_URL`      | Browser/server | Supabase project URL               |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser/server | Public Supabase API key            |
-| `GOOGLE_DESKTOP_CLIENT_SECRET`  | Server only    | Served by `/api/client-config`     |
+| Variable                        | Runtime        | Purpose                             |
+| ------------------------------- | -------------- | ----------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Browser/server | Supabase project URL                |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser/server | Public Supabase API key             |
+| `NEXT_PUBLIC_SITE_URL`          | Browser/server | Absolute base for magic-link redirects |
+| `GOOGLE_DESKTOP_CLIENT_SECRET`  | Server only    | Served by `/api/client-config`      |
+| `DEPLOY_ENV`                    | Server only    | Optional; `staging` shows staging metadata |
 
 Only the first two may use the `NEXT_PUBLIC_` prefix. Never commit `.env.local`
 or real values.
