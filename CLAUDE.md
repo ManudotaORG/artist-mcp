@@ -79,6 +79,10 @@ docs/           the brief
   standalone.
 - **Workflow Markdown is executable policy.** Preserve the read-only boundary,
   regenerate `agent-pack/registry.json`, and verify checksums when it changes.
+- **`init` writes absolute paths into the Claude Desktop entry.** Moving the
+  checkout or the playbook directory leaves it launching something that no longer
+  exists, and nothing says so until a workflow tool fails naming a directory the
+  user has forgotten. Re-run `init` after moving either.
 - **A local playbook directory must never fall back silently.** An unreachable
   remote registry falls back to the bundle; a broken local directory does not.
   The user said which rules govern their work, and quietly running different

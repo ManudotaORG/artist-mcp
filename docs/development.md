@@ -196,6 +196,43 @@ its modules at spawn. A **playbook** edit needs nothing — the directory is re-
 on every tool call — but a conversation already holding a `list_agent_workflows`
 result will not notice a playbook you add mid-conversation, so start a new one.
 
+### Staying on the local build
+
+Since 1.0.x shipped, the normal state is to sit on `release` for a while — days,
+not minutes — with Claude Desktop pointed at this checkout. Register it once:
+
+```bash
+pnpm --filter @manudota/artist-mcp build
+node apps/mcp/dist/index.js init --local --editable
+```
+
+To go back to what users have, and to return:
+
+```bash
+npx @manudota/artist-mcp init --editable      # published, npm latest
+node apps/mcp/dist/index.js init --local --editable   # back to this checkout
+```
+
+To see which of the two is registered right now, read the entry rather than
+guessing — a local one names an absolute path into this repository:
+
+```bash
+node -e "const {configPath,readConfig}=await import('./apps/mcp/dist/config.js');
+console.log((await readConfig(configPath())).mcpServers['artist-notes'].args.join(' '))"
+```
+
+**`init` records absolute paths, so moving anything breaks the entry.** Renaming
+the playbook directory or moving the checkout leaves Claude Desktop launching a
+path that no longer exists, and nothing complains until a workflow tool is called
+and fails with a directory the user has never heard of. Re-run `init` after moving
+either. This is not hypothetical: renaming `~/artist-playbooks` to `~/artist-mcp`
+left every workflow tool in a working Desktop failing for exactly that reason.
+
+**Sync the release bump immediately after a release, not before the next
+promotion.** Release Please bumps the version on `main` only, so until `main` is
+merged back, every local build on `release` reports the previous version — while
+testing, on the branch, which is precisely when the version has to be trustworthy.
+
 Promote only when the thing you need to check cannot be checked locally:
 
 - **The published artifact** — that `dist/` and `agent-pack/` arrive in the
