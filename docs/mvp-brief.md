@@ -431,7 +431,7 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
    Action before 1 October 2026: read the Node version on both Vercel projects
    and upgrade either one still on 20 from the dashboard.
 
-9. **Staging builds misreport their own version over MCP.** `set-staging-version.mjs`
+9. **Staging builds misreported their own version over MCP.** Fixed. `set-staging-version.mjs`
    rewrites `package.json` and nothing else, while `src/server.ts` carries the
    version as a Release Please `extra-file` updated on `main` only. So a staging
    build announces whatever `release` last committed: `1.0.2-staging.51` reported
@@ -442,10 +442,16 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
    together — so this only misleads while testing staging, exactly when the
    version is what you are trying to confirm.
 
-   The fix is a line in that script: set the version in `src/server.ts` alongside
-   `package.json`, matching the `x-release-please-version` marker Release Please
-   looks for. Not done yet, and worth doing before the next staging publish is
-   used to verify anything version-dependent.
+   The script now sets both, matching the `x-release-please-version` marker
+   Release Please looks for, and throws if that marker is missing rather than
+   skipping — a silent skip is what produced the bug. It rewrites files in CI
+   before the build, so the value reaches `dist/` and the tarball and is never
+   committed. Verified against the real package: `1.0.2-staging.99` landed in
+   `package.json`, `src/server.ts`, and the built `dist/server.js`.
+
+   The next staging publish is the first that will report itself correctly; worth
+   a glance then, since this gap was found by checking a tarball rather than by a
+   test.
 
 ## Confirm before registering the Microsoft app
 
