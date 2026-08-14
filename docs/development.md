@@ -169,6 +169,41 @@ package.
 - Develop and commit on `release` using Conventional Commits.
 - Push early to `origin/release`; CI runs lint, tests, and builds there.
 - Pull-request CI runs only when the target is `staging` or `main`.
+
+**Verify on `release`. Do not promote in order to test.** Promotion is for
+shipping, and using it as a test loop is expensive in both Actions minutes and
+attention: each round trip is two pull requests, four workflow runs, and a
+published npm prerelease that can never be reused. Since 1.0.x shipped there is
+also a real cost to churning the staging dist-tag.
+
+Cheapest sufficient check first:
+
+1. `pnpm test` — lint, both test suites, and every build. This is exactly what CI
+   runs, so a pass here means a pass there.
+2. The CLI directly, against the built output:
+   `node apps/mcp/dist/index.js agents status ~/artist-mcp`. Most behaviour is
+   observable here without a client at all.
+3. Claude Desktop on the local build, when the behaviour needs a model to
+   exercise it: `pnpm --filter @manudota/artist-mcp build` then
+   `node apps/mcp/dist/index.js init --local` (add `--editable` to keep an
+   editable pack registered). This runs the same code an npm install would.
+
+Restart rules for that third loop, which are not symmetrical: a **code** change
+needs Claude Desktop fully quit and reopened, because the server process loaded
+its modules at spawn. A **playbook** edit needs nothing — the directory is re-read
+on every tool call — but a conversation already holding a `list_agent_workflows`
+result will not notice a playbook you add mid-conversation, so start a new one.
+
+Promote only when the thing you need to check cannot be checked locally:
+
+- **The published artifact** — that `dist/` and `agent-pack/` arrive in the
+  tarball, that `npx` resolves and runs. Worth doing after packaging changes
+  (`files`, build order, dependencies, the publish workflow) and before a stable
+  release. Verify it with `npm pack @manudota/artist-mcp@staging` and by running
+  the published binary, not by reading the workflow log.
+- **The staging website**, for `apps/web` changes.
+
+Otherwise batch several verified changes into one promotion.
 - Promote a verified snapshot with a `release` → `staging` pull request.
 - After staging verification, promote the same snapshot with a `release` →
   `main` pull request.
