@@ -10,19 +10,26 @@ external state.
 ```text
 apps/web        Next.js App Router web app
 apps/mcp        npm package, installer, and stdio MCP server
-supabase        database migrations and Edge Functions
+supabase        database migrations, and dormant schema from the hosted design
 docs            product, user, developer, and operations documentation
 ```
 
-The web app owns user sign-in, Microsoft OAuth, and connection-key management.
-The MCP package calls a single hosted Edge Function. The Edge Function resolves
-the key, rotates the Microsoft refresh token, and calls whitelisted OneNote
-endpoints.
+The MCP package owns everything to do with a user's accounts: it runs the
+loopback PKCE sign-in, stores the refresh tokens on that machine, rotates them,
+and calls Microsoft Graph, Gmail and Google Calendar directly. The web app owns
+email sign-in, the install instructions, and `/api/client-config`, which serves
+Google's client secret openly because Google refuses a Desktop-client exchange
+without one.
+
+Nothing here holds a credential that can read a user's account. That is the
+result of [#22](https://github.com/ManudotaORG/artist-mcp/issues/22) and the
+reason the hosted design was retired; `connections` and `mcp_keys` survive in
+the schema, dormant and unwritten, for the case where hosted custody is ever
+needed again.
 
 The system is deliberately stateless with respect to artist content. OneNote
-remains the source of truth; Supabase stores only authentication material and
-connection-key records. The optional agent workflow state stays locally in the
-artist's project.
+remains the source of truth, and the optional agent workflow state stays locally
+in the artist's project.
 
 ## Prerequisites
 
@@ -49,28 +56,26 @@ cp apps/web/.env.example apps/web/.env.local
 
 Set every variable:
 
-| Variable                        | Runtime        | Purpose                        |
-| ------------------------------- | -------------- | ------------------------------ |
-| `NEXT_PUBLIC_SUPABASE_URL`      | Browser/server | Supabase project URL           |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser/server | Public Supabase API key        |
-| `SUPABASE_SERVICE_ROLE_KEY`     | Server only    | Privileged RPC calls           |
-| `MS_CLIENT_ID`                  | Server only    | Microsoft app identifier       |
-| `MS_CLIENT_SECRET`              | Server only    | Microsoft OAuth code exchange  |
-| `MS_REDIRECT_URI`               | Server only    | OAuth callback URL             |
-| `TOKEN_ENCRYPTION_KEY`          | Server only    | Encrypt/decrypt refresh tokens |
+| Variable                        | Runtime        | Purpose                            |
+| ------------------------------- | -------------- | ---------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Browser/server | Supabase project URL               |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser/server | Public Supabase API key            |
+| `GOOGLE_DESKTOP_CLIENT_SECRET`  | Server only    | Served by `/api/client-config`     |
 
-Only the first two variables may use the `NEXT_PUBLIC_` prefix. Never commit
-`.env.local` or real values.
+Only the first two may use the `NEXT_PUBLIC_` prefix. Never commit `.env.local`
+or real values.
 
-For local development, the Microsoft app registration must include this Web
-redirect URI exactly:
+The provider client secrets that used to live here are gone: the web app no
+longer performs OAuth, and no deployment holds a credential that can read a
+user's account. `GOOGLE_DESKTOP_CLIENT_SECRET` is the exception and is not
+really a secret — it is served to anyone who asks, because every install needs
+it and PKCE is what makes it harmless. Without it, `/api/client-config` returns
+503 and `artist-mcp connect google` cannot complete.
 
-```text
-http://localhost:3000/api/auth/microsoft/callback
-```
-
-The deployed Edge Function separately needs `MS_CLIENT_ID`,
-`MS_CLIENT_SECRET`, and `TOKEN_ENCRYPTION_KEY` as hosted secrets.
+The MCP package reads two optional overrides during development:
+`ARTIST_MCP_TOKENS` to point the token store somewhere other than
+`~/.artist-mcp/tokens.json`, and `ARTIST_MCP_SITE` to fetch client
+configuration from a site other than the one its version implies.
 
 ## Run the app
 
@@ -130,22 +135,27 @@ pnpm --dir apps/web exec next build --webpack
 ```
 
 The MVP intentionally relies on the acceptance test instead of a separate test
-suite. For auth, database, or Edge Function changes, repeat the relevant live
+suite. For auth or database changes, repeat the relevant live
 flow and record verified results in [mvp-brief.md](mvp-brief.md).
 
-## Database and Edge Function
+## Database
 
 The migrations create `connections` and `mcp_keys`, enable RLS, and restrict
 privileged functions to `service_role`. Do not grant their execution to
-`PUBLIC`, `anon`, or `authenticated`.
+`PUBLIC`, `anon`, or `authenticated` — Postgres grants EXECUTE to `PUBLIC` on
+new functions, so revoking from `anon` and `authenticated` alone is a no-op.
 
-The Graph function is configured with `verify_jwt = false` because callers
-authenticate with the connection key rather than a Supabase JWT. Its `/v1/`
-request shape is a public contract; add a version instead of breaking existing
-npm clients.
+Both tables are dormant. Nothing writes to them, they hold no rows, and the
+credentials that could read them are no longer deployed anywhere. They are kept
+against the possibility of needing hosted custody again; see the dormant-storage
+section of [operations.md](operations.md) before reviving either.
 
-See [operations.md](operations.md) before deploying migrations, functions, or a
-new npm package.
+The Graph edge function is gone. Its source remains under `supabase/functions`
+for reference, and it is not deployed — an installed copy calls the providers
+directly and there is nothing for it to resolve.
+
+See [operations.md](operations.md) before deploying migrations or a new npm
+package.
 
 ## Branch and deployment workflow
 

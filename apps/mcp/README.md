@@ -8,24 +8,19 @@ fill gaps in that page and are never themselves the thing being worked on.
 
 Everything is read-only. No writes to any source, no sending, no sync.
 
-## Before you install
+## Where your credentials live
 
-This package talks to a hosted service, so you need an account and a connection
-key first:
+On this machine, and nowhere else. You sign in to Microsoft and Google in your
+own browser, and the refresh token stays here — there is no account to create,
+no key to paste, and no server of ours holding anything that could read your
+notes or mail.
 
-1. Open <https://artist-mcp.vercel.app> and sign in by email.
-2. Connect Microsoft and approve `Notes.Read`, `offline_access`, and `User.Read`.
-3. Optionally connect Google for `gmail.readonly` and `calendar.events.readonly`.
-4. Generate a connection key. It is shown once.
-
-**Anyone holding the production database credential can technically reach the
-OneNote data of any connected account.** That is inherent to refreshing tokens
-while you are away, which is what lets an installed MCP work without you
-present; encryption at rest protects a stolen backup, not a live credential.
-This is bounded today by policy and audit rather than by cryptography, and the
-hardening work is tracked in
-[#22](https://github.com/ManudotaORG/artist-mcp/issues/22). Connect an account
-only if you are willing for a maintainer to be able to read it.
+The limit worth knowing: the token is stored in a file readable by your own user
+account (`~/.artist-mcp/tokens.json`, mode `0600`), not in the OS keychain. That
+needs a native dependency this package will not take, since it must install
+without a compiler. So anything already running as you can use that token —
+reading your notes takes code on your specific machine, rather than a query
+someone could run from anywhere against every user at once.
 
 Gmail is narrower in practice for now: `gmail.readonly` is a restricted scope,
 so until Google's verification review completes, only accounts on the OAuth
@@ -37,19 +32,24 @@ test-user list can consent at all.
 
 ```bash
 npx @manudota/artist-mcp init
+npx @manudota/artist-mcp connect
 ```
 
-Paste the connection key when prompted, then restart Claude Desktop.
+`init` registers the server; `connect` opens your browser to sign in to
+Microsoft. Add Gmail and Calendar with `connect google`. Then restart Claude
+Desktop.
 
 ### Codex
 
 ```bash
-read -s ARTIST_MCP_KEY
-codex mcp add artist-notes --env ARTIST_MCP_KEY="$ARTIST_MCP_KEY" -- npx -y @manudota/artist-mcp
-unset ARTIST_MCP_KEY
+codex mcp add artist-notes -- npx -y @manudota/artist-mcp
+npx @manudota/artist-mcp connect
 ```
 
 Restart Codex after adding the server.
+
+Other commands: `status` shows what this machine is connected to, and
+`disconnect [provider]` removes a connection from it.
 
 For the staging channel, use `@manudota/artist-mcp@staging` in place of the
 package name.
@@ -85,9 +85,9 @@ The workflow pack:
 | `list_agent_workflows` | The available artist roles and project types |
 | `load_agent_workflow` | One checksummed Markdown playbook |
 
-The local process never receives a Microsoft or Google access token, or a
-Supabase service key. It sends only the connection key and an allowed operation
-to the hosted edge function.
+This process calls Microsoft Graph, Gmail and Google Calendar directly, using
+tokens it holds itself. Nothing is proxied through a service of ours, so no
+request of yours is visible to anyone but you and the provider.
 
 ## Workflow pack
 

@@ -102,6 +102,24 @@ export const updateRefreshToken = async (provider, refreshToken) => {
         providers: { ...file.providers, [provider]: { ...existing, refreshToken } },
     });
 };
+/**
+ * Cache the client secret against an existing connection.
+ *
+ * For a connection stored before the secret was cached, or one whose fetch was
+ * deferred: without this the value is fetched again on every refresh, which
+ * leaves that install depending on our web app being reachable for as long as
+ * it exists — the dependency the cache is here to remove.
+ */
+export const updateClientSecret = async (provider, clientSecret) => {
+    const file = await loadTokens();
+    const existing = file.providers[provider];
+    if (existing === undefined)
+        return;
+    await writeTokens({
+        ...file,
+        providers: { ...file.providers, [provider]: { ...existing, clientSecret } },
+    });
+};
 export const clearProvider = async (provider) => {
     const file = await loadTokens();
     const remaining = { ...file.providers };

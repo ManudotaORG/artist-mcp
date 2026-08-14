@@ -16,38 +16,32 @@ The project has three parts:
 
 - `apps/web` — sign-in, Microsoft and Google OAuth, and connection-key management.
 - `apps/mcp` — the npm-published stdio MCP server.
-- `supabase` — encrypted connection storage and the Microsoft Graph and Google
-  API proxy.
+- `supabase` — sign-in, and dormant schema from the previous hosted design.
 
-## Before you connect an account
+## Where your credentials live
 
-**Anyone holding the production Supabase service-role credential can technically
-reach the OneNote data of any connected account.** If you connect an account,
-assume a maintainer is able to read what it exposes.
+On your own machine, and nowhere else. You sign in to Microsoft and Google in
+your browser, and the refresh token stays on the computer you signed in on. No
+server here stores it, so no maintainer can reach your notes or mail — that is a
+property of the architecture, not a policy we ask you to trust.
 
-This is a property of the design rather than a defect. The edge function
-resolves your connection key to your stored credential and refreshes it while
-you are away — that is what lets an installed MCP work without you present, and
-it necessarily means the service role can act for any user. Encryption at rest
-protects a stolen database dump; it is not a control against a live service-role
-credential and has never been claimed as one. What bounds this today is policy
-and audit, not cryptography.
+This replaced a hosted design in which the service held every user's refresh
+token, and anyone with the production database credential could technically read
+any connected account. That is resolved in
+[#22](https://github.com/ManudotaORG/artist-mcp/issues/22): the stored tokens
+were deleted and the credentials that could read them removed from every
+deployment.
+
+The honest remaining limit: the token is a file readable by your own user
+account (`~/.artist-mcp/tokens.json`, mode `0600`), not an entry in the OS
+keychain — that would need a native dependency the package cannot take, since it
+must install without a compiler. Anything already running as you can therefore
+use it. Reading your notes takes code on your specific machine, rather than a
+query anyone could run from anywhere, against every user, in silence.
 
 Gmail and Calendar are narrower in practice for now: `gmail.readonly` is a
 restricted scope, so until Google's verification review completes, only accounts
 on the OAuth test-user list can consent at all.
-
-We are working on it, tracked in
-[#22](https://github.com/ManudotaORG/artist-mcp/issues/22). The near-term work is
-moving local development off production credentials, adding an append-only audit
-of connection-key creation, and reviewing who holds production credentials.
-Beyond that we are investigating whether the npm package can complete OAuth
-itself as a public PKCE client, keeping the token on your machine — that would
-turn operator reach from a silent database query into something that requires
-shipping code you can diff against this repository.
-
-Until then: do not connect an account whose contents you would not want a
-maintainer to be able to read.
 
 ## Live environments
 
@@ -74,14 +68,13 @@ maintainer to be able to read.
 
 ## Quick start for users
 
-1. Open the web app and sign in by email.
-2. Connect Microsoft and approve `Notes.Read`, `offline_access`, and `User.Read`.
-3. Optionally connect Google and approve `gmail.readonly` and
+1. Install the server in Claude Desktop or Codex using the instructions below.
+2. Run `connect` and approve `Notes.Read`, `offline_access`, and `User.Read` in
+   the browser window that opens.
+3. Optionally run `connect google` and approve `gmail.readonly` and
    `calendar.events.readonly`. The narrower events scope is deliberate: calendar
    metadata, sharing, and settings are not read.
-4. Generate a connection key. It is shown once.
-5. Install the server in Claude Desktop or Codex using the instructions below.
-6. Restart the client and ask: **“List my OneNote notes.”**
+4. Restart the client and ask: **“List my OneNote notes.”**
 
 ### Claude Desktop
 
@@ -89,14 +82,16 @@ Production:
 
 ```bash
 npx @manudota/artist-mcp init
+npx @manudota/artist-mcp connect
 ```
 
-Paste the connection key when prompted, then restart Claude Desktop.
+Then restart Claude Desktop.
 
 Staging:
 
 ```bash
 npx @manudota/artist-mcp@staging init
+npx @manudota/artist-mcp@staging connect
 ```
 
 Local source, from the repository root:
@@ -104,6 +99,7 @@ Local source, from the repository root:
 ```bash
 pnpm --filter @manudota/artist-mcp build
 node apps/mcp/dist/index.js init --local
+node apps/mcp/dist/index.js connect
 ```
 
 `--local` registers the absolute built entry point, so Claude Desktop continues
@@ -114,25 +110,21 @@ to use this checkout after restart.
 Production:
 
 ```bash
-read -s ARTIST_MCP_KEY
-codex mcp add artist-notes --env ARTIST_MCP_KEY="$ARTIST_MCP_KEY" -- npx -y @manudota/artist-mcp
-unset ARTIST_MCP_KEY
+codex mcp add artist-notes -- npx -y @manudota/artist-mcp
+npx @manudota/artist-mcp connect
 ```
 
 Restart Codex after adding the server. See the
 [complete installation guide](docs/installation.md) for verification,
-troubleshooting, key replacement, and uninstall instructions.
+troubleshooting, reconnecting, and uninstall instructions.
 
 For staging, replace the final package with
 `npx -y @manudota/artist-mcp@staging`. For local source, build first and use:
 
 ```bash
 pnpm --filter @manudota/artist-mcp build
-read -s ARTIST_MCP_KEY
-codex mcp add artist-notes \
-  --env ARTIST_MCP_KEY="$ARTIST_MCP_KEY" \
-  -- node "$PWD/apps/mcp/dist/index.js"
-unset ARTIST_MCP_KEY
+codex mcp add artist-notes -- node "$PWD/apps/mcp/dist/index.js"
+node apps/mcp/dist/index.js connect
 ```
 
 ### Artist workflow pack

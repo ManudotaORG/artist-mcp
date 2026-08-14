@@ -18,12 +18,34 @@ personal MFA recovery material.
 
 ## Secret inventory
 
-| Secret                  | Stored in                           | Rotation impact                                                                          |
-| ----------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------- |
-| Supabase server key     | Web runtime                         | Update every web environment                                                             |
-| Microsoft client secret | Web runtime and Edge Function       | Update both before deleting the old credential                                           |
-| Token encryption key    | Web runtime and Edge Function       | Existing encrypted refresh tokens depend on it; plan a data migration or reconnect users |
-| Connection key          | User client and hashed database row | Generate a replacement and reinstall each affected client                                |
+| Secret                       | Stored in                | Rotation impact                                                                 |
+| ---------------------------- | ------------------------ | ------------------------------------------------------------------------------- |
+| Google desktop client secret | Web runtime, both envs   | Add the new secret in Google first, deploy, then delete the old one — see below |
+| Supabase service role key    | Supabase platform only   | Rotate in the dashboard; no deployment holds a copy                             |
+
+Nothing else is deployed. The Microsoft and Google client secrets that belonged
+to the hosted OAuth flow, and the token encryption key that protected stored
+refresh tokens, were removed when custody moved to users' machines (#22). There
+is no connection key any more.
+
+**The Google desktop client secret is public by necessity.** Google refuses the
+token exchange for a Desktop client without one, and the client types that need
+none cannot use a loopback redirect, so every install must be able to obtain it.
+`/api/client-config` serves it to anyone who asks. It grants nothing on its own:
+PKCE is enforced by both providers, verified against their live endpoints by
+`scripts/spike-pkce.mjs`.
+
+Rotating it has an ordering constraint that matters, because Google hashes
+secrets and will not show one twice:
+
+1. **Add** a second secret on the Desktop client and record it somewhere
+   readable — a password manager. The console will never display it again, and
+   neither Vercel nor GitHub can read a stored value back.
+2. Set `GOOGLE_DESKTOP_CLIENT_SECRET` in both Vercel projects and **redeploy**.
+   A variable changed in project settings does not reach a deployment that is
+   already running.
+3. Only then **delete** the old secret. Installs cache the value they were given
+   at connect time, so deleting first breaks every one of them at once.
 
 Public or publishable Supabase browser keys identify the application but do not
 grant service-role access. They are intentionally exposed to the browser; RLS
@@ -61,18 +83,17 @@ into staging:
 | `GOOGLE_REDIRECT_URI`      | `https://artist-mcp.vercel.app/api/auth/google/callback`    | `https://artist-mcp-staging.vercel.app/api/auth/google/callback`    |
 | npm MCP default            | production Graph function                                   | staging Graph function for `-staging.*` versions                    |
 
-Both Vercel projects also require their matching Supabase browser key and
-service-role key plus `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`,
-`GOOGLE_CLIENT_SECRET`, and `TOKEN_ENCRYPTION_KEY`. `NEXT_PUBLIC_SITE_URL` is
-mandatory in hosted builds; only local development may fall back to
-`http://localhost:3000`.
+Both Vercel projects require their matching Supabase browser key and
+`GOOGLE_DESKTOP_CLIENT_SECRET`, and nothing else that is secret.
+`NEXT_PUBLIC_SITE_URL` is mandatory in hosted builds; only local development may
+fall back to `http://localhost:3000`.
+
+A project missing `GOOGLE_DESKTOP_CLIENT_SECRET` answers `/api/client-config`
+with 503, and `artist-mcp connect google` fails against that environment.
+Microsoft is unaffected — it is a true public client and needs no secret.
 
 Local development is a third environment and uses staging's Supabase project,
 not production's — see "Local development runs against staging" below.
-
-The Graph edge function needs `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in
-its own secrets as well as the web app's — it performs its own refresh-token
-exchange and shares nothing with Vercel.
 
 Production uses `https://artist-mcp.vercel.app`; staging uses
 `https://artist-mcp-staging.vercel.app`. Add each `/api/auth/microsoft/callback`
@@ -107,10 +128,14 @@ branch:
 - Staging: `cakkwvxwlkdfzqjbvrpa`, mapped to Git branch `staging`
 
 Auth URLs are configuration-as-code in `supabase/config.toml` under the
-`production` and `staging` remotes. Edge Function secrets remain
-branch-specific and must be installed separately in both environments. Do not
-enable automatic ephemeral/PR branches; this project has only production and
-the permanent staging branch.
+`production` and `staging` remotes. Do not enable automatic ephemeral/PR
+branches; this project has only production and the permanent staging branch.
+
+`supabase link` does not update `supabase/.temp/linked-project.json`
+immediately, so that file will happily claim you are pointed at production while
+you are not. Confirm with `supabase projects list`, which reports `linked` per
+project, before running anything destructive — or address a project by its URL,
+which cannot be ambiguous.
 
 Apply that file with `supabase config push --project-ref <ref>`, which picks
 the `[remotes.*]` block whose `project_id` matches the ref. The CLI is linked
@@ -178,7 +203,7 @@ Important invariants:
   spent, reporting the page to resume from, so a long scan is read across
   several calls rather than one that would exhaust the function. Search syntax is passed as a query parameter, never
   interpolated into a path.
-- Migrations and Edge Functions deploy by hand, reviewed first. The Supabase
+- Migrations deploy by hand, reviewed first. The Supabase
   GitHub integration is deliberately not connected, so merging to `staging` or
   `main` deploys the web app through Vercel and nothing else. Push with
   `--db-url` for the branch you mean: the CLI is linked to production, so
@@ -198,16 +223,30 @@ workspaces, or anything scheduled — and the schema is the cheap part of that t
 keep. Reviving it would still cost every user a reconnect, because the tokens
 are deliberately not here any more.
 
-What is **not** worth keeping is the credentials that made the old design
-dangerous. `SUPABASE_SERVICE_ROLE_KEY` and `TOKEN_ENCRYPTION_KEY` exist to read
-and decrypt those rows; while they are deployed, an operator can still reach
-whatever the tables hold. Empty tables plus a live service-role key is not the
-same as no exposure — the risk ends when the secrets leave the deployment, not
-when the rows are deleted.
+The credentials that made the old design dangerous were **not** kept. Done on
+2026-08-14, in this order:
 
-If you revive any of this, say so on the public page in the same breath. The
-"WHAT READ-ONLY DOES NOT COVER" callout was rewritten when custody moved, and a
-revival makes the old wording true again (#22).
+1. Every row deleted from `connections` and `mcp_keys`, in production and
+   staging.
+2. The `graph` edge function undeployed, and its `TOKEN_ENCRYPTION_KEY`,
+   `MS_CLIENT_SECRET` and `GOOGLE_CLIENT_SECRET` unset.
+3. `SUPABASE_SERVICE_ROLE_KEY`, `TOKEN_ENCRYPTION_KEY` and the provider client
+   secrets removed from both Vercel projects, **followed by a redeploy**. A
+   variable removed from project settings stays injected in the deployment
+   already running, so without the redeploy every secret would still have been
+   live.
+
+Step 3 is what ended the exposure, not step 1. Empty tables plus a deployed
+service-role key is not the same as no exposure — the risk ends when the secrets
+leave the deployment.
+
+The token encryption key is gone and was not recorded anywhere, which is fine
+only because no encrypted rows survive. Reviving hosted custody means a new key
+and a reconnect for every user; there is nothing to decrypt with the old one.
+
+If you revive any of this, change the public page in the same breath. The
+"WHERE YOUR CREDENTIALS LIVE" callout now tells musicians that no maintainer can
+read their notes, and a revival makes that false (#22).
 
 ## Publish the MCP package
 
@@ -302,6 +341,13 @@ If a privileged credential appears in chat, logs, source control, or an issue:
 5. Check provider audit logs for unexpected use.
 6. Document the incident through the private security channel.
 
-For a leaked user connection key, revoke the key in the web app and generate a
-replacement. For a leaked token-encryption key, treat stored refresh tokens as
-potentially exposed and require users to reconnect.
+A user's refresh token never reaches us, so there is no stored credential here
+to leak on their behalf. If a user believes their machine is compromised, the
+fix is theirs and immediate: removing this app from their
+[Microsoft](https://account.live.com/consent/Manage) or
+[Google](https://myaccount.google.com/connections) account invalidates the token
+everywhere it exists.
+
+The Google desktop client secret is already public and is not an incident. It
+grants nothing without a PKCE verifier; rotate it only if Google demands it, and
+follow the ordering in the secret inventory so live installs are not broken.
