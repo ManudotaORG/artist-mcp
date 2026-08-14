@@ -160,8 +160,19 @@ Three rules make that safe rather than sloppy:
   the bundled pack the way an unreachable remote registry does. Running
   different rules than the user asked for, silently, is the one thing this layer
   must never do.
-- `list_agent_workflows` says which entries are the user's own, so a transcript
-  never presents edited rules as the shipped ones.
+- `list_agent_workflows` says which entries are the user's own **and names the
+  file each one lives in**, so a transcript never presents edited rules as the
+  shipped ones, and a request to improve a playbook can be answered with the file
+  to change rather than loose prose. `load_agent_workflow` names the file too,
+  for a local entry only — a bundled path points inside an npx cache, where an
+  edit would work once and vanish on upgrade.
+
+  This is information, not capability. Nothing in the package writes a playbook,
+  and that is deliberate rather than unfinished: playbooks are executable policy,
+  and note and mail content is attacker-reachable, so a write tool would open a
+  path from text in an email to a permanent change in the rules that govern the
+  analysis. Editing belongs in a coding agent with file access and a diff you
+  review — which is what `agents install` is for.
 - Files are capped at 64 KiB each and empty files are refused. Project types and
   the intake policy are returned in full, unasked, so an oversized playbook does
   not fail — it silently spends the context the notes needed.

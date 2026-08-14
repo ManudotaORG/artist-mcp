@@ -12,6 +12,8 @@ import {
   resolveRegistry,
 } from '../dist/agents.js';
 
+const concertPath = (root) => resolve(root, '.artist/project-types/CONCERT.md');
+
 /** A pack-shaped directory, seeded with whatever the test needs. */
 const withLocalPack = async (files, run) => {
   const root = await mkdtemp(resolve(tmpdir(), 'artist-local-pack-'));
@@ -175,6 +177,37 @@ test('a pack is counted before init will write it into the config', async () => 
     },
   );
   await assert.rejects(assertLocalAgentPack(tmpdir()), /No \.artist\/ directory/);
+});
+
+/**
+ * The server names this path when it lists or loads a local playbook, so a
+ * request to improve one can be answered with the file to change. Nothing here
+ * writes it — the user does.
+ */
+test('a loaded local playbook carries the file the user would edit', async () => {
+  await withLocalPack(
+    { '.artist/project-types/CONCERT.md': '# Concert\n\nMine.\n' },
+    async (root) => {
+      const workflow = await loadAgentWorkflow('project-type:concert');
+      assert.equal(workflow.source, 'local');
+      assert.equal(workflow.origin, root);
+      assert.equal(resolve(workflow.origin, workflow.file), concertPath(root));
+    },
+  );
+});
+
+/**
+ * A bundled path points inside an npx cache. Telling the user to edit that would
+ * be worse than saying nothing: the edit would work once and vanish on upgrade.
+ */
+test('a bundled playbook is marked bundled so no path is offered for it', async () => {
+  await withLocalPack(
+    { '.artist/project-types/CONCERT.md': '# Concert\n\nMine.\n' },
+    async () => {
+      const workflow = await loadAgentWorkflow('role:envoy');
+      assert.equal(workflow.source, 'bundled');
+    },
+  );
 });
 
 test('no local directory means the bundled pack, unchanged', async () => {

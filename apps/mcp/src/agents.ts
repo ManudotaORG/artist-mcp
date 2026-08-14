@@ -14,8 +14,13 @@ import {
 
 const packRoot = fileURLToPath(new URL('../agent-pack/', import.meta.url));
 
-type LoadedAgentWorkflow = AgentRegistryEntry & {
-  content: string;
+/** One playbook's text, before provenance is attached. */
+type ReadWorkflow = AgentRegistryEntry & { content: string };
+
+type LoadedAgentWorkflow = ReadWorkflow & {
+  source: AgentSource;
+  /** The pack root this came from: a directory for local, a URL for remote. */
+  origin: string;
 };
 
 /** Where an entry was read from. Bundled is the shipped, checksummed pack. */
@@ -166,7 +171,7 @@ const verifyContent = (entry: AgentRegistryEntry, content: string): void => {
   }
 };
 
-const loadBundledWorkflow = async (id: string): Promise<LoadedAgentWorkflow> => {
+const loadBundledWorkflow = async (id: string): Promise<ReadWorkflow> => {
   const registry = await readBundledRegistry();
   const entry = registry.entries.find((item) => item.id === id);
   if (!entry) {
@@ -177,7 +182,7 @@ const loadBundledWorkflow = async (id: string): Promise<LoadedAgentWorkflow> => 
   return { ...entry, content };
 };
 
-const loadRemoteWorkflow = async (entry: AgentRegistryEntry): Promise<LoadedAgentWorkflow> => {
+const loadRemoteWorkflow = async (entry: AgentRegistryEntry): Promise<ReadWorkflow> => {
   const { url } = await fetchRemoteRegistry();
   const response = await fetch(new URL(entry.file, url), { signal: AbortSignal.timeout(3_000) });
   if (!response.ok) {
@@ -199,7 +204,7 @@ const loadRemoteWorkflow = async (entry: AgentRegistryEntry): Promise<LoadedAgen
 const loadLocalWorkflow = async (
   entry: AgentRegistryEntry,
   root: string,
-): Promise<LoadedAgentWorkflow> => {
+): Promise<ReadWorkflow> => {
   const content = await readFile(resolveWithin(root, entry.file), 'utf8');
   const digest = createHash('sha256').update(content).digest('hex');
   if (digest !== entry.sha256) {
@@ -216,24 +221,31 @@ const loadAgentWorkflow = async (id: string): Promise<LoadedAgentWorkflow> => {
   if (!entry) {
     throw new Error(`Unknown agent workflow: ${id}`);
   }
-  if (entry.source === 'local') {
-    // No fall back to the bundled copy. A local id exists because the user wrote
-    // the file; answering with different text under the same id would be worse
-    // than saying the read failed.
-    return loadLocalWorkflow(entry, localRoot ?? entry.origin);
-  }
-  if (entry.source === 'remote') {
-    try {
-      return await loadRemoteWorkflow(entry);
-    } catch (error) {
+
+  const read = async (): Promise<AgentRegistryEntry & { content: string }> => {
+    if (entry.source === 'local') {
+      // No fall back to the bundled copy. A local id exists because the user
+      // wrote the file; answering with different text under the same id would be
+      // worse than saying the read failed.
+      return loadLocalWorkflow(entry, localRoot ?? entry.origin);
+    }
+    if (entry.source === 'remote') {
       try {
-        return await loadBundledWorkflow(id);
-      } catch {
-        throw error;
+        return await loadRemoteWorkflow(entry);
+      } catch (error) {
+        try {
+          return await loadBundledWorkflow(id);
+        } catch {
+          throw error;
+        }
       }
     }
-  }
-  return loadBundledWorkflow(id);
+    return loadBundledWorkflow(id);
+  };
+
+  // Carry the provenance out with the text. The caller has to be able to say
+  // whose rules these are, and for a local file, which file to edit.
+  return { ...(await read()), source: entry.source, origin: entry.origin };
 };
 
 const installAgentPack = async (directory = process.cwd()): Promise<void> => {

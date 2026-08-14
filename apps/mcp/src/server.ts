@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -170,18 +171,24 @@ const runServer = async (): Promise<void> => {
           (entry) => `- ${entry.id}: ${entry.name} — ${entry.description}`,
         );
 
-        // Say when the rules are the user's own. They carry the same authority
-        // either way — that is the point of pointing the server at a directory —
-        // but a run that silently differs from the documented pack is painful to
-        // debug, and the difference belongs in the transcript.
+        // Say when the rules are the user's own, and name the files. They carry
+        // the same authority either way — that is the point of pointing the
+        // server at a directory — but a run that silently differs from the
+        // documented pack is painful to debug, and the difference belongs in the
+        // transcript. The paths are here so that a request to improve a playbook
+        // can be answered with the file to change rather than loose prose; this
+        // server cannot write them, and the user edits them itself.
         const local = entries.filter((entry) => entry.source === "local");
         const provenance =
           local.length > 0
             ? [
                 "",
-                `Note: ${local.length} of these are this user's own edited files, ` +
-                  "not the versions shipped with the package: " +
-                  `${local.map((entry) => entry.id).join(", ")}.`,
+                `Note: ${local.length} of these are this user's own edited ` +
+                  "files, not the versions shipped with the package. Suggest " +
+                  "revisions as replacement text for the file named; these " +
+                  "files are the user's to change, and this server cannot " +
+                  "write them.",
+                ...local.map((entry) => `- ${entry.id} — ${join(entry.origin, entry.file)}`),
               ]
             : [];
 
@@ -208,11 +215,18 @@ const runServer = async (): Promise<void> => {
     async ({ workflow_id }) => {
       try {
         const workflow = await loadAgentWorkflow(workflow_id);
+        // Naming the file only for a local one. A bundled path points inside an
+        // npx cache: noise the user cannot act on and should not be told to edit.
+        const provenance =
+          workflow.source === "local"
+            ? `\n\nThis is the user's own file, not the shipped version: ` +
+              `${join(workflow.origin, workflow.file)}`
+            : "";
         return {
           content: [
             {
               type: "text",
-              text: `# ${workflow.name}\n\n${workflow.content}`,
+              text: `# ${workflow.name}${provenance}\n\n${workflow.content}`,
             },
           ],
         };
