@@ -280,7 +280,14 @@ outreach, or touch a calendar.
 
 ## Not in scope
 
-No autonomous agent processes. No OneNote writes. No message sending. No calendar. No Google. No scheduled jobs. No teams or organisations. No billing. No web app deployment. No copying or synchronizing source data. No workflow state in Supabase.
+No autonomous agent processes. No writes to any source — not OneNote, Gmail, or Calendar. No message sending. No scheduled jobs. No teams or organisations. No billing. No copying or synchronizing source data. No workflow state in Supabase.
+
+This line originally also read "No calendar. No Google. No web app deployment." All three have since shipped, so it is corrected here rather than quietly left standing:
+
+- **Google is connected**, and Gmail and Calendar are read as **supporting evidence only** — they corroborate or fill gaps in a OneNote page and are never themselves a working unit. Reads only: `list_emails`, `read_email`, `list_events`, `read_event`, and the attachment pair. That asymmetry is what kept the one-page-one-unit rule intact when the sources grew; see [CLAUDE.md](../CLAUDE.md).
+- **The web app deploys** to two Vercel projects, staging and production, connected to the repository through the Vercel GitHub App. See [operations.md](operations.md).
+
+Each new source means re-deciding the rule, not repeating it. Google Tasks was considered and deliberately left out: a task list is a rival system of record for the work itself, not evidence about it.
 
 ## Known gaps — deferred, not forgotten
 
