@@ -3,25 +3,21 @@ import { access, copyFile, mkdir, readFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  parseRegistry,
+  resolveWithin,
+  type AgentRegistry,
+  type AgentRegistryEntry,
+} from './agent-registry.js';
+
 const packRoot = fileURLToPath(new URL('../agent-pack/', import.meta.url));
-
-type AgentRegistryEntry = {
-  id: string;
-  kind: 'role' | 'project-type' | 'policy';
-  name: string;
-  description: string;
-  file: string;
-  sha256: string;
-};
-
-type AgentRegistry = {
-  schemaVersion: 1;
-  entries: AgentRegistryEntry[];
-};
 
 type LoadedAgentWorkflow = AgentRegistryEntry & {
   content: string;
 };
+
+/** Where an entry was read from. Bundled is the shipped, checksummed pack. */
+type AgentSource = 'bundled' | 'remote';
 
 const exists = async (path: string): Promise<boolean> => {
   try {
@@ -32,38 +28,7 @@ const exists = async (path: string): Promise<boolean> => {
   }
 };
 
-const assertSafePackPath = (file: string): string => {
-  const path = resolve(packRoot, file);
-  const pathFromRoot = relative(packRoot, path);
-  if (pathFromRoot.startsWith('..') || isAbsolute(pathFromRoot)) {
-    throw new Error(`Agent registry path escapes the pack: ${file}`);
-  }
-  return path;
-};
-
-const parseRegistry = (value: unknown): AgentRegistry => {
-  if (!value || typeof value !== 'object') {
-    throw new Error('Agent registry is not an object.');
-  }
-  const candidate = value as Partial<AgentRegistry>;
-  if (candidate.schemaVersion !== 1 || !Array.isArray(candidate.entries)) {
-    throw new Error('Unsupported agent registry format.');
-  }
-  for (const entry of candidate.entries) {
-    if (
-      !entry ||
-      typeof entry.id !== 'string' ||
-      (entry.kind !== 'role' && entry.kind !== 'project-type' && entry.kind !== 'policy') ||
-      typeof entry.name !== 'string' ||
-      typeof entry.description !== 'string' ||
-      typeof entry.file !== 'string' ||
-      !/^[a-f0-9]{64}$/.test(entry.sha256)
-    ) {
-      throw new Error('Agent registry contains an invalid entry.');
-    }
-  }
-  return candidate as AgentRegistry;
-};
+const assertSafePackPath = (file: string): string => resolveWithin(packRoot, file);
 
 const readBundledRegistry = async (): Promise<AgentRegistry> => {
   const raw = await readFile(resolve(packRoot, 'registry.json'), 'utf8');
@@ -83,16 +48,36 @@ const fetchRemoteRegistry = async (): Promise<{ registry: AgentRegistry; url: UR
   return { registry: parseRegistry(await response.json()), url };
 };
 
-const listAgentWorkflows = async (): Promise<AgentRegistryEntry[]> => {
+/**
+ * Pick the registry this run will use, and say where it came from.
+ *
+ * The choice and the reporting belong together: `agents status` exists so that a
+ * user can see which files are actually in force, and it would be worthless if
+ * it re-derived the answer separately from the code that loads them.
+ */
+const resolveRegistry = async (): Promise<{
+  registry: AgentRegistry;
+  source: AgentSource;
+  origin: string;
+}> => {
+  const bundled = async () => ({
+    registry: await readBundledRegistry(),
+    source: 'bundled' as const,
+    origin: packRoot,
+  });
   if (!process.env.ARTIST_MCP_REGISTRY_URL) {
-    return (await readBundledRegistry()).entries;
+    return bundled();
   }
   try {
-    return (await fetchRemoteRegistry()).registry.entries;
+    const { registry, url } = await fetchRemoteRegistry();
+    return { registry, source: 'remote', origin: url.href };
   } catch {
-    return (await readBundledRegistry()).entries;
+    return bundled();
   }
 };
+
+const listAgentWorkflows = async (): Promise<AgentRegistryEntry[]> =>
+  (await resolveRegistry()).registry.entries;
 
 const verifyContent = (entry: AgentRegistryEntry, content: string): void => {
   const digest = createHash('sha256').update(content).digest('hex');
@@ -193,10 +178,32 @@ const installAgentPack = async (directory = process.cwd()): Promise<void> => {
   console.log('Read-only artist workflow pack is ready.');
 };
 
+/**
+ * Report which workflow files are in force and where each one came from.
+ *
+ * Worth a command of its own because the failure it diagnoses is silent: the
+ * server answers normally whichever files it read, so an edit that is not being
+ * picked up looks exactly like an edit that had no effect.
+ */
+const runAgentsStatus = async (): Promise<void> => {
+  const { registry, source, origin } = await resolveRegistry();
+  console.log(`Workflow registry: ${source}`);
+  console.log(`  ${origin}`);
+  if (source === 'bundled' && process.env.ARTIST_MCP_REGISTRY_URL) {
+    console.log('  (ARTIST_MCP_REGISTRY_URL is set but unreachable; using the bundled pack.)');
+  }
+  console.log(`\n${registry.entries.length} workflows:`);
+  for (const entry of registry.entries) {
+    console.log(`  ${entry.id.padEnd(28)} ${source.padEnd(8)} ${entry.file}`);
+  }
+};
+
 export {
   installAgentPack,
   listAgentWorkflows,
   loadAgentWorkflow,
+  runAgentsStatus,
   type AgentRegistryEntry,
+  type AgentSource,
   type LoadedAgentWorkflow,
 };

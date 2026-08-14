@@ -2,7 +2,7 @@
 
 import { runInit, runUninstall } from './init.js';
 import { runServer } from './server.js';
-import { installAgentPack } from './agents.js';
+import { installAgentPack, runAgentsStatus } from './agents.js';
 import { runConnect, runDisconnect, runStatus } from './connect.js';
 
 const mode = process.argv[2];
@@ -31,10 +31,16 @@ try {
       await runUninstall();
       break;
     case 'agents':
-      if (process.argv[3] !== 'install') {
-        throw new Error('Usage: artist-mcp agents install [directory]');
+      switch (process.argv[3]) {
+        case 'install':
+          await installAgentPack(process.argv[4]);
+          break;
+        case 'status':
+          await runAgentsStatus();
+          break;
+        default:
+          throw new Error('Usage: artist-mcp agents <install [directory]|status>');
       }
-      await installAgentPack(process.argv[4]);
       break;
     default:
       console.error(
@@ -49,6 +55,8 @@ try {
           '  artist-mcp status     show what this machine is connected to\n' +
           '  artist-mcp agents install [directory]\n' +
           '                       install the notes-analysis agent pack\n' +
+          '  artist-mcp agents status\n' +
+          '                       show which workflow files are in force\n' +
           '  artist-mcp uninstall  remove the Claude Desktop entry\n',
       );
       process.exit(1);

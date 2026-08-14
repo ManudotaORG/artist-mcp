@@ -207,6 +207,15 @@ runtime uses the registry and playbooks bundled into the installed npm version.
 `ARTIST_MCP_REGISTRY_URL` is an explicit development/testing override; it must
 point to a registry whose Markdown files are resolvable relative to that URL.
 
+Ids, kinds, and descriptions are derived in `src/agent-registry.ts`, which is
+why `tsc` runs *before* `scripts/build-agent-registry.mjs` — the script imports
+the compiled module rather than reimplementing the rule. Keep it that way: the
+runtime reads directories through the same derivation, and a second copy would
+drift into giving the same file two different ids. A test asserts the committed
+registry still matches what the derivation produces.
+
+`artist-mcp agents status` prints the entries in force and where they came from.
+
 ## Coding conventions
 
 Read the closest `AGENTS.md` before editing. This project requires arrow

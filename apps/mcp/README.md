@@ -100,6 +100,13 @@ Envoy, Auditor, Janitor) and project types (Concert, Large Concert, Studio
 Session, Rehearsal) into the current project as plain Markdown, loaded at
 runtime and verified by checksum.
 
+To see which workflow files the server is actually reading, and where each one
+came from:
+
+```bash
+npx @manudota/artist-mcp agents status
+```
+
 The playbooks produce plans, recommendations, audits, and drafts in chat. They
 cannot write to OneNote, send mail, or touch a calendar. Gmail and Calendar are
 read only when you ask for them — a connected account is not a standing
