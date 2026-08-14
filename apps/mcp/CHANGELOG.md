@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.0.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v0.8.0...artist-mcp-v1.0.0) (2026-08-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* **mcp:** run operations on this machine instead of the edge function
+
+### Features
+
+* **mcp:** add connect, disconnect and status commands ([2ad73a3](https://github.com/ManudotaORG/artist-mcp/commit/2ad73a3cc4e8399d1d6a34f15edf77230c0b8455))
+* **mcp:** port attachment reading into the package ([8f58fea](https://github.com/ManudotaORG/artist-mcp/commit/8f58feaaf70eb0a0a33f888668071c5bac9ffc78))
+* **mcp:** port the Calendar operations into the package ([dee208b](https://github.com/ManudotaORG/artist-mcp/commit/dee208b91d7b032c049bd30aab90444491729fab))
+* **mcp:** port the Gmail list and read operations ([29b7d99](https://github.com/ManudotaORG/artist-mcp/commit/29b7d990a70fbdf3dd93b8749ca4e0d6c7678fca))
+* **mcp:** port the OneNote operations into the package ([d592822](https://github.com/ManudotaORG/artist-mcp/commit/d592822a0d76c868b341bef8fdc5b419d986eea1))
+* **mcp:** run operations on this machine instead of the edge function ([29fda74](https://github.com/ManudotaORG/artist-mcp/commit/29fda74ebb4b78d690a3ff27a48b0f8fc185261c))
+* **mcp:** sign in to providers from this machine ([9ebc80d](https://github.com/ManudotaORG/artist-mcp/commit/9ebc80dcc3f8b58fdd109e4fd025565ae84fd948))
+* **mcp:** store provider tokens on this machine ([2bca81e](https://github.com/ManudotaORG/artist-mcp/commit/2bca81eeb890cf726178c0708e19e044dc82a24d))
+* serve Google's client secret instead of publishing it ([f9d8fb5](https://github.com/ManudotaORG/artist-mcp/commit/f9d8fb5a77b8a4583054e0bc0612566b558aaacb))
+
+## [0.8.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v0.7.0...artist-mcp-v0.8.0) (2026-08-13)
+
+
+### Features
+
+* **mcp:** allow opt-in Gmail and Calendar evidence in the agent pack ([0dcb902](https://github.com/ManudotaORG/artist-mcp/commit/0dcb9028325523add7c7e8cf08b07ab255404c46))
+
+
+### Bug Fixes
+
+* **mcp:** register the dist-tag init was run from ([2f0a6fd](https://github.com/ManudotaORG/artist-mcp/commit/2f0a6fdd053fd03a61034250455f5a82e059044c))
+* **mcp:** register the dist-tag init was run from ([13e0e2c](https://github.com/ManudotaORG/artist-mcp/commit/13e0e2c1c9fd67f2add96839e50ab00816cd4ea6))
+
 ## [0.7.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v0.6.0...artist-mcp-v0.7.0) (2026-08-13)
 
 

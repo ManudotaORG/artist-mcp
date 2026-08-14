@@ -1,7 +1,8 @@
 # artist-mcp
 
-A multi-tenant web app where a user connects their Microsoft account, plus an
-npm-published MCP server that then reads that user's OneNote notes.
+An npm-published MCP server that reads a user's OneNote notes, signing in to
+Microsoft and Google on the user's own machine, plus a small web app for sign-in
+and the install instructions.
 
 **The build checklist is [docs/mvp-brief.md](docs/mvp-brief.md). Read it before
 starting work.** It is the source of truth for scope and for what is actually
@@ -26,7 +27,7 @@ is a rival system of record for the work itself rather than evidence about it.
 ```
 apps/web        Next.js (App Router), Tailwind, shadcn/ui
 apps/mcp        MCP server + install CLI, published as @manudota/artist-mcp
-supabase/       migrations and edge functions
+supabase/       migrations, and dormant schema from the hosted design
 docs/           the brief
 ```
 
@@ -38,8 +39,10 @@ docs/           the brief
   token and everything dies after an hour.
 - **Microsoft rotates refresh tokens.** Every exchange invalidates the old one.
   Miss the write-back and the connection dies silently on the *next* call.
-- **`/v1/` of the edge function is a public contract.** Installed copies upgrade
-  on their own schedule and keep calling it. Add `/v2/`, don't change the shape.
+- **Tokens live on the user's machine and nowhere else.** No service here stores
+  a refresh token or holds a credential that could read one — that is the point
+  of #22, not an implementation detail. `connections` and `mcp_keys` remain in
+  the schema but are dormant and unwritten; see `docs/operations.md`.
 - **`/me/onenote/pages` dies on accounts with many sections.** Graph answers the
   whole request with 400 and error `20266`, so listing goes from working to
   broken with no partial result. Enumerate `/me/onenote/sections` and fetch
@@ -49,8 +52,13 @@ docs/           the brief
   problem until the body was surfaced.
 - **Postgres grants EXECUTE to PUBLIC on new functions.** Revoking from `anon`
   and `authenticated` alone is a no-op — revoke from `PUBLIC`.
-- **Edge functions verify a Supabase JWT by default.** Callers here present a
-  connection key instead, so `verify_jwt = false` is set in `config.toml`.
+- **Google needs a client secret; Microsoft does not.** Google refuses the token
+  exchange for a Desktop client without one, and the client types needing none
+  cannot use a loopback redirect. It is served from `/api/client-config`, openly,
+  and cached with the tokens. Do not "fix" this by publishing it in the package
+  or by gating the endpoint — it reaches every user either way, and PKCE is what
+  makes it harmless. Re-check with `scripts/spike-pkce.mjs` if a provider changes
+  its rules.
 - **`apps/web` is a Next.js version with breaking changes** against what you may
   remember. See `apps/web/AGENTS.md`; read `node_modules/next/dist/docs/` before
   writing code there.

@@ -8,42 +8,17 @@ Setup normally takes a few minutes.
 - Node.js 20 or newer. Check with `node --version`.
 - A Microsoft account with OneNote pages.
 - Claude Desktop or Codex installed.
-- Access to the `artist-mcp` web app.
+- A browser, for the sign-in step.
 
-## 1. Connect Microsoft
+## 1. Install in a client
 
-1. Open the web app.
-2. Sign in using the email magic link.
-3. Select **Connect Microsoft**.
-4. Sign into the Microsoft account that owns or can access the required OneNote
-   pages.
-5. Approve the requested delegated permissions:
-   - `Notes.Read` — read OneNote notebooks and pages.
-   - `offline_access` — keep the connection working after the access token
-     expires.
-   - `User.Read` — identify the connected Microsoft account.
+Channels:
 
-The browser returns to the web app with **Microsoft connected** when the flow
-succeeds.
-
-## 2. Generate a connection key
-
-Select **Generate key** in the web app and copy the value immediately. The
-plaintext key is shown once; the database stores only its SHA-256 hash.
-
-Treat the key like a password. Do not paste it into chat, email, issue reports,
-source code, screenshots, or shell history. Generating a new key invalidates the
-previous key and disconnects any client using it.
-
-## 3. Install in a client
-
-Choose the channel that matches the website you used:
-
-| Website | Package command |
+| Channel | Package command |
 | --- | --- |
-| <https://artist-mcp.vercel.app> | `@manudota/artist-mcp` |
-| <https://artist-mcp-staging.vercel.app> | `@manudota/artist-mcp@staging` |
-| <http://localhost:3000> from this checkout | `node apps/mcp/dist/index.js` |
+| Production | `@manudota/artist-mcp` |
+| Staging | `@manudota/artist-mcp@staging` |
+| Local source from this checkout | `node apps/mcp/dist/index.js` |
 
 The examples below use production. On staging, add `@staging` to every npm
 package reference. `init` records the tag it was run from, so a staging install
@@ -60,9 +35,9 @@ Run:
 npx @manudota/artist-mcp init
 ```
 
-Paste the connection key at the prompt. The installer verifies it before
-editing the Claude Desktop configuration and preserves other MCP servers.
-Restart Claude Desktop after installation.
+This registers the server and preserves any other MCP servers already
+configured. It writes no credentials — the entry contains a command and nothing
+else. Restart Claude Desktop after installation.
 
 Configuration locations:
 
@@ -71,17 +46,11 @@ Configuration locations:
 
 ### Codex
 
-Use a hidden terminal prompt so the key is not written directly into shell
-history:
-
 ```bash
-read -s ARTIST_MCP_KEY
-codex mcp add artist-notes --env ARTIST_MCP_KEY="$ARTIST_MCP_KEY" -- npx -y @manudota/artist-mcp
-unset ARTIST_MCP_KEY
+codex mcp add artist-notes -- npx -y @manudota/artist-mcp
 ```
 
-Press Enter after typing the key, then restart Codex. Confirm the registration
-with:
+Restart Codex, then confirm the registration with:
 
 ```bash
 codex mcp get artist-notes
@@ -91,7 +60,42 @@ Codex stores MCP configuration in its normal user configuration. The command
 above uses the supported `codex mcp add` interface instead of requiring a manual
 edit.
 
-## 4. Verify the connection
+## 2. Connect your accounts
+
+```bash
+npx @manudota/artist-mcp connect
+```
+
+A browser window opens on Microsoft's sign-in page. Sign in to the account that
+owns the OneNote pages, and approve:
+
+- `Notes.Read` — read OneNote notebooks and pages.
+- `offline_access` — keep working after the access token expires. Without it the
+  connection dies within the hour.
+- `User.Read` — identify the connected account.
+
+The terminal reports **Microsoft connected** when the flow finishes. The refresh
+token is written to `~/.artist-mcp/tokens.json` with mode `0600` and never
+leaves this machine.
+
+Gmail and Calendar are optional, and are supporting evidence rather than a
+working unit:
+
+```bash
+npx @manudota/artist-mcp connect google
+```
+
+This asks for `gmail.readonly` and `calendar.events.readonly`. The narrower
+events scope is deliberate — calendar metadata, sharing and settings are not
+read.
+
+Check what this machine holds at any time:
+
+```bash
+npx @manudota/artist-mcp status
+```
+
+## 3. Verify the connection
 
 Ask the client:
 
@@ -143,11 +147,11 @@ The workflow pack:
 - `list_agent_workflows` — lists the available artist roles and project types.
 - `load_agent_workflow` — loads one checksummed Markdown playbook.
 
-The local MCP process never receives a Microsoft or Google access token, or a
-Supabase service key. It sends only the connection key and an allowed operation to the
-hosted Edge Function.
+The MCP process calls Microsoft Graph, Gmail and Google Calendar directly with
+tokens it holds itself. Nothing is proxied through a hosted service, so no
+request is visible to anyone but you and the provider.
 
-## 5. Install the workflow files in a project
+## 4. Install the workflow files in a project
 
 This optional command installs the same bundled roles and project types where
 Claude or Codex can inspect them directly:
@@ -160,13 +164,22 @@ The installer preserves a differing root `AGENTS.md` and stops before changing
 any differing workflow file. One OneNote page remains one working unit, and all
 outputs remain in chat.
 
-## Replace or revoke a key
+## Reconnect or disconnect
 
-- **Generate new key** replaces the active key. Reinstall or update every client
-  that should continue working.
-- **Revoke** disables the active key immediately without deleting the stored
-  Microsoft connection.
-- **Reconnect** repeats Microsoft consent and replaces the stored refresh token.
+```bash
+npx @manudota/artist-mcp connect microsoft   # repeat consent, replace the stored token
+npx @manudota/artist-mcp disconnect google   # remove one connection from this machine
+npx @manudota/artist-mcp status              # what this machine currently holds
+```
+
+`disconnect` removes the token from this machine. It does **not** withdraw the
+grant — to do that, remove this app from your
+[Microsoft](https://account.live.com/consent/Manage) or
+[Google](https://myaccount.google.com/connections) account, which revokes it
+everywhere at once.
+
+Each machine connects separately: a token belongs to the computer that signed
+in, so installing on a second machine means running `connect` there too.
 
 ## Uninstall
 
@@ -191,35 +204,37 @@ Restart Codex afterward.
 
 ### Microsoft sign-in loops at “Trying to sign you in”
 
-Return to the web app and start **Connect Microsoft** again. The app requests a
-fresh login so a broken cached Microsoft session is not reused. Complete the
-flow in one browser tab. If an organization policy still blocks the account,
+Run `connect` again and complete the flow in one browser tab. If an organization
+policy still blocks the account,
 try a personal Microsoft account or ask the tenant administrator about
 Conditional Access.
 
-### Invalid OAuth state
+### The sign-in response did not match
 
-Close old Microsoft consent tabs and restart the connection from the web app.
-Do not reuse an old Microsoft callback or `reprocess` URL, and do not switch
-browsers midway through the flow.
+Close old consent tabs and run `connect` again. The response is bound to the
+request that started it, so a stale callback URL is discarded rather than
+trusted. Complete the flow in one browser tab.
+
+### Port 8765 is already in use
+
+Sign-in listens on a fixed loopback port, because Microsoft matches redirect
+URIs exactly. Close whatever is using it and run `connect` again.
 
 ### Reconnect needed
 
-The connection key is invalid, revoked, or tied to a connection whose Microsoft
-refresh failed. Reconnect Microsoft, generate a new key, and install that key in
-the affected client.
+The stored token expired or was revoked — including when the app's access is
+removed from a Microsoft or Google account page. Run `connect` for the provider
+named in the message.
 
 ### Microsoft Graph returns 500, 503, or 504
 
 OneNote endpoints can fail transiently. Retry the request after a short pause.
-The Edge Function already retries rate limits and server errors before returning
-an error.
+Rate limits and server errors are already retried before an error is returned.
 
 ### The client cannot find `artist-notes`
 
 Restart the client; MCP configuration is loaded at startup. For Codex, run
-`codex mcp get artist-notes`. For Claude Desktop, rerun the installer with the
-same active key.
+`codex mcp get artist-notes`. For Claude Desktop, rerun `init`.
 
 ### `npx` or Node is missing
 
@@ -228,9 +243,16 @@ and `npx --version` before retrying.
 
 ## Security notes
 
-- The connection key grants read access to the connected user's OneNote pages.
-- Microsoft refresh tokens are encrypted in Postgres.
-- Refresh tokens are rotated and written back on every Graph operation.
-- The browser never receives Microsoft tokens.
-- The MCP package never receives database credentials.
+- Refresh tokens stay on this machine, in `~/.artist-mcp/tokens.json` with mode
+  `0600`. No server stores them, so no operator can read the connected account.
+- That file is readable by your own user account, so anything running as you can
+  use it. It is not in the OS keychain, which would need a native dependency the
+  package cannot take.
+- Microsoft rotates its refresh token on every use; the replacement is written
+  back before it is used for anything else.
+- The Claude Desktop entry contains no credentials at all.
+- Revoking the app from your
+  [Microsoft](https://account.live.com/consent/Manage) or
+  [Google](https://myaccount.google.com/connections) account invalidates it on
+  every machine at once.
 - Report vulnerabilities using [SECURITY.md](../SECURITY.md), not a public issue.

@@ -2,7 +2,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { listAgentWorkflows, loadAgentWorkflow } from "./agents.js";
-import { call, GraphError } from "./client.js";
+import { GraphError } from "./client.js";
+import { call } from "./dispatch.js";
 
 type NoteSummary = {
   id: string;
@@ -113,7 +114,7 @@ const describeSize = (bytes: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-const serverVersion = '0.7.0'; // x-release-please-version
+const serverVersion = '1.0.0'; // x-release-please-version
 
 const errorResult = (err: unknown) => {
   const message =
@@ -122,14 +123,11 @@ const errorResult = (err: unknown) => {
 };
 
 const runServer = async (): Promise<void> => {
-  const key = process.env.ARTIST_MCP_KEY;
-  if (!key) {
-    // stderr, not stdout — stdout is the protocol channel.
-    console.error(
-      "ARTIST_MCP_KEY is not set. Run `npx @manudota/artist-mcp init` to configure.",
-    );
-    process.exit(1);
-  }
+  // Nothing is checked here on purpose. The server starts whether or not a
+  // provider is connected, and a tool that needs one says so when it is called:
+  // refusing to start would leave Claude Desktop reporting a broken server
+  // rather than an account that needs connecting, which is a much worse
+  // sentence to act on. stderr, not stdout — stdout is the protocol channel.
 
   const server = new McpServer({ name: "artist-notes", version: serverVersion });
 
@@ -226,7 +224,7 @@ const runServer = async (): Promise<void> => {
     },
     async ({ notebook }) => {
       try {
-        const { notes } = await call<{ notes: NoteSummary[] }>("list_notes", key);
+        const { notes } = await call<{ notes: NoteSummary[] }>("list_notes");
         if (notes.length === 0) {
           return { content: [{ type: "text", text: "No notes found." }] };
         }
@@ -293,10 +291,7 @@ const runServer = async (): Promise<void> => {
     { note_id: z.string().describe("The id of the note, as returned by list_notes") },
     async ({ note_id }) => {
       try {
-        const { title, text } = await call<{ title: string; text: string }>(
-          "read_note",
-          key,
-          { note_id },
+        const { title, text } = await call<{ title: string; text: string }>("read_note", { note_id },
         );
         return { content: [{ type: "text", text: `# ${title}\n\n${text}` }] };
       } catch (err) {
@@ -325,10 +320,7 @@ const runServer = async (): Promise<void> => {
     },
     async ({ query }) => {
       try {
-        const { emails } = await call<{ emails: EmailSummary[] }>(
-          "list_emails",
-          key,
-          { query },
+        const { emails } = await call<{ emails: EmailSummary[] }>("list_emails", { query },
         );
         if (emails.length === 0) {
           return {
@@ -370,7 +362,7 @@ const runServer = async (): Promise<void> => {
     },
     async ({ email_id }) => {
       try {
-        const mail = await call<EmailBody>("read_email", key, { email_id });
+        const mail = await call<EmailBody>("read_email", { email_id });
         const head = [
           `# ${mail.subject}`,
           "",
@@ -422,7 +414,7 @@ const runServer = async (): Promise<void> => {
     },
     async ({ email_id, attachment_id }) => {
       try {
-        const map = await call<AttachmentMap>("map_attachment", key, {
+        const map = await call<AttachmentMap>("map_attachment", {
           email_id,
           attachment_id,
         });
@@ -507,7 +499,7 @@ const runServer = async (): Promise<void> => {
     },
     async ({ email_id, attachment_id, from_page, page_count }) => {
       try {
-        const file = await call<AttachmentBody>("read_attachment", key, {
+        const file = await call<AttachmentBody>("read_attachment", {
           email_id,
           attachment_id,
           from_page,
@@ -619,7 +611,7 @@ const runServer = async (): Promise<void> => {
         const { events, omitted_occurrences } = await call<{
           events: EventSummary[];
           omitted_occurrences?: number;
-        }>("list_events", key, { query, time_min, time_max, calendar_id });
+        }>("list_events", { query, time_min, time_max, calendar_id });
 
         if (events.length === 0) {
           return {
@@ -659,7 +651,7 @@ const runServer = async (): Promise<void> => {
     },
     async ({ event_id, calendar_id }) => {
       try {
-        const e = await call<EventBody>("read_event", key, { event_id, calendar_id });
+        const e = await call<EventBody>("read_event", { event_id, calendar_id });
         const head = [
           `# ${e.summary}`,
           "",
