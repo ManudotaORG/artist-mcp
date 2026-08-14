@@ -262,7 +262,7 @@ runtime uses the registry and playbooks bundled into the installed npm version.
 point to a registry whose Markdown files are resolvable relative to that URL.
 
 Ids, kinds, and descriptions are derived in `src/agent-registry.ts`, which is
-why `tsc` runs *before* `scripts/build-agent-registry.mjs` — the script imports
+why `tsc` runs *before* `apps/mcp/scripts/build-agent-registry.mjs` — the script imports
 the compiled module rather than reimplementing the rule. Keep it that way: the
 runtime reads directories through the same derivation, and a second copy would
 drift into giving the same file two different ids. A test asserts the committed
