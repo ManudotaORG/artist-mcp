@@ -8,7 +8,7 @@ import { GraphError } from './client.js';
 import { gmailGet } from './api.js';
 import { htmlToText } from './notes.js';
 /** Gmail ids are opaque hex-ish strings; anything else never reaches a URL. */
-const GMAIL_ID = /^[A-Za-z0-9_-]{1,128}$/;
+export const GMAIL_ID = /^[A-Za-z0-9_-]{1,128}$/;
 const header = (headers, name) => {
     const found = (headers ?? []).find((h) => (h.name ?? '').toLowerCase() === name.toLowerCase());
     return found?.value ?? null;

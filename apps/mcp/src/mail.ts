@@ -10,7 +10,7 @@ import { gmailGet } from './api.js';
 import { htmlToText } from './notes.js';
 
 /** Gmail ids are opaque hex-ish strings; anything else never reaches a URL. */
-const GMAIL_ID = /^[A-Za-z0-9_-]{1,128}$/;
+export const GMAIL_ID = /^[A-Za-z0-9_-]{1,128}$/;
 
 type GmailHeader = { name?: string; value?: string };
 
@@ -21,7 +21,7 @@ export type GmailPart = {
   parts?: GmailPart[];
 };
 
-type GmailMessage = {
+export type GmailMessage = {
   id: string;
   threadId?: string;
   snippet?: string;
