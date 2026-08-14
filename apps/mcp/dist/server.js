@@ -2,7 +2,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { listAgentWorkflows, loadAgentWorkflow } from "./agents.js";
-import { call, GraphError } from "./client.js";
+import { GraphError } from "./client.js";
+import { call } from "./dispatch.js";
 /** Times are stated with their zone; the calendar's zone need not be the reader's. */
 const when = (e) => {
     if (!e.start)
@@ -26,12 +27,11 @@ const errorResult = (err) => {
     return { content: [{ type: "text", text: message }], isError: true };
 };
 const runServer = async () => {
-    const key = process.env.ARTIST_MCP_KEY;
-    if (!key) {
-        // stderr, not stdout — stdout is the protocol channel.
-        console.error("ARTIST_MCP_KEY is not set. Run `npx @manudota/artist-mcp init` to configure.");
-        process.exit(1);
-    }
+    // Nothing is checked here on purpose. The server starts whether or not a
+    // provider is connected, and a tool that needs one says so when it is called:
+    // refusing to start would leave Claude Desktop reporting a broken server
+    // rather than an account that needs connecting, which is a much worse
+    // sentence to act on. stderr, not stdout — stdout is the protocol channel.
     const server = new McpServer({ name: "artist-notes", version: serverVersion });
     server.tool("list_agent_workflows", "List the read-only artist roles, project types, and policies available " +
         "at runtime. The project-type playbooks and the intake policy are " +
@@ -101,7 +101,7 @@ const runServer = async () => {
             "call. Omit only when the user has not chosen one yet."),
     }, async ({ notebook }) => {
         try {
-            const { notes } = await call("list_notes", key);
+            const { notes } = await call("list_notes");
             if (notes.length === 0) {
                 return { content: [{ type: "text", text: "No notes found." }] };
             }
@@ -152,7 +152,7 @@ const runServer = async () => {
     });
     server.tool("read_note", "Read the text content of one OneNote page. Takes the id from list_notes.", { note_id: z.string().describe("The id of the note, as returned by list_notes") }, async ({ note_id }) => {
         try {
-            const { title, text } = await call("read_note", key, { note_id });
+            const { title, text } = await call("read_note", { note_id });
             return { content: [{ type: "text", text: `# ${title}\n\n${text}` }] };
         }
         catch (err) {
@@ -173,7 +173,7 @@ const runServer = async () => {
             "or 'subject:contract'. Omit to list the most recent messages."),
     }, async ({ query }) => {
         try {
-            const { emails } = await call("list_emails", key, { query });
+            const { emails } = await call("list_emails", { query });
             if (emails.length === 0) {
                 return {
                     content: [
@@ -208,7 +208,7 @@ const runServer = async () => {
             .describe("The id of the message, as returned by list_emails"),
     }, async ({ email_id }) => {
         try {
-            const mail = await call("read_email", key, { email_id });
+            const mail = await call("read_email", { email_id });
             const head = [
                 `# ${mail.subject}`,
                 "",
@@ -252,7 +252,7 @@ const runServer = async () => {
             .describe('The attachment id from read_email, e.g. "2" or "1.2"'),
     }, async ({ email_id, attachment_id }) => {
         try {
-            const map = await call("map_attachment", key, {
+            const map = await call("map_attachment", {
                 email_id,
                 attachment_id,
             });
@@ -321,7 +321,7 @@ const runServer = async () => {
             "around page 40\" — not for reading a long file faster."),
     }, async ({ email_id, attachment_id, from_page, page_count }) => {
         try {
-            const file = await call("read_attachment", key, {
+            const file = await call("read_attachment", {
                 email_id,
                 attachment_id,
                 from_page,
@@ -420,7 +420,7 @@ const runServer = async () => {
             .describe("Calendar to read. Defaults to the user's primary calendar."),
     }, async ({ query, time_min, time_max, calendar_id }) => {
         try {
-            const { events, omitted_occurrences } = await call("list_events", key, { query, time_min, time_max, calendar_id });
+            const { events, omitted_occurrences } = await call("list_events", { query, time_min, time_max, calendar_id });
             if (events.length === 0) {
                 return {
                     content: [{ type: "text", text: "No events in that window." }],
@@ -453,7 +453,7 @@ const runServer = async () => {
             .describe("Calendar the event belongs to. Defaults to the primary calendar."),
     }, async ({ event_id, calendar_id }) => {
         try {
-            const e = await call("read_event", key, { event_id, calendar_id });
+            const e = await call("read_event", { event_id, calendar_id });
             const head = [
                 `# ${e.summary}`,
                 "",

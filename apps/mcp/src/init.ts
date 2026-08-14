@@ -1,8 +1,7 @@
-import { createInterface } from "node:readline/promises";
-import { stdin, stdout } from "node:process";
 import { fileURLToPath } from "node:url";
-import { call, GraphError, isStagingVersion, packageVersion } from "./client.js";
+import { isStagingVersion, packageVersion } from "./client.js";
 import { configPath, ENTRY_NAME, readConfig, writeConfig } from "./config.js";
+import { connectedProviders } from "./dispatch.js";
 
 const PACKAGE = "@manudota/artist-mcp";
 const LOCAL_ENTRY = fileURLToPath(new URL("./index.js", import.meta.url));
@@ -23,68 +22,54 @@ type InitOptions = {
   local?: boolean;
 };
 
+/**
+ * No `env` any more. The entry carried ARTIST_MCP_KEY in plaintext inside
+ * claude_desktop_config.json, a file with no particular protection that other
+ * tools read and back up. Credentials now live in the token store this package
+ * owns, so the config holds nothing worth stealing.
+ */
 type ServerEntry = {
   command: string;
   args: string[];
-  env: { ARTIST_MCP_KEY: string };
 };
 
 const createServerEntry = ({
-  key,
   local = false,
   version = packageVersion,
 }: {
-  key: string;
   local?: boolean;
   version?: string;
-}): ServerEntry =>
+} = {}): ServerEntry =>
   local
     ? {
         command: process.execPath,
         args: [LOCAL_ENTRY],
-        env: { ARTIST_MCP_KEY: key },
       }
     : {
         command: "npx",
         args: ["-y", packageSpec(version)],
-        env: { ARTIST_MCP_KEY: key },
       };
 
+/**
+ * Register the Claude Desktop entry.
+ *
+ * There is no key to paste any more, so this no longer asks for anything or
+ * calls anything to check it. What it can still get wrong is finishing silently
+ * on a machine with no connection, which would surface later as every tool
+ * failing inside Claude — so it says plainly which providers are connected and
+ * names the command for the ones that are not.
+ */
 export const runInit = async ({ local = false }: InitOptions = {}): Promise<void> => {
-  const rl = createInterface({ input: stdin, output: stdout });
-  let key: string;
-  try {
-    key = (await rl.question("Paste your connection key: ")).trim();
-  } finally {
-    rl.close();
-  }
-
-  if (key === "") {
-    console.error("No key entered. Nothing was written.");
-    process.exit(1);
-  }
-
-  // Verify before touching the config — a bad key should leave the machine
-  // exactly as it was.
-  try {
-    await call("verify", key);
-  } catch (err) {
-    const message =
-      err instanceof GraphError ? err.message : `Could not verify key: ${err}`;
-    console.error(`${message}\nNothing was written.`);
-    process.exit(1);
-  }
-
   const path = configPath();
   const config = await readConfig(path);
   const servers = (config.mcpServers ?? {}) as Record<string, unknown>;
 
-  servers[ENTRY_NAME] = createServerEntry({ key, local });
+  servers[ENTRY_NAME] = createServerEntry({ local });
   config.mcpServers = servers;
 
   await writeConfig(path, config);
 
-  console.log(`\nConnected. Wrote "${ENTRY_NAME}" to ${path}`);
+  console.log(`\nWrote "${ENTRY_NAME}" to ${path}`);
   if (local) {
     console.log(`Using local build: ${LOCAL_ENTRY}`);
   } else {
@@ -94,6 +79,18 @@ export const runInit = async ({ local = false }: InitOptions = {}): Promise<void
       `Registered ${packageSpec()} (${isStagingVersion(packageVersion) ? "staging" : "production"}).`,
     );
   }
+
+  const connected = await connectedProviders();
+  if (connected.includes("microsoft")) {
+    console.log(`Connected: ${connected.join(", ")}.`);
+  } else {
+    console.log(
+      "\nNothing is connected yet. Run `artist-mcp connect` to sign in to " +
+        "Microsoft for your notes, and `artist-mcp connect google` to add " +
+        "Gmail and Calendar as evidence.",
+    );
+  }
+
   console.log("Restart Claude Desktop — it doesn't reload its config on its own.");
 };
 
