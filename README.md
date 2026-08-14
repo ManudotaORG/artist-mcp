@@ -152,7 +152,7 @@ where every playbook is yours to change:
 npx @manudota/artist-mcp init --editable
 ```
 
-They land in `~/artist-playbooks/artist/`, or a directory you name. Add your own
+They land in `~/artist-mcp/artist/`, or a directory you name. Add your own
 alongside them — a new file under `project-types/`, `roles/` or `policies/`
 becomes available under an id taken from its filename. Re-run the command after
 upgrading and it adds playbooks new in that version while leaving your edits

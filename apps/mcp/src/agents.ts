@@ -248,6 +248,7 @@ const loadAgentWorkflow = async (id: string): Promise<LoadedAgentWorkflow> => {
 };
 
 const installAgentPack = async (directory = process.cwd()): Promise<void> => {
+  assertNotHomeDirectory(directory, 'agents install');
   const registry = await readBundledRegistry();
   const packFiles = ['AGENTS.md', ...registry.entries.map((entry) => entry.file)];
   const destinationRoot = resolve(directory);
@@ -356,8 +357,31 @@ const existingContainer = async (root: string): Promise<string> => {
   }
 };
 
-/** The default home for an editable pack, when the user names no directory. */
-const DEFAULT_EDITABLE_DIRECTORY = join(homedir(), 'artist-playbooks');
+/**
+ * The default home for an editable pack, when the user names no directory.
+ *
+ * A folder of its own rather than files loose in the home directory. It sits
+ * beside the hidden `~/.artist-mcp/` that holds the tokens — one visible folder
+ * the user opens and edits, one hidden one they never touch.
+ */
+const DEFAULT_EDITABLE_DIRECTORY = join(homedir(), 'artist-mcp');
+
+/**
+ * Refuse to scatter a pack across the home directory itself.
+ *
+ * `agents install` defaults to the working directory, which is right in a
+ * project and ruinous in a home folder: running it from `~` wrote `AGENTS.md`
+ * and `.artist/` straight into it, where they sat unread. Naming the mistake
+ * costs one check; cleaning it up afterwards costs the user their afternoon.
+ */
+const assertNotHomeDirectory = (directory: string, command: string): void => {
+  if (resolve(directory) !== resolve(homedir())) return;
+  throw new Error(
+    `Refusing to write a workflow pack directly into your home directory.\n` +
+      `${command} puts the files in the directory you give it, so give it one: ` +
+      `a project folder, or ${DEFAULT_EDITABLE_DIRECTORY} for playbooks you edit.`,
+  );
+};
 
 type SeedResult = {
   root: string;
@@ -388,6 +412,7 @@ type SeedResult = {
 const seedEditablePack = async (
   directory: string = DEFAULT_EDITABLE_DIRECTORY,
 ): Promise<SeedResult> => {
+  assertNotHomeDirectory(directory, 'init --editable');
   const registry = await readBundledRegistry();
   const root = resolve(directory);
   // A fresh directory gets the visible container. The hidden one is right in a
@@ -429,6 +454,7 @@ const describeSeed = ({ root, container, added, unchanged, yours }: SeedResult):
 export {
   DEFAULT_EDITABLE_DIRECTORY,
   assertLocalAgentPack,
+  assertNotHomeDirectory,
   describeSeed,
   seedEditablePack,
   installAgentPack,

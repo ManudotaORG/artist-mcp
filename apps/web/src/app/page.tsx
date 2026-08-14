@@ -258,7 +258,7 @@ const PublicHome = ({ installChannel }: PublicHomeProps) => (
         <Typography variant="small" className="mt-5">
           The playbooks above are the shipped ones, verified by checksum. To run your own instead,
           add <code className="text-signal-cyan">--editable</code> to <code>init</code>: every
-          playbook is copied to ~/artist-playbooks, yours to change, and you can add more.
+          playbook is copied to ~/artist-mcp, yours to change, and you can add more.
         </Typography>
       </div>
       <div className="min-w-0 bg-background p-5">
@@ -384,8 +384,8 @@ const Dashboard = ({ email, connected, error, installChannel }: DashboardProps) 
           : `npx ${getPackageSpecifier(installChannel)} init --editable`}
       </code>
       <Typography variant="small" className="mt-2">
-        COPIES EVERY PLAYBOOK TO ~/ARTIST-PLAYBOOKS, YOURS TO EDIT. WITHOUT IT THE SHIPPED ONES ARE
-        USED AND CHECKSUM-VERIFIED.
+        COPIES EVERY PLAYBOOK TO ~/ARTIST-MCP, YOURS TO EDIT. WITHOUT IT THE SHIPPED ONES ARE USED
+        AND CHECKSUM-VERIFIED.
       </Typography>
       <Typography variant="small" className="mt-5">
         VERIFY: ASK “LIST MY ONENOTE NOTES.”

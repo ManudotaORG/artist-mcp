@@ -113,7 +113,7 @@ npx @manudota/artist-mcp agents status
 npx @manudota/artist-mcp init --editable
 ```
 
-That copies every playbook to `~/artist-playbooks/artist/`, where all of them are
+That copies every playbook to `~/artist-mcp/artist/`, where all of them are
 yours to edit, and you can add your own alongside them. Re-run it after upgrading
 and it adds playbooks new in that version while leaving your edits alone. Without
 `--editable`, the shipped playbooks are used and verified by checksum.

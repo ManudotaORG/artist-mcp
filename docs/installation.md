@@ -160,6 +160,10 @@ Claude or Codex can inspect them directly:
 npx @manudota/artist-mcp agents install
 ```
 
+It writes into the directory you run it from, or one you name, so run it inside
+the project you want the roles in. It refuses to write into your home directory:
+`AGENTS.md` and `.artist/` loose in `~` are litter nothing reads.
+
 The installer preserves a differing root `AGENTS.md` and stops before changing
 any differing workflow file. One OneNote page remains one working unit, and all
 outputs remain in chat.
@@ -174,8 +178,13 @@ somewhere you own, and all of them become yours to change:
 npx @manudota/artist-mcp init --editable
 ```
 
-That writes the whole pack to `~/artist-playbooks/artist/`, or to a directory you
+That writes the whole pack to `~/artist-mcp/artist/`, or to a directory you
 name — `init --editable ~/somewhere-else`. Restart Claude Desktop afterwards.
+
+It is a folder of its own, never files loose in your home directory, and the home
+directory itself is refused. `~/artist-mcp/` sits beside the hidden
+`~/.artist-mcp/` that holds your tokens: one you open and edit, one you never
+touch.
 
 The folder is visible, so open it in Finder and edit the Markdown in whatever you
 like. Add your own playbooks alongside them: a new file under `project-types/`,
@@ -198,7 +207,7 @@ conversation after editing.
 To check what is actually in force:
 
 ```bash
-npx @manudota/artist-mcp agents status ~/artist-playbooks
+npx @manudota/artist-mcp agents status ~/artist-mcp
 ```
 
 If the directory is missing, or a file in it is empty, unreasonably large, or

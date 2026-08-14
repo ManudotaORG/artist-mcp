@@ -7,6 +7,8 @@ import test from 'node:test';
 import {
   DEFAULT_EDITABLE_DIRECTORY,
   assertLocalAgentPack,
+  assertNotHomeDirectory,
+  installAgentPack,
   listAgentWorkflows,
   loadAgentWorkflow,
   resolveRegistry,
@@ -166,9 +168,35 @@ test('re-running adds what is new and never touches an edit', async () => {
   }
 });
 
-test('the default directory is under the home directory, not the cwd', () => {
-  assert.match(DEFAULT_EDITABLE_DIRECTORY, /artist-playbooks$/);
-  assert.ok(DEFAULT_EDITABLE_DIRECTORY.startsWith(homedir()));
+test('the default is a folder of its own in the home directory, not the cwd', () => {
+  assert.equal(DEFAULT_EDITABLE_DIRECTORY, resolve(homedir(), 'artist-mcp'));
+  // Beside the hidden token store, not inside it and not the home directory.
+  assert.notEqual(DEFAULT_EDITABLE_DIRECTORY, resolve(homedir(), '.artist-mcp'));
+  assert.notEqual(DEFAULT_EDITABLE_DIRECTORY, resolve(homedir()));
+});
+
+/**
+ * `agents install` defaults to the working directory, which is right in a project
+ * and ruinous in a home folder: running it from `~` once put AGENTS.md and
+ * .artist/ straight into it, where they sat unread until someone noticed.
+ */
+test('neither command will write a pack into the home directory', async () => {
+  for (const command of ['agents install', 'init --editable']) {
+    assert.throws(() => assertNotHomeDirectory(homedir(), command), (err) => {
+      assert.match(err.message, /Refusing to write a workflow pack directly into your home/);
+      assert.match(err.message, new RegExp(command));
+      // Names somewhere to put it instead.
+      assert.match(err.message, /artist-mcp/);
+      return true;
+    });
+  }
+  // A folder inside the home directory is the normal case and must be allowed.
+  assert.doesNotThrow(() => assertNotHomeDirectory(DEFAULT_EDITABLE_DIRECTORY, 'init --editable'));
+});
+
+test('the guard is enforced by the commands, not just available to them', async () => {
+  await assert.rejects(seedEditablePack(homedir()), /Refusing to write a workflow pack/);
+  await assert.rejects(installAgentPack(homedir()), /Refusing to write a workflow pack/);
 });
 
 test('a pack is counted before init will write it into the config', async () => {

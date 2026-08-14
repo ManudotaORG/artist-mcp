@@ -127,7 +127,7 @@ back to the installed bundle.
 A user can point the server at a directory of their own:
 
 ```bash
-npx @manudota/artist-mcp init --editable [directory]
+npx @manudota/artist-mcp init --editable [directory]   # default ~/artist-mcp
 ```
 
 Entries there shadow the bundled pack **by id**, so editing one project type does
@@ -182,6 +182,13 @@ that differs cannot be told apart from a deliberate edit.
 
 `agents install` still copies the pack into a repository for a coding agent to
 read, which is a different job and unchanged.
+
+Both refuse the home directory. `agents install` defaults to the working
+directory, which is right in a project and ruinous in `~`: run there once and
+`AGENTS.md` and `.artist/` sit in the home folder, unread, until someone notices.
+The default editable directory is `~/artist-mcp`, a folder of its own beside the
+hidden `~/.artist-mcp` holding the tokens — one the user opens and edits, one
+they never touch.
 
 `init` records an absolute path in the Claude Desktop entry's own args. It cannot
 be discovered at runtime: the server is spawned with no cwd worth trusting. Args
