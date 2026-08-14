@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.1.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.0.1...artist-mcp-v1.1.0) (2026-08-14)
+
+
+### Features
+
+* **mcp:** install with a playbook directory of your own ([f30c93f](https://github.com/ManudotaORG/artist-mcp/commit/f30c93f306f5968388a513c1ff59ba557b630345))
+* **mcp:** let a local pack use a visible artist/ directory ([cba4952](https://github.com/ManudotaORG/artist-mcp/commit/cba49521806b1236041d7a929f809164bfd85410))
+* **mcp:** make editable playbooks one all-in install, not per file ([d8a6e43](https://github.com/ManudotaORG/artist-mcp/commit/d8a6e43571744a730fbb7b479f8190165674c248))
+* **mcp:** name the file behind a playbook the user owns ([d3ef785](https://github.com/ManudotaORG/artist-mcp/commit/d3ef78561fbcdb64fc00efe6c8f2140cb9aa727a))
+* **mcp:** read playbooks from a directory the user owns ([76589b1](https://github.com/ManudotaORG/artist-mcp/commit/76589b13b5dc34ce014265d66229dce9d6128acf))
+* **mcp:** report which workflow files are in force ([13e198d](https://github.com/ManudotaORG/artist-mcp/commit/13e198d5d851a5073aefc5df022acb6871345064))
+
+
+### Bug Fixes
+
+* **mcp:** give a staging build its version in both places that carry one ([fac62f7](https://github.com/ManudotaORG/artist-mcp/commit/fac62f744fd1377393f0cf8d34fa4c232f685494))
+* **mcp:** keep workflow packs out of the home directory ([b7396fd](https://github.com/ManudotaORG/artist-mcp/commit/b7396fd6a116dfe593e5d96820547f35980f8e04))
+* **mcp:** refuse a playbook filed outside the three known directories ([618374b](https://github.com/ManudotaORG/artist-mcp/commit/618374bddcfafe64b9899d66db1c9de9666fcb50))
+* **mcp:** report a playbook that cannot be read instead of summarising it ([428cfe0](https://github.com/ManudotaORG/artist-mcp/commit/428cfe015e6b1d38bc3aece977f6ece439444b8e))
+* **mcp:** say "1 playbook" rather than "1 playbooks" ([ee8d333](https://github.com/ManudotaORG/artist-mcp/commit/ee8d3337945be42f090a9774bbf212f5721fc452))
+
 ## [1.0.1](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.0.0...artist-mcp-v1.0.1) (2026-08-14)
 
 
