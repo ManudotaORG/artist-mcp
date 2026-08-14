@@ -98,13 +98,21 @@ const deriveEntry = (file, content) => {
  * Derive a full registry from a pack root — the directory *containing*
  * `.artist/`, which is also what registry `file` paths are relative to.
  */
-const deriveRegistry = async (packRoot) => {
+const deriveRegistry = async (packRoot, { maxFileBytes, rejectEmpty = false } = {}) => {
     const root = resolve(packRoot);
     const paths = await collectMarkdown(resolve(root, PACK_SUBDIRECTORY));
     const entries = [];
     for (const path of paths) {
         const file = relative(root, path).replaceAll('\\', '/');
-        entries.push(deriveEntry(file, await readFile(path, 'utf8')));
+        const content = await readFile(path, 'utf8');
+        if (rejectEmpty && content.trim() === '') {
+            throw new Error(`Workflow file is empty: ${file}`);
+        }
+        const bytes = Buffer.byteLength(content, 'utf8');
+        if (maxFileBytes !== undefined && bytes > maxFileBytes) {
+            throw new Error(`Workflow file is too large: ${file} is ${bytes} bytes, limit is ${maxFileBytes}.`);
+        }
+        entries.push(deriveEntry(file, content));
     }
     return { schemaVersion: 1, entries };
 };

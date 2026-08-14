@@ -121,3 +121,34 @@ older, and local package versions isolated from later playbook changes.
 Set `ARTIST_MCP_REGISTRY_URL` only when explicitly testing a remote registry.
 Remote Markdown paths resolve relative to that registry URL, and failures fall
 back to the installed bundle.
+
+## Playbooks a user edits
+
+A user can point the server at a directory of their own. Entries there shadow
+the bundled pack **by id**, so editing one project type does not fork the other
+twelve, and a playbook added by a later package version still arrives. Ids come
+from where a file sits, so the layout must match: `.artist/roles/`,
+`.artist/project-types/`, `.artist/policies/`.
+
+Checksums mean something narrower here. Bundled ones prove a file is what was
+published; a local file has no such authority to check against, because the user
+is the authority — the checksum is derived from the directory as it is read, and
+proves only that the file did not change between being listed and being loaded.
+
+Three rules make that safe rather than sloppy:
+
+- A broken or missing local directory **fails loudly**. It does not fall back to
+  the bundled pack the way an unreachable remote registry does. Running
+  different rules than the user asked for, silently, is the one thing this layer
+  must never do.
+- `list_agent_workflows` says which entries are the user's own, so a transcript
+  never presents edited rules as the shipped ones.
+- Files are capped at 64 KiB each and empty files are refused. Project types and
+  the intake policy are returned in full, unasked, so an oversized playbook does
+  not fail — it silently spends the context the notes needed.
+
+The read-only boundary does not depend on any of this. It holds because no write
+tool exists: an edited playbook can make the analysis worse, but it cannot write
+to OneNote, send outreach, or touch a calendar.
+
+`artist-mcp agents status` prints every entry and where it came from.

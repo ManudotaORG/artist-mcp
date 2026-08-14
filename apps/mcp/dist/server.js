@@ -60,12 +60,26 @@ const runServer = async () => {
                 }
             }));
             const summary = rest.map((entry) => `- ${entry.id}: ${entry.name} — ${entry.description}`);
+            // Say when the rules are the user's own. They carry the same authority
+            // either way — that is the point of pointing the server at a directory —
+            // but a run that silently differs from the documented pack is painful to
+            // debug, and the difference belongs in the transcript.
+            const local = entries.filter((entry) => entry.source === "local");
+            const provenance = local.length > 0
+                ? [
+                    "",
+                    `Note: ${local.length} of these are this user's own edited files, ` +
+                        "not the versions shipped with the package: " +
+                        `${local.map((entry) => entry.id).join(", ")}.`,
+                ]
+                : [];
             const text = [
                 "# Roles and policies (load by id when needed)",
                 summary.join("\n"),
                 "",
                 "# In force now (full text — these govern the work before anything is loaded)",
                 loaded.join("\n\n"),
+                ...provenance,
             ].join("\n");
             return { content: [{ type: "text", text }] };
         }

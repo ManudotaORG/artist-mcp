@@ -2,8 +2,26 @@ import { createHash } from 'node:crypto';
 import { access, copyFile, mkdir, readFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseRegistry, resolveWithin, } from './agent-registry.js';
+import { PACK_SUBDIRECTORY, deriveRegistry, parseRegistry, resolveWithin, } from './agent-registry.js';
 const packRoot = fileURLToPath(new URL('../agent-pack/', import.meta.url));
+/** 64 KiB per file. The longest bundled playbook is well under 10 KiB. */
+const MAX_LOCAL_FILE_BYTES = 64 * 1024;
+/**
+ * The directory a user's own playbooks are read from, if any.
+ *
+ * Held here rather than threaded through every call because it is settled once,
+ * at startup, from the command line — and a Claude Desktop server is spawned
+ * with no cwd worth trusting, so there is nothing to discover later. The env var
+ * is the development and testing override, matching ARTIST_MCP_REGISTRY_URL.
+ */
+let explicitLocalRoot;
+const setLocalAgentRoot = (directory) => {
+    explicitLocalRoot = directory ? resolve(directory) : undefined;
+};
+const localAgentRoot = () => {
+    const directory = explicitLocalRoot ?? process.env.ARTIST_MCP_AGENTS_DIR;
+    return directory ? resolve(directory) : undefined;
+};
 const exists = async (path) => {
     try {
         await access(path);
@@ -31,30 +49,72 @@ const fetchRemoteRegistry = async () => {
     return { registry: parseRegistry(await response.json()), url };
 };
 /**
- * Pick the registry this run will use, and say where it came from.
+ * Read a user's own pack.
  *
- * The choice and the reporting belong together: `agents status` exists so that a
- * user can see which files are actually in force, and it would be worthless if
- * it re-derived the answer separately from the code that loads them.
+ * Deliberately not forgiving. A broken directory here must not fall back to the
+ * bundled pack the way an unreachable remote registry does: the user said which
+ * playbooks govern their work, and silently running different ones would
+ * misreport what is in force — the one thing this layer cannot get wrong.
+ */
+const readLocalRegistry = async (root) => {
+    if (!(await exists(resolve(root, PACK_SUBDIRECTORY)))) {
+        throw new Error(`No ${PACK_SUBDIRECTORY}/ directory in ${root}. ` +
+            'Run `artist-mcp agents install <directory>` to seed one.');
+    }
+    const registry = await deriveRegistry(root, {
+        maxFileBytes: MAX_LOCAL_FILE_BYTES,
+        rejectEmpty: true,
+    });
+    if (registry.entries.length === 0) {
+        throw new Error(`No workflow Markdown found under ${resolve(root, PACK_SUBDIRECTORY)}.`);
+    }
+    return registry;
+};
+/**
+ * Decide which files this run uses, and remember where each one came from.
+ *
+ * The choice and the reporting belong together: `agents status` exists so a user
+ * can see which files are actually in force, and it would be worthless if it
+ * re-derived the answer separately from the code that loads them.
+ *
+ * Local entries shadow the base pack by id rather than replacing it wholesale,
+ * so editing one project type does not mean forking all thirteen files — and a
+ * playbook added by a later package version still arrives.
  */
 const resolveRegistry = async () => {
-    const bundled = async () => ({
-        registry: await readBundledRegistry(),
-        source: 'bundled',
-        origin: packRoot,
-    });
-    if (!process.env.ARTIST_MCP_REGISTRY_URL) {
-        return bundled();
+    let base;
+    let remoteUnreachable = false;
+    if (process.env.ARTIST_MCP_REGISTRY_URL) {
+        try {
+            const { registry, url } = await fetchRemoteRegistry();
+            base = { registry, source: 'remote', origin: url.href };
+        }
+        catch {
+            remoteUnreachable = true;
+            base = { registry: await readBundledRegistry(), source: 'bundled', origin: packRoot };
+        }
     }
-    try {
-        const { registry, url } = await fetchRemoteRegistry();
-        return { registry, source: 'remote', origin: url.href };
+    else {
+        base = { registry: await readBundledRegistry(), source: 'bundled', origin: packRoot };
     }
-    catch {
-        return bundled();
+    const byId = new Map(base.registry.entries.map((entry) => [
+        entry.id,
+        { ...entry, source: base.source, origin: base.origin },
+    ]));
+    const localRoot = localAgentRoot();
+    if (localRoot) {
+        for (const entry of (await readLocalRegistry(localRoot)).entries) {
+            byId.set(entry.id, { ...entry, source: 'local', origin: localRoot });
+        }
     }
+    return {
+        entries: [...byId.values()].sort((a, b) => a.id.localeCompare(b.id)),
+        base: { source: base.source, origin: base.origin },
+        localRoot,
+        remoteUnreachable,
+    };
 };
-const listAgentWorkflows = async () => (await resolveRegistry()).registry.entries;
+const listAgentWorkflows = async () => (await resolveRegistry()).entries;
 const verifyContent = (entry, content) => {
     const digest = createHash('sha256').update(content).digest('hex');
     if (digest !== entry.sha256) {
@@ -71,34 +131,58 @@ const loadBundledWorkflow = async (id) => {
     verifyContent(entry, content);
     return { ...entry, content };
 };
+const loadRemoteWorkflow = async (entry) => {
+    const { url } = await fetchRemoteRegistry();
+    const response = await fetch(new URL(entry.file, url), { signal: AbortSignal.timeout(3_000) });
+    if (!response.ok) {
+        throw new Error(`Agent workflow returned HTTP ${response.status}.`);
+    }
+    const content = await response.text();
+    verifyContent(entry, content);
+    return { ...entry, content };
+};
+/**
+ * Read one file out of the user's directory.
+ *
+ * The checksum was derived from this same directory moments ago, so it proves
+ * something narrower than the bundled one does — not "this is what we shipped"
+ * but "this file did not change between being listed and being loaded". Worth
+ * keeping: the user is editing these files while the server is running.
+ */
+const loadLocalWorkflow = async (entry, root) => {
+    const content = await readFile(resolveWithin(root, entry.file), 'utf8');
+    const digest = createHash('sha256').update(content).digest('hex');
+    if (digest !== entry.sha256) {
+        throw new Error(`${entry.file} changed while it was being read. Ask again to pick up the new version.`);
+    }
+    return { ...entry, content };
+};
 const loadAgentWorkflow = async (id) => {
-    if (!process.env.ARTIST_MCP_REGISTRY_URL) {
-        return loadBundledWorkflow(id);
+    const { entries, localRoot } = await resolveRegistry();
+    const entry = entries.find((item) => item.id === id);
+    if (!entry) {
+        throw new Error(`Unknown agent workflow: ${id}`);
     }
-    try {
-        const { registry, url } = await fetchRemoteRegistry();
-        const entry = registry.entries.find((item) => item.id === id);
-        if (!entry) {
-            throw new Error(`Unknown agent workflow: ${id}`);
-        }
-        const response = await fetch(new URL(entry.file, url), {
-            signal: AbortSignal.timeout(3_000),
-        });
-        if (!response.ok) {
-            throw new Error(`Agent workflow returned HTTP ${response.status}.`);
-        }
-        const content = await response.text();
-        verifyContent(entry, content);
-        return { ...entry, content };
+    if (entry.source === 'local') {
+        // No fall back to the bundled copy. A local id exists because the user wrote
+        // the file; answering with different text under the same id would be worse
+        // than saying the read failed.
+        return loadLocalWorkflow(entry, localRoot ?? entry.origin);
     }
-    catch (error) {
+    if (entry.source === 'remote') {
         try {
-            return await loadBundledWorkflow(id);
+            return await loadRemoteWorkflow(entry);
         }
-        catch {
-            throw error;
+        catch (error) {
+            try {
+                return await loadBundledWorkflow(id);
+            }
+            catch {
+                throw error;
+            }
         }
     }
+    return loadBundledWorkflow(id);
 };
 const installAgentPack = async (directory = process.cwd()) => {
     const registry = await readBundledRegistry();
@@ -157,15 +241,23 @@ const installAgentPack = async (directory = process.cwd()) => {
  * picked up looks exactly like an edit that had no effect.
  */
 const runAgentsStatus = async () => {
-    const { registry, source, origin } = await resolveRegistry();
-    console.log(`Workflow registry: ${source}`);
-    console.log(`  ${origin}`);
-    if (source === 'bundled' && process.env.ARTIST_MCP_REGISTRY_URL) {
+    const { entries, base, localRoot, remoteUnreachable } = await resolveRegistry();
+    console.log(`Base pack: ${base.source}`);
+    console.log(`  ${base.origin}`);
+    if (remoteUnreachable) {
         console.log('  (ARTIST_MCP_REGISTRY_URL is set but unreachable; using the bundled pack.)');
     }
-    console.log(`\n${registry.entries.length} workflows:`);
-    for (const entry of registry.entries) {
-        console.log(`  ${entry.id.padEnd(28)} ${source.padEnd(8)} ${entry.file}`);
+    if (localRoot) {
+        const shadowed = entries.filter((entry) => entry.source === 'local').length;
+        console.log(`\nLocal pack: ${localRoot}`);
+        console.log(`  ${shadowed} of ${entries.length} workflows come from here.`);
+    }
+    else {
+        console.log('\nLocal pack: none. Playbooks are the ones shipped with the package.');
+    }
+    console.log(`\n${entries.length} workflows:`);
+    for (const entry of entries) {
+        console.log(`  ${entry.id.padEnd(28)} ${entry.source.padEnd(8)} ${entry.file}`);
     }
 };
-export { installAgentPack, listAgentWorkflows, loadAgentWorkflow, runAgentsStatus, };
+export { installAgentPack, listAgentWorkflows, loadAgentWorkflow, resolveRegistry, runAgentsStatus, setLocalAgentRoot, };

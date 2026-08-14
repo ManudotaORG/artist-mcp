@@ -72,10 +72,12 @@ really a secret — it is served to anyone who asks, because every install needs
 it and PKCE is what makes it harmless. Without it, `/api/client-config` returns
 503 and `artist-mcp connect google` cannot complete.
 
-The MCP package reads two optional overrides during development:
+The MCP package reads three optional overrides during development:
 `ARTIST_MCP_TOKENS` to point the token store somewhere other than
-`~/.artist-mcp/tokens.json`, and `ARTIST_MCP_SITE` to fetch client
-configuration from a site other than the one its version implies.
+`~/.artist-mcp/tokens.json`, `ARTIST_MCP_SITE` to fetch client configuration
+from a site other than the one its version implies, and
+`ARTIST_MCP_AGENTS_DIR` to read playbooks from a directory instead of the
+bundled pack.
 
 ## Run the app
 
