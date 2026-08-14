@@ -431,6 +431,22 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
    Action before 1 October 2026: read the Node version on both Vercel projects
    and upgrade either one still on 20 from the dashboard.
 
+9. **Staging builds misreport their own version over MCP.** `set-staging-version.mjs`
+   rewrites `package.json` and nothing else, while `src/server.ts` carries the
+   version as a Release Please `extra-file` updated on `main` only. So a staging
+   build announces whatever `release` last committed: `1.0.2-staging.51` reported
+   `1.0.0` in the MCP handshake, checked by pulling the published tarball.
+
+   Same shape as gap 7 and a different mechanism, which is why fixing that one
+   did not fix this. Production is unaffected — Release Please updates both files
+   together — so this only misleads while testing staging, exactly when the
+   version is what you are trying to confirm.
+
+   The fix is a line in that script: set the version in `src/server.ts` alongside
+   `package.json`, matching the `x-release-please-version` marker Release Please
+   looks for. Not done yet, and worth doing before the next staging publish is
+   used to verify anything version-dependent.
+
 ## Confirm before registering the Microsoft app
 
 Are the notes **OneNote notebooks** or **files in a OneDrive folder**? This brief assumes files. If it's OneNote the scope becomes `Notes.Read` and it's a different API — ask before registering, because changing scopes later means dragging users back through consent.
