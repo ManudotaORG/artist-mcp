@@ -214,11 +214,13 @@ Otherwise batch several verified changes into one promotion.
   — and the commit-message check runs only on `pull_request`, so a push that did
   land would skip Commitlint entirely.
 - Both protected branches are `strict`, meaning the pull request must be up to
-  date before it can merge. Release Please bumps `package.json` and
-  `src/server.ts` on `main` only, so after every stable release `release` trails
-  `main` and the next promotion is refused as `BEHIND`. Merge `origin/main` into
-  `release` first — a `chore: sync the <version> release bump back into release`
-  commit — then push and retry.
+  date before it can merge, and `release` always trails after a promotion. Two
+  separate causes, so expect this every time rather than only at releases:
+  merging a promotion pull request creates a merge commit on the target that
+  `release` does not have, and Release Please additionally bumps `package.json`
+  and `src/server.ts` on `main` only. Either way the next promotion is refused as
+  `BEHIND`. Merge `origin/main` into `release` first — a `chore: sync ...` commit
+  — then push and retry.
 
 Vercel is connected directly to GitHub. `artist-mcp-staging` tracks only
 `staging`; `artist-mcp` tracks only `main`. Preview branch tracking is disabled

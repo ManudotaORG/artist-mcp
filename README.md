@@ -137,7 +137,9 @@ npx @manudota/artist-mcp agents install
 ```
 
 Use `npx @manudota/artist-mcp@staging agents install` for staging, or
-`node apps/mcp/dist/index.js agents install` for the checked-out local build.
+`node apps/mcp/dist/index.js agents install` for the checked-out local build. It
+writes into the directory you run it from and refuses your home directory, where
+the files would sit unread.
 
 One OneNote page is treated as one working unit, with Gmail and Calendar read as
 supporting evidence for it. The playbooks can produce plans, recommendations,

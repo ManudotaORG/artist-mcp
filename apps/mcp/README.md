@@ -82,8 +82,8 @@ The workflow pack:
 
 | Tool | Returns |
 | --- | --- |
-| `list_agent_workflows` | The available artist roles and project types |
-| `load_agent_workflow` | One checksummed Markdown playbook |
+| `list_agent_workflows` | The available roles and project types, with the project types in full, and which of them are your own edited files |
+| `load_agent_workflow` | One Markdown playbook, verified against its checksum |
 
 This process calls Microsoft Graph, Gmail and Google Calendar directly, using
 tokens it holds itself. Nothing is proxied through a service of ours, so no
@@ -97,14 +97,16 @@ npx @manudota/artist-mcp agents install
 
 Installs read-only roles (Orchestrator, Archivist, Registrar, Project Manager,
 Envoy, Auditor, Janitor) and project types (Concert, Large Concert, Studio
-Session, Rehearsal) into the current project as plain Markdown, loaded at
-runtime and verified by checksum.
+Session, Rehearsal) as plain Markdown, loaded at runtime and verified by
+checksum. It writes into the directory you run it from, so run it inside the
+project you want the roles in — and it refuses your home directory, where the
+files would sit unread.
 
-To see which workflow files the server is actually reading, and where each one
-came from:
+To see which playbooks the server is actually reading, and where each one came
+from:
 
 ```bash
-npx @manudota/artist-mcp agents status
+npx @manudota/artist-mcp agents status [directory]
 ```
 
 ### Editing the playbooks
@@ -113,14 +115,36 @@ npx @manudota/artist-mcp agents status
 npx @manudota/artist-mcp init --editable
 ```
 
-That copies every playbook to `~/artist-mcp/artist/`, where all of them are
-yours to edit, and you can add your own alongside them. Re-run it after upgrading
-and it adds playbooks new in that version while leaving your edits alone. Without
-`--editable`, the shipped playbooks are used and verified by checksum.
+That copies every playbook to `~/artist-mcp/artist/`, or to a directory you name.
+All of them become yours to edit. Without `--editable`, the shipped playbooks are
+used and verified by checksum; there is nothing in between.
+
+Re-run the same command after upgrading. It adds playbooks that are new in that
+version, leaves anything you have edited exactly as it is, and tells you which
+files it treated as yours — so an editable install keeps receiving improvements
+without you tracking files by hand.
+
+The folder is visible, not hidden, so open it and edit the Markdown in whatever
+you like. **Add your own** alongside the shipped ones: a new file under
+`artist/project-types/`, `artist/roles/`, or `artist/policies/` becomes available
+under an id taken from its filename. A new project type is in force immediately,
+because project types are read in full before anything else happens. A new role
+is offered by name and description and loaded when it looks relevant, so if you
+want one used reliably, say so in `artist/roles/ORCHESTRATOR.md` — which is now
+yours too.
+
+Edits are picked up on the next question, with no restart. A conversation that
+already asked for the playbook list will not notice a *new* one, so start a fresh
+conversation after adding a file.
+
+If a playbook cannot be read — empty, unreasonably large, or filed outside those
+three directories — the server says so instead of quietly falling back to the
+shipped version.
 
 Editing a playbook cannot widen what the server can do. The read-only boundary
 is not written in the Markdown — it holds because no tool exists that writes to
-OneNote, sends mail, or changes a calendar.
+OneNote, sends mail, or changes a calendar. An edited playbook changes the advice
+you get, and nothing else.
 
 The playbooks produce plans, recommendations, audits, and drafts in chat. They
 cannot write to OneNote, send mail, or touch a calendar. Gmail and Calendar are
