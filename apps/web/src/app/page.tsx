@@ -3,7 +3,6 @@ import { Typography } from '@/components/ui/Typography';
 import { getDeploymentMetadata } from '@/lib/deployment';
 import { supabaseServer } from '@/lib/supabase/server';
 import { signOut } from './actions';
-import { ConnectionPanel } from './connection-panel';
 import { SignInForm } from './sign-in-form';
 
 type HomeProps = {
@@ -30,31 +29,27 @@ const getClaudeCommands = (channel: InstallChannel) => {
   if (channel === 'local') {
     return `pnpm --filter @manudota/artist-mcp build
 node apps/mcp/dist/index.js init --local
+node apps/mcp/dist/index.js connect
 node apps/mcp/dist/index.js agents install`;
   }
 
   const packageSpecifier = getPackageSpecifier(channel);
   return `npx ${packageSpecifier} init
+npx ${packageSpecifier} connect
 npx ${packageSpecifier} agents install`;
 };
 
 const getCodexCommands = (channel: InstallChannel) => {
   if (channel === 'local') {
     return `pnpm --filter @manudota/artist-mcp build
-read -s ARTIST_MCP_KEY
-codex mcp add artist-notes \\
-  --env ARTIST_MCP_KEY="$ARTIST_MCP_KEY" \\
-  -- node "$PWD/apps/mcp/dist/index.js"
-unset ARTIST_MCP_KEY
+codex mcp add artist-notes -- node "$PWD/apps/mcp/dist/index.js"
+node apps/mcp/dist/index.js connect
 node apps/mcp/dist/index.js agents install`;
   }
 
   const packageSpecifier = getPackageSpecifier(channel);
-  return `read -s ARTIST_MCP_KEY
-codex mcp add artist-notes \\
-  --env ARTIST_MCP_KEY="$ARTIST_MCP_KEY" \\
-  -- npx -y ${packageSpecifier}
-unset ARTIST_MCP_KEY
+  return `codex mcp add artist-notes -- npx -y ${packageSpecifier}
+npx ${packageSpecifier} connect
 npx ${packageSpecifier} agents install`;
 };
 
@@ -325,22 +320,13 @@ const PublicHome = ({ installChannel }: PublicHomeProps) => (
 );
 
 type DashboardProps = {
-  connection: { updated_at: string } | null;
-  googleConnection: { updated_at: string } | null;
   email?: string;
   connected?: string;
   error?: string;
   installChannel: InstallChannel;
 };
 
-const Dashboard = ({
-  connection,
-  googleConnection,
-  email,
-  connected,
-  error,
-  installChannel,
-}: DashboardProps) => (
+const Dashboard = ({ email, connected, error, installChannel }: DashboardProps) => (
   <main className="grid gap-8 py-10">
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div>
@@ -363,9 +349,6 @@ const Dashboard = ({
         {connected === 'google' ? 'GMAIL CONNECTED.' : 'MICROSOFT CONNECTED.'}
       </Typography>
     ) : null}
-    <ConnectionPanel provider="microsoft" connection={connection} />
-    <ConnectionPanel provider="google" connection={googleConnection} />
-    {/* Either connection stands alone, so a key is worth issuing once one exists. */}
     <section className="border-t border-signal-cyan pt-5">
       <Typography as="h2" variant="sectionTitle" color="yellow">
         INSTALL CLAUDE DESKTOP
@@ -401,12 +384,6 @@ const Home = async ({ searchParams }: HomeProps) => {
   // a user may now hold a row per provider, and an unfiltered single-row read
   // both attributed whichever row existed to Microsoft and failed outright
   // (PGRST116) once two were connected.
-  const [{ data: connection }, { data: googleConnection }] = user
-    ? await Promise.all([
-        supabase.from('connections').select('updated_at').eq('provider', 'microsoft').maybeSingle(),
-        supabase.from('connections').select('updated_at').eq('provider', 'google').maybeSingle(),
-      ])
-    : [{ data: null }, { data: null }];
   const deployment = await getDeploymentMetadata();
   const installChannel: InstallChannel = deployment?.environment ?? 'local';
 
@@ -415,8 +392,6 @@ const Home = async ({ searchParams }: HomeProps) => {
       <ServiceHeader />
       {user ? (
         <Dashboard
-          connection={connection}
-          googleConnection={googleConnection}
           email={user.email}
           connected={connected}
           error={error}
