@@ -21,7 +21,7 @@ const describeSize = (bytes) => {
         return `${Math.round(bytes / 1024)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
-const serverVersion = '0.7.0'; // x-release-please-version
+const serverVersion = '0.8.0'; // x-release-please-version
 const errorResult = (err) => {
     const message = err instanceof GraphError ? err.message : `Unexpected error: ${err}`;
     return { content: [{ type: "text", text: message }], isError: true };

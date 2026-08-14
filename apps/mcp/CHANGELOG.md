@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.8.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v0.7.0...artist-mcp-v0.8.0) (2026-08-13)
+
+
+### Features
+
+* **mcp:** allow opt-in Gmail and Calendar evidence in the agent pack ([0dcb902](https://github.com/ManudotaORG/artist-mcp/commit/0dcb9028325523add7c7e8cf08b07ab255404c46))
+
+
+### Bug Fixes
+
+* **mcp:** register the dist-tag init was run from ([2f0a6fd](https://github.com/ManudotaORG/artist-mcp/commit/2f0a6fdd053fd03a61034250455f5a82e059044c))
+* **mcp:** register the dist-tag init was run from ([13e0e2c](https://github.com/ManudotaORG/artist-mcp/commit/13e0e2c1c9fd67f2add96839e50ab00816cd4ea6))
+
 ## [0.7.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v0.6.0...artist-mcp-v0.7.0) (2026-08-13)
 
 
