@@ -2,8 +2,8 @@
 
 This guide is the maintainer path from a fresh clone to a verified staging or
 production change. Read [mvp-brief.md](mvp-brief.md) for product scope and
-[manu-handoff.md](manu-handoff.md) for infrastructure ownership and current
-external state.
+[operations.md](operations.md) for infrastructure ownership and external
+state.
 
 ## Repository layout
 
@@ -172,6 +172,16 @@ package.
 - Promote a verified snapshot with a `release` → `staging` pull request.
 - After staging verification, promote the same snapshot with a `release` →
   `main` pull request.
+- Never promote by pushing a branch directly. `staging` and `main` both require
+  the `Lint and build` check with `enforce_admins`, so a direct push is rejected
+  — and the commit-message check runs only on `pull_request`, so a push that did
+  land would skip Commitlint entirely.
+- Both protected branches are `strict`, meaning the pull request must be up to
+  date before it can merge. Release Please bumps `package.json` and
+  `src/server.ts` on `main` only, so after every stable release `release` trails
+  `main` and the next promotion is refused as `BEHIND`. Merge `origin/main` into
+  `release` first — a `chore: sync the <version> release bump back into release`
+  commit — then push and retry.
 
 Vercel is connected directly to GitHub. `artist-mcp-staging` tracks only
 `staging`; `artist-mcp` tracks only `main`. Preview branch tracking is disabled

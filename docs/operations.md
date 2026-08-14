@@ -5,16 +5,30 @@ Entra, and npm.
 
 ## Required service access
 
-- GitHub repository administration for `ManudotaORG/artist-mcp`.
-- Supabase owner or administrator access to the `artist-mcp` project.
+- GitHub repository administration for
+  [`ManudotaORG/artist-mcp`](https://github.com/ManudotaORG/artist-mcp) —
+  Actions, environments, releases, and branch protection.
+- Vercel team [`highnets-projects`](https://vercel.com/highnets-projects), for
+  the [`artist-mcp`](https://vercel.com/highnets-projects/artist-mcp) and
+  [`artist-mcp-staging`](https://vercel.com/highnets-projects/artist-mcp-staging)
+  projects: configuration, environment variables, domains, deployment logs, and
+  the Node.js build version.
+- Supabase owner or administrator access in
+  [Manudota's Org](https://supabase.com/dashboard/org/rsaqwfluhbqeuyihthdj), for
+  production `zxiemadwrkcoovvpscfb` and permanent staging
+  `cakkwvxwlkdfzqjbvrpa`.
 - Microsoft Entra access to manage the app registration, permissions, redirect
-  URIs, and client credentials.
+  URIs, and client credentials — app id
+  `4e484257-2c48-4088-84b9-60ea3ca82e88`.
 - npm owner access to the `@manudota` scope and
-  `@manudota/artist-mcp` package.
+  `@manudota/artist-mcp` package, including its trusted-publisher mapping.
+- Telegram: the `Artist Mcp Admin Automation` channel and the `@ArtistMcpBot`
+  bot, which announce production releases.
 - The team secret manager and security-notification email aliases.
 
-Use individual accounts and individual MFA. Do not share account passwords or
-personal MFA recovery material.
+Use individual accounts and individual MFA. Do not share account passwords,
+recovery codes, personal MFA recovery material, or the Telegram bot token —
+including in issues and documentation.
 
 ## Secret inventory
 

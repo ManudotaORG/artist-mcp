@@ -59,7 +59,6 @@ on the OAuth test-user list can consent at all.
 
 - [Install for Claude Desktop or Codex](docs/installation.md)
 - [Run and develop the project locally](docs/development.md)
-- [Infrastructure and maintainer handoff for Manu](docs/manu-handoff.md)
 - [Operate, publish, and rotate credentials](docs/operations.md)
 - [MVP scope, verification record, and remaining roadmap](docs/mvp-brief.md)
 - [Final two-user acceptance test](docs/two-user-acceptance.md)
