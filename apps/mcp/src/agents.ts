@@ -329,16 +329,6 @@ const runAgentsStatus = async (): Promise<void> => {
 };
 
 /**
- * Check a directory is a usable pack, and say how much is in it.
- *
- * Called by `init` so a typo in the path fails while the user is still looking
- * at the terminal. Otherwise the mistake surfaces later as every workflow tool
- * failing inside Claude Desktop, which is a much worse sentence to act on.
- */
-const assertLocalAgentPack = async (directory: string): Promise<number> =>
-  (await readLocalRegistry(resolve(directory))).entries.length;
-
-/**
  * The container an existing pack uses, or the visible one for a new directory.
  *
  * Keeping a directory on `.artist/` once it has one matters more than the
@@ -453,8 +443,6 @@ const describeSeed = ({ root, container, added, unchanged, yours }: SeedResult):
 
 export {
   DEFAULT_EDITABLE_DIRECTORY,
-  assertLocalAgentPack,
-  assertNotHomeDirectory,
   describeSeed,
   seedEditablePack,
   installAgentPack,

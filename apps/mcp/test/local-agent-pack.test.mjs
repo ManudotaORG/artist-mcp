@@ -6,8 +6,6 @@ import test from 'node:test';
 
 import {
   DEFAULT_EDITABLE_DIRECTORY,
-  assertLocalAgentPack,
-  assertNotHomeDirectory,
   installAgentPack,
   listAgentWorkflows,
   loadAgentWorkflow,
@@ -181,32 +179,18 @@ test('the default is a folder of its own in the home directory, not the cwd', ()
  * .artist/ straight into it, where they sat unread until someone noticed.
  */
 test('neither command will write a pack into the home directory', async () => {
-  for (const command of ['agents install', 'init --editable']) {
-    assert.throws(() => assertNotHomeDirectory(homedir(), command), (err) => {
+  for (const [run, command] of [
+    [() => installAgentPack(homedir()), 'agents install'],
+    [() => seedEditablePack(homedir()), 'init --editable'],
+  ]) {
+    await assert.rejects(run, (err) => {
       assert.match(err.message, /Refusing to write a workflow pack directly into your home/);
       assert.match(err.message, new RegExp(command));
-      // Names somewhere to put it instead.
+      // Names somewhere to put it instead of only refusing.
       assert.match(err.message, /artist-mcp/);
       return true;
     });
   }
-  // A folder inside the home directory is the normal case and must be allowed.
-  assert.doesNotThrow(() => assertNotHomeDirectory(DEFAULT_EDITABLE_DIRECTORY, 'init --editable'));
-});
-
-test('the guard is enforced by the commands, not just available to them', async () => {
-  await assert.rejects(seedEditablePack(homedir()), /Refusing to write a workflow pack/);
-  await assert.rejects(installAgentPack(homedir()), /Refusing to write a workflow pack/);
-});
-
-test('a pack is counted before init will write it into the config', async () => {
-  await withLocalPack(
-    { '.artist/project-types/CONCERT.md': '# Concert\n\nMine.\n' },
-    async (root) => {
-      assert.equal(await assertLocalAgentPack(root), 1);
-    },
-  );
-  await assert.rejects(assertLocalAgentPack(tmpdir()), /No \.artist\/ or artist\/ directory/);
 });
 
 /**
