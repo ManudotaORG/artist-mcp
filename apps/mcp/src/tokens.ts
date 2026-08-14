@@ -30,6 +30,13 @@ export type StoredTokens = {
   scope: string;
   /** ISO 8601. Only for showing the user how old a connection is. */
   connectedAt: string;
+  /**
+   * Google only, and not a secret despite the name — see oauth.ts. Google
+   * demands it on every refresh, so it is cached beside the token it belongs
+   * to: a refresh must not depend on our web app being reachable, and it should
+   * disappear when this provider is disconnected.
+   */
+  clientSecret?: string;
 };
 
 type TokenFile = {

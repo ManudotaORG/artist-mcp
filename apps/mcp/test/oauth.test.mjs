@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { PROVIDERS, accessTokenFor, connect } from '../dist/oauth.js';
+import { PROVIDERS, accessTokenFor } from '../dist/oauth.js';
 import { readProvider, saveProvider } from '../dist/tokens.js';
 
 const withTempStore = async (body) => {
@@ -71,7 +71,7 @@ test('a rotated refresh token is stored before the access token is returned', as
 /** Google returns no refresh token on an ordinary refresh and keeps the original valid. */
 test('a reused refresh token is left alone', async () => {
   await withTempStore(async () => {
-    await saveProvider('google', stored);
+    await saveProvider('google', { ...stored, clientSecret: 'cached-secret' });
     stubToken(200, { access_token: 'access-two' });
 
     assert.equal(await accessTokenFor('google'), 'access-two');
@@ -81,7 +81,7 @@ test('a reused refresh token is left alone', async () => {
 
 test('an expired or revoked token asks for a reconnect', async () => {
   await withTempStore(async () => {
-    await saveProvider('google', stored);
+    await saveProvider('google', { ...stored, clientSecret: 'cached-secret' });
     stubToken(400, { error: 'invalid_grant', error_description: 'Token has been expired or revoked.' });
 
     await assert.rejects(() => accessTokenFor('google'), (err) => {
@@ -98,29 +98,78 @@ test('an expired or revoked token asks for a reconnect', async () => {
  */
 test('a server-side failure does not tell the user to reconnect', async () => {
   await withTempStore(async () => {
-    await saveProvider('google', stored);
-    stubToken(500, { error: 'internal_failure' });
+    // Cached, so this exercises the token exchange rather than the config fetch.
+    await saveProvider('google', { ...stored, clientSecret: 'cached-secret' });
+    const calls = stubToken(500, { error: 'internal_failure' });
 
     await assert.rejects(() => accessTokenFor('google'), (err) => {
       assert.equal(err.reconnectNeeded, false);
       return true;
     });
+
+    assert.equal(calls[0].url, PROVIDERS.google.token);
   });
 });
 
 /**
- * The secret is injected into dist/ at publish time, so a local build has none.
- * Refusing up front beats opening a browser, taking the user through consent,
- * and only then failing at the exchange with a provider error nobody can act on.
+ * Not shipped in the package: a live Google credential in a public tarball is
+ * what Google's tooling objects to. It is fetched instead, and cached with the
+ * tokens so a refresh does not depend on the web app being reachable.
  */
-test('an un-injected build refuses to connect Google before opening a browser', async (t) => {
-  if (process.env.ARTIST_MCP_GOOGLE_CLIENT_SECRET) {
-    t.skip('a secret is set in the environment, so this build is not un-injected');
-    return;
-  }
+test('the Google client secret is never compiled into the package', async () => {
+  const source = await readFile(new URL('../dist/oauth.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /GOCSPX-/, 'a Google client secret is present in the built output');
+});
 
-  assert.equal(PROVIDERS.google.clientSecret, '');
-  await assert.rejects(() => connect('google'), /no Google client secret compiled in/);
+test('a cached client secret is used without calling the web app', async () => {
+  await withTempStore(async () => {
+    await saveProvider('google', { ...stored, clientSecret: 'cached-secret' });
+    const calls = stubToken(200, { access_token: 'access-three' });
+
+    assert.equal(await accessTokenFor('google'), 'access-three');
+
+    // One call, to the token endpoint — the config endpoint was not consulted.
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, PROVIDERS.google.token);
+    assert.equal(calls[0].form.client_secret, 'cached-secret');
+  });
+});
+
+/** An install made before the secret was cached must not need reconnecting. */
+test('a connection stored without a secret fetches one rather than failing', async () => {
+  await withTempStore(async () => {
+    await saveProvider('google', stored);
+
+    const seen = [];
+    globalThis.fetch = async (url, init) => {
+      seen.push(String(url));
+      const payload = String(url).includes('/api/client-config')
+        ? { google_client_secret: 'fetched-secret' }
+        : { access_token: 'access-five' };
+      if (init?.body) {
+        seen.push(new URLSearchParams(init.body).get('client_secret'));
+      }
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    };
+
+    assert.equal(await accessTokenFor('google'), 'access-five');
+    assert.match(seen[0], /\/api\/client-config$/);
+    assert.equal(seen.at(-1), 'fetched-secret');
+  });
+});
+
+test('Microsoft never sends a client secret', async () => {
+  await withTempStore(async () => {
+    await saveProvider('microsoft', stored);
+    const calls = stubToken(200, { access_token: 'access-four' });
+
+    await accessTokenFor('microsoft');
+
+    assert.equal(calls[0].form.client_secret, undefined);
+  });
 });
 
 test('a provider that was never connected names the command that fixes it', async () => {

@@ -23,7 +23,7 @@
   "scripts": {
     "build": "node scripts/build-agent-registry.mjs && tsc -p tsconfig.json && chmod +x dist/index.js",
     "test": "pnpm run build && node --test test/*.test.mjs",
-    "prepublishOnly": "pnpm run build && node scripts/inject-secret.mjs"
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",

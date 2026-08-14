@@ -36,7 +36,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { platform } from 'node:os';
 
-import { GraphError } from './client.js';
+import { GraphError, isStagingVersion, packageVersion } from './client.js';
 import { type ProviderName, readProvider, saveProvider, updateRefreshToken } from './tokens.js';
 
 /**
@@ -56,8 +56,12 @@ type ProviderConfig = {
   readonly token: string;
   readonly scope: string;
   readonly clientId: string;
-  /** Only Google has one, and it is public by necessity. */
-  readonly clientSecret?: string;
+  /**
+   * Google alone needs a client secret, and it is not compiled in — it is
+   * fetched at connect time and cached with the tokens, so it is passed to the
+   * exchange rather than being part of this static configuration.
+   */
+  readonly needsClientSecret: boolean;
   readonly extraAuthParams: Readonly<Record<string, string>>;
 };
 
@@ -67,26 +71,55 @@ type ProviderConfig = {
  */
 const env = (name: string, fallback: string): string => process.env[name] ?? fallback;
 
-/**
- * Replaced in dist/ at publish time by scripts/inject-secret.mjs, from a CI
- * secret. It has to ship in the package to work on a user's machine, and it is
- * readable by anyone who installs it — that is inherent, and the documentation
- * says so rather than implying otherwise.
- *
- * Kept out of the repository for one practical reason and not a security one:
- * a live credential in a public repo gets found by secret scanners, and a
- * revocation would break Google for every install at once.
- *
- * A build that was never injected keeps the sentinel, which reads as absent, so
- * a development build refuses to connect Google instead of failing at the
- * exchange with a provider error nobody can act on.
- */
-const INJECTED_GOOGLE_CLIENT_SECRET: string = '__GOOGLE_CLIENT_SECRET__';
+const PRODUCTION_SITE = 'https://artist-mcp.vercel.app';
+const STAGING_SITE = 'https://artist-mcp-staging.vercel.app';
 
-/** An un-injected build still carries the sentinel, which counts as no secret. */
-const bakedGoogleClientSecret = (): string => {
-  const value = INJECTED_GOOGLE_CLIENT_SECRET;
-  return value.startsWith('__') && value.endsWith('__') ? '' : value;
+/**
+ * Where Google's client secret comes from.
+ *
+ * It is not shipped in the package. The published tarball is public, and a live
+ * Google credential sitting in it is something Google's own tooling objects to
+ * finding — so the value is served from the web app instead, from an endpoint
+ * that is deliberately open. That is not a downgrade: the value reaches every
+ * user's machine either way, and PKCE is what actually binds the authorization
+ * code. What it buys is a value that can be rotated without publishing a new
+ * version and waiting for every install to upgrade.
+ *
+ * Matches the staging/production split client.ts makes from the package version,
+ * so an install cannot fetch configuration from one environment while talking
+ * to the other.
+ */
+const configEndpoint = (): string => {
+  const site = process.env.ARTIST_MCP_SITE ?? (isStagingVersion(packageVersion) ? STAGING_SITE : PRODUCTION_SITE);
+  return `${site}/api/client-config`;
+};
+
+/**
+ * Fetched once and cached beside the tokens, because Google demands the secret
+ * on every refresh — a connection that only works while our web app is up would
+ * be a worse dependency than the one this whole change removes.
+ */
+const fetchGoogleClientSecret = async (): Promise<string> => {
+  let res: Response;
+  try {
+    res = await fetch(configEndpoint());
+  } catch (cause) {
+    throw new GraphError(`Could not reach ${configEndpoint()} to set up Google: ${cause}`, false);
+  }
+
+  const body = (await res.json().catch(() => ({}))) as {
+    google_client_secret?: string;
+    error?: string;
+  };
+
+  if (!res.ok || typeof body.google_client_secret !== 'string') {
+    throw new GraphError(
+      `Could not get the Google client configuration: ${body.error ?? `HTTP ${res.status}`}`,
+      false,
+    );
+  }
+
+  return body.google_client_secret;
 };
 
 export const PROVIDERS: Readonly<Record<ProviderName, ProviderConfig>> = {
@@ -98,6 +131,7 @@ export const PROVIDERS: Readonly<Record<ProviderName, ProviderConfig>> = {
     // token and the connection dies within the hour.
     scope: 'offline_access Notes.Read',
     clientId: env('ARTIST_MCP_MS_CLIENT_ID', '4e484257-2c48-4088-84b9-60ea3ca82e88'),
+    needsClientSecret: false,
     extraAuthParams: { response_mode: 'query' },
   },
   google: {
@@ -115,7 +149,7 @@ export const PROVIDERS: Readonly<Record<ProviderName, ProviderConfig>> = {
       'ARTIST_MCP_GOOGLE_CLIENT_ID',
       '993381632576-33o752gthtkehtcbhoe2djssi1kepm03.apps.googleusercontent.com',
     ),
-    clientSecret: env('ARTIST_MCP_GOOGLE_CLIENT_SECRET', bakedGoogleClientSecret()),
+    needsClientSecret: true,
     // Google's equivalent of offline_access. Without access_type=offline it
     // returns an access token and no refresh token; prompt=consent forces the
     // refresh token to be re-issued rather than only on the very first consent.
@@ -221,10 +255,11 @@ type TokenResponse = {
 const postToken = async (
   config: ProviderConfig,
   form: Record<string, string>,
+  clientSecret?: string,
 ): Promise<TokenResponse> => {
   const body: Record<string, string> = { client_id: config.clientId, ...form };
-  if (config.clientSecret !== undefined && config.clientSecret !== '') {
-    body.client_secret = config.clientSecret;
+  if (clientSecret !== undefined && clientSecret !== '') {
+    body.client_secret = clientSecret;
   }
 
   let res: Response;
@@ -262,12 +297,11 @@ const postToken = async (
 export const connect = async (provider: ProviderName): Promise<void> => {
   const config = PROVIDERS[provider];
 
-  if (provider === 'google' && (config.clientSecret === undefined || config.clientSecret === '')) {
-    throw new Error(
-      'This build has no Google client secret compiled in, so Google cannot be ' +
-        'connected. Set ARTIST_MCP_GOOGLE_CLIENT_SECRET, or connect Microsoft only.',
-    );
-  }
+  // Before the browser opens, so a configuration problem is reported while the
+  // user is still in the terminal rather than after they have consented.
+  const clientSecret = config.needsClientSecret
+    ? (process.env.ARTIST_MCP_GOOGLE_CLIENT_SECRET ?? (await fetchGoogleClientSecret()))
+    : undefined;
 
   const { verifier, challenge } = pkcePair();
   const state = randomBytes(16).toString('base64url');
@@ -295,12 +329,16 @@ export const connect = async (provider: ProviderName): Promise<void> => {
 
   const code = await pending;
 
-  const tokens = await postToken(config, {
-    grant_type: 'authorization_code',
-    code,
-    redirect_uri: REDIRECT_URI,
-    code_verifier: verifier,
-  });
+  const tokens = await postToken(
+    config,
+    {
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: REDIRECT_URI,
+      code_verifier: verifier,
+    },
+    clientSecret,
+  );
 
   if (tokens.refresh_token === undefined) {
     throw new Error(
@@ -313,6 +351,7 @@ export const connect = async (provider: ProviderName): Promise<void> => {
     refreshToken: tokens.refresh_token,
     scope: tokens.scope ?? config.scope,
     connectedAt: new Date().toISOString(),
+    ...(clientSecret === undefined ? {} : { clientSecret }),
   });
 };
 
@@ -336,11 +375,23 @@ export const accessTokenFor = async (provider: ProviderName): Promise<string> =>
     );
   }
 
-  const tokens = await postToken(config, {
-    grant_type: 'refresh_token',
-    refresh_token: stored.refreshToken,
-    scope: config.scope,
-  });
+  // Cached at connect time. Only fetched here for a connection stored before
+  // this was cached, so an existing install does not need reconnecting.
+  const clientSecret = config.needsClientSecret
+    ? (process.env.ARTIST_MCP_GOOGLE_CLIENT_SECRET ??
+      stored.clientSecret ??
+      (await fetchGoogleClientSecret()))
+    : undefined;
+
+  const tokens = await postToken(
+    config,
+    {
+      grant_type: 'refresh_token',
+      refresh_token: stored.refreshToken,
+      scope: config.scope,
+    },
+    clientSecret,
+  );
 
   if (tokens.refresh_token !== undefined && tokens.refresh_token !== stored.refreshToken) {
     await updateRefreshToken(provider, tokens.refresh_token);
