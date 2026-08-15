@@ -5,6 +5,7 @@ import { z } from "zod";
 import { listAgentWorkflows, loadAgentWorkflow, type ResolvedEntry } from "./agents.js";
 import { GraphError } from "./client.js";
 import { call } from "./dispatch.js";
+import { narrowNotes } from "./notes.js";
 
 type NoteSummary = {
   id: string;
@@ -301,8 +302,26 @@ const runServer = async (): Promise<void> => {
           "Name of the notebook to list, exactly as returned by a previous " +
             "call. Omit only when the user has not chosen one yet.",
         ),
+      since: z
+        .string()
+        .optional()
+        .describe(
+          "Only pages modified on or after this date, as an ISO date such as " +
+            "2026-08-10. Use it for 'what moved this week'. Pages the account " +
+            "records no modified date for are left out rather than guessed at.",
+        ),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe(
+          "Cap the number of pages returned, newest first. The reply says how " +
+            "many matched, so a capped list is never mistaken for the whole " +
+            "notebook.",
+        ),
     },
-    async ({ notebook }) => {
+    async ({ notebook, since, limit }) => {
       try {
         const { notes } = await call<{ notes: NoteSummary[] }>("list_notes");
         if (notes.length === 0) {
@@ -352,13 +371,57 @@ const runServer = async (): Promise<void> => {
           };
         }
 
-        const lines = selected.map((n) => {
+        // Narrowed only after the notebook is settled, so a `since` window can
+        // never be what makes a notebook look empty enough to skip choosing.
+        const { notes: shown, matched, undated } = narrowNotes(selected, { since, limit });
+
+        if (shown.length === 0) {
+          const scope = notebook ? `"${notebook}"` : "this account";
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `No pages in ${scope} modified on or after ${since}.` +
+                  (undated > 0
+                    ? ` ${undated} page${undated === 1 ? " has" : "s have"} no modified date ` +
+                      "recorded and were left out of the window rather than assumed recent; " +
+                      "list without `since` to see them."
+                    : ""),
+              },
+            ],
+          };
+        }
+
+        const lines = shown.map((n) => {
           const location = [n.notebook, n.section].filter(Boolean).join(" / ");
           return `- ${n.title}${location ? ` (${location})` : ""} — modified ${
             n.last_modified ?? "unknown"
           }\n  id: ${n.id}`;
         });
-        return { content: [{ type: "text", text: lines.join("\n") }] };
+
+        // A truncated list that does not say so is read as the whole notebook,
+        // and the answer built on it is wrong without looking wrong.
+        const caveats: string[] = [];
+        if (shown.length < matched) {
+          caveats.push(
+            `Showing the ${shown.length} most recently modified of ${matched} matching ` +
+              "pages. Raise `limit` or narrow with `since` for the rest.",
+          );
+        }
+        if (undated > 0) {
+          caveats.push(
+            `${undated} page${undated === 1 ? "" : "s"} with no modified date recorded ` +
+              `${undated === 1 ? "is" : "are"} not in this window. That is unrecorded, ` +
+              "not old — list without `since` to see them.",
+          );
+        }
+
+        return {
+          content: [
+            { type: "text", text: [lines.join("\n"), ...caveats].join("\n\n") },
+          ],
+        };
       } catch (err) {
         return errorResult(err);
       }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { htmlToText, listNotes, readNote } from '../dist/notes.js';
+import { htmlToText, listNotes, narrowNotes, readNote } from '../dist/notes.js';
 
 /** Serves canned responses by URL substring, recording every path requested. */
 const stubGraph = (routes) => {
@@ -131,4 +131,84 @@ test('a note is returned as text, not markup', async () => {
     title: 'Soundcheck',
     text: 'Line one\nLine two',
   });
+});
+
+/**
+ * `since` and `limit` narrow a list that has already been fetched in full. The
+ * saving is context, not Graph calls, so these are pure and stubless.
+ */
+const page = (id, last_modified) => ({
+  id,
+  title: id,
+  section: null,
+  notebook: null,
+  last_modified,
+});
+
+const dated = [
+  page('new', '2026-08-14T09:00:00Z'),
+  page('boundary', '2026-08-10T00:00:00Z'),
+  page('old', '2026-01-01T00:00:00Z'),
+];
+
+test('omitting since and limit is exactly the list that went in', () => {
+  const result = narrowNotes(dated);
+  assert.deepEqual(result.notes, dated);
+  assert.equal(result.matched, 3);
+  assert.equal(result.undated, 0);
+});
+
+test('since is inclusive of the day it names, so "since the 10th" includes the 10th', () => {
+  const result = narrowNotes(dated, { since: '2026-08-10' });
+  assert.deepEqual(
+    result.notes.map((n) => n.id),
+    ['new', 'boundary'],
+  );
+});
+
+test('an undated page is excluded from a since window rather than assumed recent', () => {
+  const result = narrowNotes([...dated, page('undated', null)], { since: '2026-08-10' });
+  assert.deepEqual(
+    result.notes.map((n) => n.id),
+    ['new', 'boundary'],
+  );
+  // Counted, so the caller can say it rather than silently dropping the page.
+  assert.equal(result.undated, 1);
+});
+
+test('an unparseable timestamp is treated as undated, not as matching', () => {
+  const result = narrowNotes([page('junk', 'last Tuesday')], { since: '2026-08-10' });
+  assert.equal(result.notes.length, 0);
+  assert.equal(result.undated, 1);
+});
+
+test('limit truncates and still reports how many matched', () => {
+  const result = narrowNotes(dated, { limit: 2 });
+  assert.deepEqual(
+    result.notes.map((n) => n.id),
+    ['new', 'boundary'],
+  );
+  assert.equal(result.matched, 3);
+});
+
+test('limit counts what since matched, not what was fetched', () => {
+  const result = narrowNotes(dated, { since: '2026-08-10', limit: 1 });
+  assert.deepEqual(
+    result.notes.map((n) => n.id),
+    ['new'],
+  );
+  assert.equal(result.matched, 2);
+});
+
+/**
+ * A filter that quietly does nothing returns the whole notebook, and nothing
+ * distinguishes that from a notebook where everything really did move.
+ */
+test('an unreadable since is refused rather than ignored', () => {
+  assert.throws(() => narrowNotes(dated, { since: 'whenever' }), /Could not read "whenever"/);
+});
+
+test('a limit that is not a whole page count is refused', () => {
+  assert.throws(() => narrowNotes(dated, { limit: 0 }), /at least 1/);
+  assert.throws(() => narrowNotes(dated, { limit: 1.5 }), /whole number/);
 });

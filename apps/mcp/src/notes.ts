@@ -110,6 +110,88 @@ export const listNotes = async (token: string): Promise<{ notes: NoteSummary[] }
   return { notes };
 };
 
+/**
+ * Narrowing happens here rather than at Graph, because the section walk above
+ * has to fetch every page regardless — the saving is in what the model is asked
+ * to read, not in the calls made. That is still the saving worth having: "what
+ * moved this week" is the question every session opens with, and paying for the
+ * whole notebook in context in order to ignore most of it is the cost.
+ *
+ * Kept separate from `listNotes` so it is testable without a Graph stub, and so
+ * the fetch keeps doing exactly one thing.
+ */
+export type Narrowing = { since?: string; limit?: number };
+
+export type NarrowedNotes<T> = {
+  notes: T[];
+  /** How many matched before `limit` cut the list, so a partial is never read as the whole. */
+  matched: number;
+  /** Pages dropped for having no timestamp at all, reported rather than silently excluded. */
+  undated: number;
+};
+
+/**
+ * A date the model may pass through from natural language ("since last
+ * Tuesday"). A date with no time means the start of that day, so "since the
+ * 10th" includes the 10th.
+ *
+ * An unparseable value is refused rather than ignored. A filter that silently
+ * does nothing returns the whole notebook, and the model has no way to tell
+ * that from a notebook where everything really did move this week.
+ */
+const parseSince = (since: string): number => {
+  const trimmed = since.trim();
+  const value = Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? `${trimmed}T00:00:00Z` : trimmed);
+  if (Number.isNaN(value)) {
+    throw new GraphError(
+      `Could not read "${since}" as a date. Pass an ISO date such as 2026-08-10.`,
+      false,
+    );
+  }
+  return value;
+};
+
+/**
+ * Generic over the summary shape: `server.ts` carries its own, because a
+ * response from an older edge function may omit `notebook`. Only the timestamp
+ * is narrowed on, so nothing here needs the rest of the page.
+ */
+export const narrowNotes = <T extends { last_modified: string | null }>(
+  notes: T[],
+  { since, limit }: Narrowing = {},
+): NarrowedNotes<T> => {
+  let undated = 0;
+  let matched = notes;
+
+  if (since !== undefined) {
+    const cutoff = parseSince(since);
+    matched = notes.filter((note) => {
+      // No timestamp is not evidence of being recent. Excluded from the window
+      // rather than guessed into it, the same refusal intake applies elsewhere.
+      if (note.last_modified === null) {
+        undated += 1;
+        return false;
+      }
+      const at = Date.parse(note.last_modified);
+      if (Number.isNaN(at)) {
+        undated += 1;
+        return false;
+      }
+      return at >= cutoff;
+    });
+  }
+
+  if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) {
+    throw new GraphError(`limit must be a whole number of at least 1, not ${limit}.`, false);
+  }
+
+  return {
+    notes: limit === undefined ? matched : matched.slice(0, limit),
+    matched: matched.length,
+    undated,
+  };
+};
+
 export const readNote = async (
   token: string,
   noteId: unknown,

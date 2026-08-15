@@ -110,7 +110,11 @@ The MCP server exposes ten read-only tools.
 OneNote holds the working unit:
 
 - `list_notes` — returns page titles, section names, modification dates, and
-  OneNote page IDs.
+  OneNote page IDs. Narrows to one notebook, and optionally to pages modified
+  since a date or to a capped number of them, so "what moved this week" does
+  not mean paying for the whole notebook. A page the account records no
+  modified date for is left out of a `since` window rather than assumed recent,
+  and a capped list says how many matched.
 - `read_note` — accepts a page ID returned by `list_notes` and returns readable
   page text.
 
