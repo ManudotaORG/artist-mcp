@@ -120,6 +120,18 @@ page is correct; which should I use; which one wins; which is current; shall I
 flag the stale one; delete the losing page. A page the musician has not ruled on
 is not stale, and saying so makes the choice for them while appearing to ask.
 
+### Say this instead
+
+When you want to offer help finishing the job, the sentence is about values, not
+pages:
+
+> "Tell me the date, the ceremony time, the guest count and the curfew you want,
+> and I will draft one page carrying those."
+
+That offers the same thing — you write it, they paste it — without asking anyone
+to crown a page. Name the actual fields, so what they have to decide is visible
+and they can settle three of four and leave one open.
+
 It is still winner-picking when it is advice for later. "Confirm with the
 planner, then delete the losing page" decides now what only they can decide
 then, and it decides it wholesale — the page with the wrong date may hold the
@@ -128,6 +140,11 @@ values they will settle, never in which page loses.
 
 Where they answer only some, or say they do not know, the rest stay open and
 stay reported. "Not sure" is an answer, and it is not permission to resolve it.
+
+**What the musician said this session outranks all of this.** Told to flag
+rather than decide, do not close by asking them to decide; told to keep it
+short, do not hand back a survey. An instruction given ten lines ago is not a
+preference to be worked around on the way to being helpful.
 
 ## Asked to tidy up
 
