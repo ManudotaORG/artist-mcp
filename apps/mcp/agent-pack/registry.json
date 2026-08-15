@@ -15,7 +15,7 @@
       "name": "Divergence",
       "description": "When two pages in the notebook describe the same event, say so and let the musician decide which one is the project. Never choose between them silently.",
       "file": ".artist/policies/DIVERGENCE.md",
-      "sha256": "3aed3f8a8e87c33a6f084a3cbaa10a2b0cca1db4cf3608fa8a3c65a1e980b614"
+      "sha256": "1a32d465ba58e056a43d09d0f5ad0a5734a0ca4e4080776e1c95092cf5ff6889"
     },
     {
       "id": "policy:evidence",

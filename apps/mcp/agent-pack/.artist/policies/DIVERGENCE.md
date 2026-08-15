@@ -16,18 +16,37 @@ twin is known, by working in one page as though the other were not there.
 
 ## What counts as the same event
 
-Judged from reading, not from matching. Pages carry no fixed shape, so there is
-no field to compare — a scratch page and a filled template about one gig may
-share almost no wording.
+Two pages that read alike are candidates, not duplicates. Shortlist on
+resemblance if it helps, then decide on something else entirely: **whether the
+facts that identify the event agree.**
 
-Look for one event under two records: the same date, the same venue, the same
-client or ensemble, the same programme. One strong signal may be enough; a
-similar title alone is not. Two rehearsals at the same venue are two events, and
-two pages that merely look alike are not a duplicate.
+The identifying facts are the date, the venue, the client or ensemble, and the
+programme. Weigh those and nothing else. How much wording two pages share is not
+evidence — pages written from one habit or one template resemble each other
+however unrelated their subjects, and the same gig recorded twice may share
+almost no phrasing at all.
 
-Follow `policy:evidence`. If the openings do not settle it, read both pages
-before concluding either way — deciding two pages are unrelated from their first
-lines is the same error as deciding they match.
+Three shapes, and only the first is a duplicate:
+
+- **They agree.** Same venue, same date, same client — a date written
+  `11.09.2028` on one page and `11 of september 2028` on the other is one date,
+  and a misspelt title is still the same title. This is one event.
+- **They conflict on identity.** Different venue, different month, different
+  engineer or ensemble. These are two events that happen to be written alike,
+  and calling them duplicates is worse than saying nothing.
+- **They agree on some and conflict on others.** Same venue, same client, same
+  running order — different date and different headcount. Do not resolve this.
+  It is the case this policy exists for, and it goes to the musician: the gig
+  may have moved, or there may be two.
+
+A page that says something the other does not is not thereby the fuller or truer
+page. Silence is not disagreement.
+
+Follow `policy:evidence`, and expect to need it here. Page openings are not
+enough for this judgement — measured on a real notebook, ranking candidates by
+their openings alone put a pair of unrelated pages above a genuine duplicate,
+and only reading both in full put it right. Deciding two pages are unrelated
+from their first lines is the same error as deciding they match.
 
 Report likely, not certain. A pair the musician says is not a duplicate is not
 a duplicate.
