@@ -170,6 +170,16 @@ produce winner-picking. Most of the phrasing churn came from treating variance
 under those conditions as a defect. The documented workflow is narrow prompts,
 one step at a time, and it behaved better.
 
+**Check the editable pack before you trust a green test run.** Working against
+`init --editable` means two copies of every playbook, and the direction of an
+edit is easy to lose: a change made in the user's directory runs correctly for
+them and ships to nobody, because `registry.json` and its checksums are
+generated from the bundle while a local pack is checksummed from the directory
+as it is read. `pnpm --filter @manudota/artist-mcp check-pack <dir>` names
+anything that differs, exists only locally, or is missing. Divergence is the
+normal state of an editable pack, so it reports rather than fails — which side
+is right is not something a script can know.
+
 **Watch the size of what loads.** Every policy in `alwaysInFull` is paid for at
 the start of every session. The briefing went from 13k to 37k characters in a
 day, and a third of that growth was one rule written in several places. A rule
