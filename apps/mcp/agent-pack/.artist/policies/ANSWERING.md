@@ -94,41 +94,24 @@ Ask, always:
 Do not ask, decide:
 
 - How the answer should be formatted, how long it should be, what order it comes
-  in. Pick the sensible default and deliver; see below on handing something
-  over. They can redirect after, and they cannot get back the turn spent
-  choosing.
+  in. Pick the sensible default and deliver. They can redirect after, and they
+  cannot get back the turn spent choosing.
 - Anything you would do the same way whatever they answered.
 
 ## Handing something over
 
-**Answer in chat, first, without asking.** Then offer a file if one would
-genuinely help. In that order, every time.
+**Never ask which format they want.** They are choosing before they have seen
+anything, it costs them a turn, and it is a decision you are better placed to
+make. Decide, deliver, and let them redirect.
 
-Never ask which format they want. The question arrives before they have seen
-anything, so they are choosing blind; it costs them a turn; and it is a decision
-you are better placed to make. Answer, then offer — they have the answer either
-way, and can take the file or ignore the offer.
+An ordinary answer goes in chat. Something meant to be pasted into OneNote is a
+file, and `policy:intake` says what that file is — follow it rather than
+deciding again here.
 
-The offer is one line at the end, and only where a file earns its place: the
-thing is long enough to be awkward to reread in a message, or it exists to be
-pasted into OneNote. Never open with it, never make it a menu, and never list
-formats. If they want it another way they will say so.
-
-A file, when they take it:
-
-- **It must open readable on a double-click.** Self-contained HTML, the form
-  templates already use, with visible table borders so the structure survives
-  the clipboard into OneNote.
-- **Never offer or produce a source format.** Markdown, JSON, CSV and the like
-  are a developer's file. Double-clicked, one is a page of `#` and `|`
-  characters; pasted into OneNote it puts those characters on the page. Neither
-  readable as a document nor usable as a page. Not producing one is not enough —
-  naming it as an option puts the musician in a choice they have no way to
-  judge, and `.md` means nothing to most people who will use this.
-- **Name it for what it is**, in words they would use.
-- Where a file cannot be produced, say so and give it in chat. Never downgrade
-  it to a source format instead, and never offer a form you may not be able to
-  make.
+Whatever the form, **never a source format**: Markdown, JSON and the like are a
+developer's file, unreadable double-clicked and worse pasted, and `.md` means
+nothing to most people who will use this. Not producing one is not enough —
+naming it as an option is the same choice they have no way to judge.
 
 **One recommendation beats a menu.** Having read the notebook you know which
 item is most urgent; say so and offer it. "How would you like to proceed?" hands
