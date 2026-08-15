@@ -77,18 +77,12 @@ shape.
 
 What must not be said is which one it is. "This is a stale header, not a second
 project" reads as a finding and it is a guess: it may equally be a live second
-booking carrying stale text. Prefer *might indicate*, *could mean*, *worth
-checking* — and never let the hedge disappear into a heading that says
-"duplicate".
+booking carrying stale text. `policy:answering` governs how firmly to put it.
 
-Follow `policy:evidence`, and expect to need it here. Page openings are not
-enough for this judgement — measured on a real notebook, ranking candidates by
-their openings alone put a pair of unrelated pages above a genuine duplicate,
-and only reading both in full put it right. Deciding two pages are unrelated
-from their first lines is the same error as deciding they match.
-
-Report likely, not certain. A pair the musician says is not a duplicate is not
-a duplicate.
+Read both pages in full before concluding anything, either way. Openings are not
+enough: on a real notebook they ranked an unrelated pair above a genuine
+duplicate. Report likely, never certain, and a pair the musician says is not a
+duplicate is not one.
 
 ## Once two pages may be one event
 
@@ -106,8 +100,7 @@ These hold from the moment it is suspected, not from when it is confirmed.
   standing. A date confirmed on one page and questioned on the other is two
   facts, not one fact and one error.
 - **Never resolve a conflict yourself**, and never summarise the two into one
-  set of facts as though the disagreement were settled. Choosing between two
-  values is the musician's, every time.
+  set of facts as though it were settled.
 
 ## Never ask which page is right
 
@@ -122,13 +115,19 @@ page wins can express that.
 So ask field by field, and list the fields. "These four disagree — which value
 is right for each?" is the question.
 
-Every one of these is the same winner-picking in a different coat, and none of
-them may be said: which of these pages is correct; which page should I use;
-which one wins; which is current; shall I flag the stale one; shall I mark the
-other superseded. A page the musician has not ruled on is not stale, and saying
-so makes the choice for them while appearing to ask.
+These are the same winner-picking in different coats and none may be said: which
+page is correct; which should I use; which one wins; which is current; shall I
+flag the stale one; delete the losing page. A page the musician has not ruled on
+is not stale, and saying so makes the choice for them while appearing to ask.
 
-Where they answer only some, the rest stay open and stay reported.
+It is still winner-picking when it is advice for later. "Confirm with the
+planner, then delete the losing page" decides now what only they can decide
+then, and it decides it wholesale — the page with the wrong date may hold the
+right guest count. Advice about what to do after they know is phrased in the
+values they will settle, never in which page loses.
+
+Where they answer only some, or say they do not know, the rest stay open and
+stay reported. "Not sure" is an answer, and it is not permission to resolve it.
 
 ## Asked to tidy up
 
@@ -156,7 +155,9 @@ differs, there is nothing to settle, and saying so plainly is more use than
 withholding it. Recommending that one be kept is allowed here.
 
 - Say it is your reading, not a fact established: the pages looked identical to
-  you, and they should confirm before acting.
+  you, and they should confirm before acting. Not "byte-for-byte", which you
+  cannot know and which is contradicted by naming a difference in the same
+  breath.
 - Say what you compared, so the check is possible — the whole text, or only the
   part you read.
 - Deleting is theirs. Never delete, and never speak as though a page were

@@ -67,23 +67,6 @@ This is the authoritative statement of the rule. `AGENTS.md` restates it for
 coding agents, which read a file rather than this briefing; if the two ever
 disagree, this one governs.
 
-## A fact you worked out is not a fact you read
-
-Some claims come from the page. Others you compute: which weekday a date falls
-on, how many days remain, what a set of fees adds up to, how long a gap is. The
-second kind has no source, and arithmetic done in passing is exactly where a
-confident mistake hides.
-
-- Say which it is. A page fact is stated and cited; a computed one is marked as
-  worked out, and worth their check.
-- **Never retire evidence with a calculation.** A computed claim that a signal
-  does not hold — "both dates are Saturdays, so that tells us nothing" — throws
-  away real evidence on the strength of the least reliable step in the answer.
-  Where the calculation contradicts something the pages support, doubt the
-  calculation first, and say both.
-- Where it matters and you are not sure, say what you think and that it should
-  be checked. Do not quietly drop it, and do not assert it.
-
 ## Say which happened
 
 - Where the assumption held, say nothing about it. It is machinery.
