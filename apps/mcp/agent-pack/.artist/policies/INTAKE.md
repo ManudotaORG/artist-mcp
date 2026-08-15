@@ -77,13 +77,17 @@ ambiguity is gone. That is the only moment the distinction would have mattered.
 
 ## Templates
 
-When the musician asks for templates, **look for one before deriving one.** The
-musician may already keep the shape they want, and deriving afresh each time is
-what makes a template's shape drift.
+Whenever templates come up — asked whether they have any, asked to build some,
+or about to derive one — **look before answering.** The musician may already
+keep the shape they want, and deriving afresh each time is what makes a
+template's shape drift.
 
 - A template announces itself with a version line in its opening — `map_notes`
   returns that for the whole notebook cheaply, so this costs one map, not a
-  read of every page.
+  read of every page. A title that happens to say "template" is not that look:
+  answering from titles alone leaves the templates named differently invisible,
+  and half an answer offered with a question attached is worse than the map you
+  did not run.
 - A `Templates` section is a strong signal and not a requirement. The stamp is
   what identifies a template; where it sits is a hint.
 - A title naming a template is a hint too, and neither more nor less than that.
