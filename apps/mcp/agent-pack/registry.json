@@ -2,6 +2,14 @@
   "schemaVersion": 1,
   "entries": [
     {
+      "id": "policy:answering",
+      "kind": "policy",
+      "name": "Answering",
+      "description": "Answer the question that was asked, in as few words as it takes, and keep the machinery out of it.",
+      "file": ".artist/policies/ANSWERING.md",
+      "sha256": "99d4159b8bef720dcd6e207ecd77f1e887f8992acf0fd56b1df4e9758f12a92b"
+    },
+    {
       "id": "policy:intake",
       "kind": "policy",
       "name": "Intake",

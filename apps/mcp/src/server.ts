@@ -201,8 +201,13 @@ const renderWorkflowBriefing = async (
   // all of which happen before anything would think to load a policy.
   // A run that loaded nothing at all classified five pages and then
   // offered to write template files, which intake forbids.
+  // Answering is here on the same reasoning: it governs the shape of every
+  // reply, including the first one, so a summary of it is worth nothing. A rule
+  // that is merely available is not a rule.
   const alwaysInFull = (entry: (typeof entries)[number]) =>
-    entry.kind === "project-type" || entry.id === "policy:intake";
+    entry.kind === "project-type" ||
+    entry.id === "policy:intake" ||
+    entry.id === "policy:answering";
   const upfront = entries.filter(alwaysInFull);
   const rest = entries.filter((entry) => !alwaysInFull(entry));
 

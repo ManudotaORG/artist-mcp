@@ -16,6 +16,7 @@ const entry = (id, kind, overrides = {}) => ({
 });
 
 const entries = [
+  entry('policy:answering', 'policy'),
   entry('policy:intake', 'policy'),
   entry('policy:local-state', 'policy'),
   entry('project-type:concert', 'project-type'),
@@ -29,10 +30,23 @@ test('project types and intake are returned in full; roles are summarised', asyn
   const text = await renderWorkflowBriefing(entries, loadAll);
   assert.match(text, /body of project-type:concert/);
   assert.match(text, /body of policy:intake/);
+  // Not every policy: local-state is a one-liner like a role.
+  assert.doesNotMatch(text, /body of policy:local-state/);
   // A role is a one-liner until something loads it.
   assert.doesNotMatch(text, /body of role:orchestrator/);
   assert.match(text, /- role:orchestrator: role:orchestrator — what role:orchestrator is for/);
   assert.doesNotMatch(text, /NOT IN FORCE/);
+});
+
+/**
+ * Answering governs the shape of every reply, including the first one, so a
+ * one-line summary of it would leave it merely available rather than in force —
+ * the same failure as a role that loads and is then ignored.
+ */
+test('the answering policy is in force from the first reply, not summarised', async () => {
+  const text = await renderWorkflowBriefing(entries, loadAll);
+  assert.match(text, /body of policy:answering/);
+  assert.doesNotMatch(text, /- policy:answering:/);
 });
 
 /**
