@@ -15,7 +15,7 @@
       "name": "Divergence",
       "description": "When two pages in the notebook describe the same event, say so, and let the musician settle each fact the two disagree on. Neither page is the project — the event is, and the pages are two records of it.",
       "file": ".artist/policies/DIVERGENCE.md",
-      "sha256": "d70e7dbec2a2b345e2a2af1f9ce16b07645b145105e40b613b27c8efe99d5c3e"
+      "sha256": "fe423f0c661ca40174d71ff4d6e097cb7e873c419c3919e8f79063a77e81bacc"
     },
     {
       "id": "policy:evidence",
@@ -23,7 +23,7 @@
       "name": "Evidence",
       "description": "Assume the likely shape of a page, then verify it. When the assumption does not hold, widen the search — never report the assumption's failure as a finding.",
       "file": ".artist/policies/EVIDENCE.md",
-      "sha256": "2766f548d1a23e0577f784a00db6971e8a5da69c23b700f02061f302055c9467"
+      "sha256": "69025e82df3ef07176a292b894bb9a6e5c06bcf21be5cbdc0eb5377eb9153eb8"
     },
     {
       "id": "policy:intake",
@@ -31,7 +31,7 @@
       "name": "Intake",
       "description": "Turn an unorganized notebook into working units without inventing anything.",
       "file": ".artist/policies/INTAKE.md",
-      "sha256": "0fbaddfdf1cee0d85ae5e3e59c9170ebab0f9fc83f4c99f2dfb7ef21797e17d2"
+      "sha256": "a77b85fe12995757bdb18d6d6cfdf2fff39426393bda1a2715208ba36463fe19"
     },
     {
       "id": "policy:local-state",

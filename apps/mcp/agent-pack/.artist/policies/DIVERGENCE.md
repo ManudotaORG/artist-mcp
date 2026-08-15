@@ -21,7 +21,7 @@ their subjects, and one gig recorded twice may share almost no phrasing.
 
 Four shapes, and only the first is a duplicate:
 
-- **They agree.** `11.09.2028` on one page and `11 of september 2028` on the
+- **They agree.** A date written in digits on one page and spelled out on the
   other is one date, and a misspelt title is still the same title. One event.
 - **They conflict on identity**, with nothing but a shared habit of writing
   tying them together. Two events. Calling them duplicates is worse than
@@ -64,9 +64,9 @@ From the moment it is suspected, not from when it is confirmed:
   and this is never dropped for brevity.
 - **A list is an answer too.** A calendar of what is due, a summary, a table of
   next actions: a disputed value may not appear in one as though settled.
-  "Reiter wedding, 14 June 2027" in a due list decides silently, and a list is
-  read as fact and carries no hedge. Give both values in the row, or leave the
-  row out and say why. Flagging it lower down does not repair the line.
+  A row giving one of two disputed dates decides silently, and a list is read as
+  fact and carries no hedge. Give both values in the row, or leave the row out
+  and say why. Flagging it lower down does not repair the line.
 - **Never switch silently** between answers or within one.
 - **Show conflicts side by side**, with both page titles, and leave them
   standing. A date confirmed on one page and questioned on the other is two
@@ -75,8 +75,8 @@ From the moment it is suspected, not from when it is confirmed:
 ## Ask for values, never for a page
 
 A page is not right. Each disagreeing field is its own decision, and one verdict
-on the pair takes all of them at once by implication — the musician may well
-want the later date with the smaller guest count.
+on the pair takes all of them at once by implication — they may well want one
+page's date with the other's headcount.
 
 So name the fields and offer to do the work:
 
@@ -93,7 +93,7 @@ advice for later — *which page is correct, which one wins, which is current,
 flag the stale one, then delete the losing page*. A page the musician has not
 ruled on is not stale. And "confirm with the planner, then delete the loser"
 decides now what only they can decide then, and decides it wholesale: the page
-with the wrong date may hold the right guest count.
+with the wrong date may hold the right headcount.
 
 ## Recommending, and helping them finish
 

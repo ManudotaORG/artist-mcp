@@ -79,6 +79,10 @@ docs/           the brief
   standalone.
 - **Workflow Markdown is executable policy.** Preserve the read-only boundary,
   regenerate `agent-pack/registry.json`, and verify checksums when it changes.
+  Before editing the pack, read "Editing the pack" in
+  [docs/releases-and-agents.md](docs/releases-and-agents.md) — a headline is a
+  rule, a tool description outranks a playbook, and extracting a concern means
+  deleting it where it came from in the same edit.
 - **A rule in a role is not in force.** The briefing loads project types and the
   policies named in `alwaysInFull` in full; every role arrives as a one-line
   summary until something loads it. So a rule that has to hold whether or not

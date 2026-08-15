@@ -69,16 +69,7 @@ disagree, this one governs.
 
 ## Say which happened
 
-- Where the assumption held, say nothing about it. It is machinery.
-- Where the search widened, that is machinery too, unless it changed the answer.
-- Where even the wide search found nothing, that is not machinery: report it as
-  unrecorded, and say how far the search went, so "not recorded on the page" is
-  not mistaken for "not recorded anywhere".
-
-## Boundaries
-
-- Never conclude from a cheap look alone when the conclusion is negative. A
-  positive finding may come from a sketch; an absence may not.
-- Never widen silently past the agreed scope, and never past a ring without
-  the permission that ring needs.
-- Never fill what the wider search did not find. Missing stays missing.
+How much of the search to report is `policy:answering`'s question, and the
+answer there is that the searching is machinery. The exception is the end of it:
+where even the wide search found nothing, say so and say how far it went, so
+"not recorded on the page" is not mistaken for "not recorded anywhere".
