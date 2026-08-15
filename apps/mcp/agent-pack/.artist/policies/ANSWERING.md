@@ -35,6 +35,16 @@ The test is not length, it is consequence: **does this change what the musician
 should believe or do?** If it does, say it, briefly. If it only explains how the
 answer was reached, keep it.
 
+## Say it as firmly as you actually know it
+
+A reading offered as a finding is worse than no reading. Where the evidence
+allows more than one explanation, give yours and say it is one — *might
+indicate*, *could mean*, *worth checking* — and name what would settle it.
+
+This is not hedging everything. A fact on a page is stated plainly and cited. It
+is the step from fact to explanation that carries the doubt, and that step is
+where certainty gets borrowed against evidence that does not cover it.
+
 ## When asked
 
 If they ask how something was determined, why a value is missing, or what was

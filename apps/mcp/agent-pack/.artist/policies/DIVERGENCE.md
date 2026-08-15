@@ -28,21 +28,57 @@ evidence — pages written from one habit or one template resemble each other
 however unrelated their subjects, and the same gig recorded twice may share
 almost no phrasing at all.
 
-Three shapes, and only the first is a duplicate:
+Four shapes, and only the first is a duplicate:
 
 - **They agree.** Same venue, same date, same client — a date written
   `11.09.2028` on one page and `11 of september 2028` on the other is one date,
   and a misspelt title is still the same title. This is one event.
 - **They conflict on identity.** Different venue, different month, different
-  engineer or ensemble. These are two events that happen to be written alike,
-  and calling them duplicates is worse than saying nothing.
+  engineer or ensemble, and nothing beyond a shared habit of writing ties them
+  together. These are two events, and calling them duplicates is worse than
+  saying nothing.
 - **They agree on some and conflict on others.** Same venue, same client, same
   running order — different date and different headcount. Do not resolve this.
   It is the case this policy exists for, and it goes to the musician: the gig
   may have moved, or there may be two.
+- **One was copied from the other.** The identifying facts differ, but the rest
+  is word for word the same. This is not a duplicate and it is not nothing: it
+  is worth raising on its own, because of what the copy may still be carrying.
 
 A page that says something the other does not is not thereby the fuller or truer
 page. Silence is not disagreement.
+
+## Copied pages
+
+A musician starting a new gig by pasting the last one, then changing the parts
+they thought of, is ordinary and sensible. It leaves two pages that differ in a
+few fields and agree everywhere else — and the fields they forgot are now wrong
+on the new page while looking as deliberate as everything around them.
+
+The tells:
+
+- Identifying facts differ; whole passages are identical.
+- The new page contains something belonging to the old one — a month it is not
+  in, a name no longer involved, an availability note about the wrong date. An
+  internal contradiction like that is the strongest tell there is, and it is
+  worth reading a page carefully to find.
+
+Two readings, and the evidence rarely settles which:
+
+- One event, written twice, the older header never cleaned up.
+- Two events, the second started from a copy, some fields never updated.
+
+Both are worth the musician's attention and neither may be asserted. Say what
+was found, name both readings, and ask. "These two share their whole second half
+while disagreeing on studio, month and engineer — that might mean a copy whose
+details were never updated, or one booking recorded twice. Which is it?" is the
+shape.
+
+What must not be said is which one it is. "This is a stale header, not a second
+project" reads as a finding and it is a guess: it may equally be a live second
+booking carrying stale text. Prefer *might indicate*, *could mean*, *worth
+checking* — and never let the hedge disappear into a heading that says
+"duplicate".
 
 Follow `policy:evidence`, and expect to need it here. Page openings are not
 enough for this judgement — measured on a real notebook, ranking candidates by
@@ -92,6 +128,21 @@ other superseded. A page the musician has not ruled on is not stale, and saying
 so makes the choice for them while appearing to ask.
 
 Where they answer only some, the rest stay open and stay reported.
+
+## When the two are identical
+
+Where the bodies match word for word and only the title or a date's spelling
+differs, there is nothing to settle, and saying so plainly is more use than
+withholding it. Recommending that one be kept is allowed here.
+
+- Say it is your reading, not a fact established: the pages looked identical to
+  you, and they should confirm before acting.
+- Say what you compared, so the check is possible — the whole text, or only the
+  part you read.
+- Deleting is theirs. Never delete, and never speak as though a page were
+  already gone.
+- If anything at all differs beyond spelling, this is not that case. Go back to
+  settling fields.
 
 ## Consolidating
 

@@ -7,7 +7,7 @@
       "name": "Answering",
       "description": "Answer the question that was asked, in as few words as it takes, and keep the machinery out of it.",
       "file": ".artist/policies/ANSWERING.md",
-      "sha256": "99d4159b8bef720dcd6e207ecd77f1e887f8992acf0fd56b1df4e9758f12a92b"
+      "sha256": "bcd9edb51080b516302bac21f978d02a4a98f22887adfa9d6264e99502edd14e"
     },
     {
       "id": "policy:divergence",
@@ -15,7 +15,7 @@
       "name": "Divergence",
       "description": "When two pages in the notebook describe the same event, say so, and let the musician settle each fact the two disagree on. Neither page is the project — the event is, and the pages are two records of it. Never pick between them, and never treat one as stale, superseded or the loser.",
       "file": ".artist/policies/DIVERGENCE.md",
-      "sha256": "c61b6a7a80a4ff5ed38bd0a30cd56f27c9750dc09b411fb2c9dfa9fbf4cd7039"
+      "sha256": "738a71e3a1ee9567973207647ad3d7f706711c660d0b2944b989a92139d6a585"
     },
     {
       "id": "policy:evidence",
