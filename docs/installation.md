@@ -113,7 +113,7 @@ Then choose a returned page and ask:
 
 > Read the note titled “Test”.
 
-The MCP server exposes ten read-only tools.
+The MCP server exposes eleven read-only tools.
 
 OneNote holds the working unit:
 
@@ -123,6 +123,13 @@ OneNote holds the working unit:
   not mean paying for the whole notebook. A page the account records no
   modified date for is left out of a `since` window rather than assumed recent,
   and a capped list says how many matched.
+- `map_notes` — sketches every page in one notebook without reading them, so a
+  notebook can be triaged before any page is opened. It returns the opening of
+  each page, which for a well-kept page is its headline facts, at a fraction of
+  the cost of reading the notebook. Where a page has no usable preview, that
+  page alone is read in full and its sketch derived instead — the answer says
+  which pages went that way and why, because the two are not equally good
+  evidence. What it returns is the top of a page, never a summary of one.
 - `read_note` — accepts a page ID returned by `list_notes` and returns readable
   page text. A page too long for one answer comes back in parts, saying which
   part it is and how to ask for the next; it is never cut short in silence. A

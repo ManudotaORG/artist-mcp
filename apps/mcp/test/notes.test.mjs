@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { htmlToText, listNotes, narrowNotes, readNote } from '../dist/notes.js';
+import { htmlToText, listNotes, mapNotes, narrowNotes, readNote } from '../dist/notes.js';
 
 /** Serves canned responses by URL substring, recording every path requested. */
 const stubGraph = (routes) => {
@@ -278,4 +278,114 @@ test('an unreadable since is refused rather than ignored', () => {
 test('a limit that is not a whole page count is refused', () => {
   assert.throws(() => narrowNotes(dated, { limit: 0 }), /at least 1/);
   assert.throws(() => narrowNotes(dated, { limit: 1.5 }), /whole number/);
+});
+
+/**
+ * The cheap route is /preview, but a preview that cannot do the job must not be
+ * passed off as though it had. Graph caps it near 300 characters and never says
+ * so, which is exactly the kind of quiet shortfall that makes a survey read as
+ * complete when it is not.
+ */
+test('a notebook is sketched from previews, one call per page', async () => {
+  const seen = stubGraph({
+    '/pages/p1/preview': { previewText: 'Concert Name  Classical Horizons\nVenue  Staatsoper Wien' },
+    '/pages/p2/preview': { previewText: 'Venue list, updated after the Graz run in October' },
+  });
+
+  const { sketches, read_in_full } = await mapNotes('token', [
+    page('p1', '2026-08-01T00:00:00Z'),
+    page('p2', '2026-07-01T00:00:00Z'),
+  ]);
+
+  assert.deepEqual(sketches.map((s) => s.source), ['preview', 'preview']);
+  assert.equal(read_in_full, 0);
+  // The cheap route only. No page content was fetched.
+  assert.equal(seen.filter((p) => p.includes('/content')).length, 0);
+});
+
+test('an empty preview falls back to reading that page, and says why', async () => {
+  const seen = stubGraph({
+    '/pages/p1/preview': { previewText: '' },
+    '/pages/p1?': { title: 'Gig notes' },
+    '/pages/p1/content': '<p>Everything that matters is further down the page</p>',
+  });
+
+  const { sketches, read_in_full } = await mapNotes('token', [page('p1', null)]);
+
+  assert.equal(sketches[0].source, 'page');
+  assert.match(sketches[0].sketch, /Everything that matters/);
+  assert.match(sketches[0].fell_back, /no preview text/);
+  assert.equal(read_in_full, 1);
+  assert.equal(seen.filter((p) => p.includes('/content')).length, 1);
+});
+
+/**
+ * The floor buys a confirming read on a tiny page, which is cheap: a preview of
+ * 37 characters means a page of 37 characters, so the fallback costs one small
+ * fetch and removes the doubt. Passing the stub off as a sketch would not.
+ */
+test('the floor is exact, so a page just over it is not read again', async () => {
+  const seen = stubGraph({ '/pages/p1/preview': { previewText: 'x'.repeat(40) } });
+
+  const [sketch] = (await mapNotes('token', [page('p1', null)])).sketches;
+  assert.equal(sketch.source, 'preview');
+  assert.equal(seen.filter((p) => p.includes('/content')).length, 0);
+});
+
+test('a preview too thin to triage on is not accepted as a sketch', async () => {
+  stubGraph({
+    '/pages/p1/preview': { previewText: 'notes' },
+    '/pages/p1?': { title: 'Gig notes' },
+    '/pages/p1/content': `<p>${'detail '.repeat(200)}</p>`,
+  });
+
+  const [sketch] = (await mapNotes('token', [page('p1', null)])).sketches;
+  assert.equal(sketch.source, 'page');
+  assert.match(sketch.fell_back, /only 5 characters/);
+});
+
+/** Case by case: one bad preview must not turn the whole map into full reads. */
+test('only the pages that need it are read in full', async () => {
+  const seen = stubGraph({
+    '/pages/p1/preview': { previewText: 'x'.repeat(300) },
+    '/pages/p2/preview': { previewText: '' },
+    '/pages/p2?': { title: 'Thin' },
+    '/pages/p2/content': '<p>read instead</p>',
+  });
+
+  const { sketches, read_in_full } = await mapNotes('token', [
+    page('p1', null),
+    page('p2', null),
+  ]);
+
+  assert.deepEqual(sketches.map((s) => s.source), ['preview', 'page']);
+  assert.equal(read_in_full, 1);
+  assert.equal(seen.filter((p) => p.includes('/content')).length, 1);
+});
+
+test('a page neither route can sketch is reported, never dropped from the map', async () => {
+  stubGraph({ '/pages/p1/preview': { previewText: '' } });
+
+  const [sketch] = (await mapNotes('token', [page('p1', null)])).sketches;
+  assert.equal(sketch.source, 'none');
+  assert.equal(sketch.sketch, null);
+  assert.ok(sketch.error);
+  // Present in the map: a page missing from a survey reads as a page that is
+  // not there at all.
+  assert.equal(sketch.id, 'p1');
+});
+
+/**
+ * Graph does not say it truncated, so a preview that arrived at full length is
+ * the only evidence the page continues. A short one is a short page.
+ */
+test('a full-length preview reports more to come, a short one does not', async () => {
+  stubGraph({
+    '/pages/p1/preview': { previewText: 'x'.repeat(300) },
+    '/pages/p2/preview': { previewText: 'thurs 8pm, bring the good mics' },
+  });
+
+  const { sketches } = await mapNotes('token', [page('p1', null), page('p2', null)]);
+  assert.equal(sketches[0].more, true);
+  assert.equal(sketches[1].more, false);
 });

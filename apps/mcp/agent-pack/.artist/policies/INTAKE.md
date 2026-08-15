@@ -22,11 +22,16 @@ named. That is ordinary Orchestrator work.
 1. Use `list_notes` and group what comes back by notebook and section.
 2. When more than one notebook holds pages, ask which one to work in before
    reading anything. Never assume the largest, the newest, or the tidiest.
-3. Read the pages in the chosen scope before classifying them. A title is not
-   evidence.
-4. Stay inside the chosen scope. Do not read a page from another notebook to
+3. Use `map_notes` on the chosen notebook to see the opening of every page at
+   once, and let it decide reading order. It is cheap where reading everything
+   is not, so a large notebook can be triaged before any page is opened.
+4. Read the pages in the chosen scope before classifying them. A title is not
+   evidence, and neither is a sketch: `map_notes` returns the top of a page, so
+   what it does not show is unsurveyed rather than absent. Classify from a page
+   that has been read.
+5. Stay inside the chosen scope. Do not read a page from another notebook to
    settle a question unless the musician asks for it.
-5. Survey OneNote only. Gmail, Calendar, and attachments are not part of intake:
+6. Survey OneNote only. Gmail, Calendar, and attachments are not part of intake:
    a mailbox cannot tell you what the musician considers a working unit, and
    classifying from evidence rather than from pages invents structure they never
    wrote. If a page is too thin to classify, say so and ask — do not go looking

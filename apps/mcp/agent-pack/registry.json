@@ -7,7 +7,7 @@
       "name": "Intake",
       "description": "Turn an unorganized notebook into working units without inventing anything.",
       "file": ".artist/policies/INTAKE.md",
-      "sha256": "289744808b2b111445613060b564a65d41937e28109106ee5863d7b706cb2567"
+      "sha256": "b912fb3ee3fb216689fe751b5e46385e1ae493d52b2beee6a802b01bfa48eca2"
     },
     {
       "id": "policy:local-state",

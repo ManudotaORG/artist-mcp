@@ -15,12 +15,13 @@ import { GraphError } from './client.js';
 import { mapAttachment, readAttachment } from './attachments.js';
 import { listEvents, readEvent } from './calendar.js';
 import { listEmails, readEmail } from './mail.js';
-import { listNotes, readNote } from './notes.js';
+import { listNotes, mapNotes, readNote } from './notes.js';
 import { accessTokenFor } from './oauth.js';
 import { type ProviderName, loadTokens } from './tokens.js';
 
 export type Operation =
   | 'list_notes'
+  | 'map_notes'
   | 'read_note'
   | 'list_emails'
   | 'read_email'
@@ -31,6 +32,7 @@ export type Operation =
 
 const PROVIDER_FOR: Record<Operation, ProviderName> = {
   list_notes: 'microsoft',
+  map_notes: 'microsoft',
   read_note: 'microsoft',
   list_emails: 'google',
   read_email: 'google',
@@ -60,6 +62,10 @@ export const call = async <T>(
   switch (op) {
     case 'list_notes':
       return (await listNotes(token)) as T;
+    case 'map_notes':
+      // The pages are chosen by the caller, which is where the notebook scope
+      // is settled; nothing here maps a notebook it was not given.
+      return (await mapNotes(token, params.pages as Parameters<typeof mapNotes>[1])) as T;
     case 'read_note':
       return (await readNote(token, params.note_id, params.from_part)) as T;
     case 'list_emails':

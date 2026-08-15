@@ -207,7 +207,7 @@ Important invariants:
   verifies the connection key inside the function. It is not deployed today —
   see the dormant-storage section below.
 - Refresh-token rotation is written back on every Microsoft token exchange.
-- Callers select only `verify`, `list_notes`, `read_note`, `list_emails`,
+- Callers select only `verify`, `list_notes`, `map_notes`, `read_note`, `list_emails`,
   `read_email`, `read_attachment`, `map_attachment`, `list_events`, or
   `read_event`; no arbitrary
   Graph, Gmail, or Calendar URL is accepted. `read_attachment` resolves a MIME position

@@ -193,6 +193,129 @@ export const narrowNotes = <T extends { last_modified: string | null }>(
   };
 };
 
+/**
+ * Graph caps `previewText` at roughly 300 characters and it is always a plain
+ * prefix — measured across two real notebooks, seventeen pages, no exceptions.
+ * On a page of 5,800 characters that is the first 5%.
+ *
+ * That is still worth having: a well-kept page puts its headline facts at the
+ * top, so the prefix carries name, date, venue, lead and budget for the price
+ * of 4 KB across a whole notebook instead of 349 KB. But it is the top of a
+ * page, not a summary of one, and nothing here may pretend otherwise.
+ */
+const PREVIEW_FLOOR = 40;
+
+/**
+ * Graph truncates around 300 characters and never says that it did, so the only
+ * evidence a page continues is a preview that arrived at full length. Below
+ * this, the preview is almost certainly the whole of a short page — the messy
+ * test notebook has one of 84 characters that is 97% of its page.
+ *
+ * Set below the observed cap rather than at it, because the cut lands on a word
+ * boundary and the exact length varies.
+ */
+const PREVIEW_LIKELY_CAP = 250;
+
+/** What a fallback read returns, so a derived sketch is worth more than the preview it replaced. */
+const DERIVED_SKETCH_CHARS = 600;
+
+export type NoteSketch = NoteSummary & {
+  /** The opening of the page, or null when neither route could produce one. */
+  sketch: string | null;
+  /** Where it came from. Never inferred by the caller — a prefix and a read are not the same evidence. */
+  source: 'preview' | 'page' | 'none';
+  /** Why the page had to be read, when it did. */
+  fell_back: string | null;
+  /** True when the page continues past the sketch, which for a preview is usually. */
+  more: boolean;
+  chars_total: number | null;
+  error: string | null;
+};
+
+const previewOf = async (token: string, id: string): Promise<string> => {
+  const res = await graphGet(`/me/onenote/pages/${encodeURIComponent(id)}/preview`, token);
+  const { previewText } = (await res.json()) as { previewText?: string | null };
+  return (previewText ?? '').trim();
+};
+
+/**
+ * Sketch every page in a chosen notebook, cheaply, so a notebook can be triaged
+ * without reading all of it.
+ *
+ * The cheap route is `/preview`: one call per page, but 83x fewer bytes than
+ * fetching content and about half the wall-clock once parallelised.
+ *
+ * A preview that cannot do the job is not passed off as though it had. Where
+ * Graph returns nothing, or returns too little to triage on, that page — and
+ * only that page — is read properly and its sketch derived here. The answer
+ * says which pages went that way and why, because a sketch built from the whole
+ * page is better evidence than a 300-character prefix, and a caller that cannot
+ * tell them apart will trust the weaker one as much as the stronger.
+ *
+ * Scoped to one notebook, as intake requires. Nothing maps across scopes.
+ */
+export const mapNotes = async (
+  token: string,
+  pages: NoteSummary[],
+): Promise<{ sketches: NoteSketch[]; read_in_full: number }> => {
+  const sketches = await Promise.all(
+    pages.map(async (page): Promise<NoteSketch> => {
+      const base = { ...page, chars_total: null as number | null, error: null as string | null };
+
+      let preview = '';
+      let reason: string | null = null;
+      try {
+        preview = await previewOf(token, page.id);
+        // A preview this thin cannot separate a working unit from a stray
+        // note, which is the one thing the map exists to do.
+        if (preview === '') reason = 'the page has no preview text';
+        else if (preview.length < PREVIEW_FLOOR) reason = `the preview was only ${preview.length} characters`;
+      } catch (err) {
+        reason = `the preview call failed (${err instanceof Error ? err.message : String(err)})`;
+      }
+
+      if (reason === null) {
+        return {
+          ...base,
+          sketch: preview,
+          source: 'preview',
+          fell_back: null,
+          // Graph gives no page length and does not say it truncated, so a
+          // preview at full length is the only sign there is more. Inferred,
+          // and reported as an inference rather than as a fact.
+          more: preview.length >= PREVIEW_LIKELY_CAP,
+        };
+      }
+
+      // Case by case, and only for the pages that need it.
+      try {
+        const { text, chars_total } = await readNote(token, page.id);
+        return {
+          ...base,
+          sketch: text.slice(0, DERIVED_SKETCH_CHARS),
+          source: 'page',
+          fell_back: reason,
+          more: chars_total > DERIVED_SKETCH_CHARS,
+          chars_total,
+        };
+      } catch (err) {
+        // Both routes failed. Reported as a gap, never dropped from the map:
+        // a page missing from a survey reads as a page that is not there.
+        return {
+          ...base,
+          sketch: null,
+          source: 'none',
+          fell_back: reason,
+          more: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    }),
+  );
+
+  return { sketches, read_in_full: sketches.filter((s) => s.source === 'page').length };
+};
+
 export type NoteContent = {
   title: string;
   text: string;

@@ -7,6 +7,9 @@ import { GraphError } from "./client.js";
 import { call } from "./dispatch.js";
 import { narrowNotes } from "./notes.js";
 
+/** One call per page, so a notebook nobody put a number on does not become hundreds of requests. */
+const DEFAULT_MAP_PAGES = 40;
+
 type NoteSummary = {
   id: string;
   title: string;
@@ -14,6 +17,15 @@ type NoteSummary = {
   /** Absent from responses served by an older edge function. */
   notebook?: string | null;
   last_modified: string | null;
+};
+
+type NoteSketch = NoteSummary & {
+  sketch: string | null;
+  source: "preview" | "page" | "none";
+  fell_back: string | null;
+  more: boolean;
+  chars_total: number | null;
+  error: string | null;
 };
 
 type EmailSummary = {
@@ -114,6 +126,52 @@ const describeSize = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+/**
+ * Settle which notebook is being worked in, before anything reads a page.
+ *
+ * Shared by `list_notes` and `map_notes` rather than written twice: the rule
+ * that a notebook must be chosen before pages are handed back is the scope rule
+ * intake depends on, and two copies of it would eventually disagree. The caller
+ * names itself so the instruction says which tool to call again.
+ */
+const selectNotebook = async (
+  notebook: string | undefined,
+  tool: string,
+): Promise<{ pages: NoteSummary[] } | { message: string }> => {
+  const { notes } = await call<{ notes: NoteSummary[] }>("list_notes");
+  if (notes.length === 0) return { message: "No notes found." };
+
+  const names = [...new Set(notes.map((n) => n.notebook ?? "(unnamed notebook)"))];
+
+  // Handing back every page across every notebook invites work on the wrong
+  // one. With a choice to be made and nothing chosen, the pages are withheld
+  // until the user has actually made it.
+  if (!notebook && names.length > 1) {
+    const counts = names.map((name) => {
+      const total = notes.filter((n) => (n.notebook ?? "(unnamed notebook)") === name).length;
+      return `- ${name} — ${total} page${total === 1 ? "" : "s"}`;
+    });
+    return {
+      message:
+        `This account has ${names.length} notebooks:\n${counts.join("\n")}\n\n` +
+        `Ask the user which notebook to work in, then call ${tool} again with ` +
+        "that name. Do not guess, and do not work across notebooks unless the " +
+        "user asks for it.",
+    };
+  }
+
+  const wanted = notebook?.trim().toLowerCase();
+  const pages = wanted
+    ? notes.filter((n) => (n.notebook ?? "").trim().toLowerCase() === wanted)
+    : notes;
+
+  if (wanted && pages.length === 0) {
+    return { message: `No notebook named "${notebook}". Available: ${names.join(", ")}.` };
+  }
+
+  return { pages };
 };
 
 const serverVersion = '1.1.0'; // x-release-please-version
@@ -323,53 +381,11 @@ const runServer = async (): Promise<void> => {
     },
     async ({ notebook, since, limit }) => {
       try {
-        const { notes } = await call<{ notes: NoteSummary[] }>("list_notes");
-        if (notes.length === 0) {
-          return { content: [{ type: "text", text: "No notes found." }] };
+        const chosen = await selectNotebook(notebook, "list_notes");
+        if ("message" in chosen) {
+          return { content: [{ type: "text", text: chosen.message }] };
         }
-
-        const names = [...new Set(notes.map((n) => n.notebook ?? "(unnamed notebook)"))];
-
-        // Handing back every page across every notebook invites work on the
-        // wrong one. With a choice to be made and nothing chosen, the pages
-        // are withheld until the user has actually made it.
-        if (!notebook && names.length > 1) {
-          const counts = names.map((name) => {
-            const total = notes.filter(
-              (n) => (n.notebook ?? "(unnamed notebook)") === name,
-            ).length;
-            return `- ${name} — ${total} page${total === 1 ? "" : "s"}`;
-          });
-          return {
-            content: [
-              {
-                type: "text",
-                text:
-                  `This account has ${names.length} notebooks:\n${counts.join("\n")}\n\n` +
-                  "Ask the user which notebook to work in, then call list_notes " +
-                  "again with that name. Do not guess, and do not work across " +
-                  "notebooks unless the user asks for it.",
-              },
-            ],
-          };
-        }
-
-        const wanted = notebook?.trim().toLowerCase();
-        const selected = wanted
-          ? notes.filter((n) => (n.notebook ?? "").trim().toLowerCase() === wanted)
-          : notes;
-
-        if (wanted && selected.length === 0) {
-          return {
-            content: [
-              {
-                type: "text",
-                text:
-                  `No notebook named "${notebook}". Available: ${names.join(", ")}.`,
-              },
-            ],
-          };
-        }
+        const selected = chosen.pages;
 
         // Narrowed only after the notebook is settled, so a `since` window can
         // never be what makes a notebook look empty enough to skip choosing.
@@ -421,6 +437,121 @@ const runServer = async (): Promise<void> => {
           content: [
             { type: "text", text: [lines.join("\n"), ...caveats].join("\n\n") },
           ],
+        };
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  server.tool(
+    "map_notes",
+    "Sketch every page in one notebook without reading them, so a notebook can " +
+      "be triaged before any page is read in full. Returns the opening of each " +
+      "page — for a well-kept page that is its headline facts. Use it to decide " +
+      "which pages are worth read_note. What it returns is the TOP of a page, " +
+      "not a summary of one: never classify a page, judge it complete, or call " +
+      "two pages duplicates on a sketch alone. Read the page before saying " +
+      "anything the sketch cannot show.",
+    {
+      notebook: z
+        .string()
+        .optional()
+        .describe(
+          "Name of the notebook to map, exactly as returned by list_notes. " +
+            "Omit only when the user has not chosen one yet.",
+        ),
+      since: z
+        .string()
+        .optional()
+        .describe("Only sketch pages modified on or after this ISO date."),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe(
+          `Cap how many pages are sketched, newest first. Defaults to ${DEFAULT_MAP_PAGES}.`,
+        ),
+    },
+    async ({ notebook, since, limit }) => {
+      try {
+        const chosen = await selectNotebook(notebook, "map_notes");
+        if ("message" in chosen) {
+          return { content: [{ type: "text", text: chosen.message }] };
+        }
+
+        // A default cap, because this is one call per page: a notebook of two
+        // hundred pages should not become two hundred requests because nobody
+        // said a number. It reports itself, as every other truncation does.
+        const { notes: pages, matched, undated } = narrowNotes(chosen.pages, {
+          since,
+          limit: limit ?? DEFAULT_MAP_PAGES,
+        });
+
+        if (pages.length === 0) {
+          return {
+            content: [
+              { type: "text", text: `No pages to map${since ? ` modified on or after ${since}` : ""}.` },
+            ],
+          };
+        }
+
+        const { sketches, read_in_full } = await call<{
+          sketches: NoteSketch[];
+          read_in_full: number;
+        }>("map_notes", { pages });
+
+        const blocks = sketches.map((s) => {
+          const location = [s.notebook, s.section].filter(Boolean).join(" / ");
+          const head =
+            `## ${s.title}${location ? ` (${location})` : ""} — modified ${s.last_modified ?? "unknown"}` +
+            `\nid: ${s.id}`;
+          if (s.sketch === null) {
+            // Named as a gap. A page missing from a survey reads as a page
+            // that is not there.
+            return `${head}\nNOT SKETCHED: ${s.error ?? "unknown error"} (${s.fell_back}). ` +
+              "Treat this page as unsurveyed, not as empty.";
+          }
+          const how =
+            s.source === "preview"
+              ? "opening of the page"
+              : `read in full because ${s.fell_back}`;
+          // "Probably", because Graph does not say it truncated — a preview
+          // that arrived at full length is the only evidence there is more.
+          return `${head}\n[${how}${s.more ? "; the page probably continues past this" : ""}]\n${s.sketch}`;
+        });
+
+        const caveats = [
+          "These are page openings, not summaries. Anything not visible here " +
+            "is unsurveyed rather than absent — read the page with read_note " +
+            "before concluding a field, a date or a decision is missing.",
+        ];
+        if (read_in_full > 0) {
+          // Said plainly: these sketches are better evidence than the others,
+          // and a caller that cannot tell them apart will trust the weaker one
+          // exactly as much.
+          caveats.push(
+            `${read_in_full} of ${sketches.length} page${read_in_full === 1 ? "" : "s"} had no ` +
+              "usable preview and were read in full instead, so those sketches " +
+              "cover more of the page than the rest.",
+          );
+        }
+        if (pages.length < matched) {
+          caveats.push(
+            `Sketched the ${pages.length} most recently modified of ${matched} pages. ` +
+              "Raise `limit` or narrow with `since` for the rest.",
+          );
+        }
+        if (undated > 0) {
+          caveats.push(
+            `${undated} page${undated === 1 ? "" : "s"} with no modified date recorded ` +
+              `${undated === 1 ? "is" : "are"} not in this window.`,
+          );
+        }
+
+        return {
+          content: [{ type: "text", text: `${blocks.join("\n\n")}\n\n${caveats.join("\n\n")}` }],
         };
       } catch (err) {
         return errorResult(err);
