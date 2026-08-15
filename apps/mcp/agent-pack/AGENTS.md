@@ -12,6 +12,19 @@ page, or when the pages are unstructured and no working unit has been agreed.
 Intake surveys, classifies, and proposes templates; it ends as soon as one
 working unit is chosen.
 
+Three policies apply to every answer, whether or not anything loaded them:
+
+- `policy:answering` — answer what was asked and keep the machinery out of it.
+  Which tool ran and why is context, not content. Limits, gaps, contradictions
+  and the page behind a fact are always reported, however short the answer.
+- `policy:evidence` — assume the likely shape of a page, verify, and widen when
+  the assumption does not hold. A cheap look that found nothing is not a
+  finding: "no date near the top" is not "no date recorded".
+- `policy:divergence` — when two pages in the notebook may describe one event,
+  name the page every answer came from, never switch silently, and let the
+  musician decide which is the project. Shortlist on resemblance, decide on
+  whether the identifying facts agree.
+
 Load `policy:local-state` before persisting agent-owned working context. Local
 state is optional, disposable, and confined to `.artist/local/`. It is not a
 coordination, claims, review, concurrency, or maintenance system.
@@ -19,7 +32,10 @@ coordination, claims, review, concurrency, or maintenance system.
 The MVP is strictly read-only:
 
 - OneNote is the source of artist and project data, and the only source consulted
-  by default. `list_notes` and `read_note` are the default data tools.
+  by default. `list_notes`, `map_notes` and `read_note` are the default data
+  tools: list to find the notebook, map to triage it cheaply, read to decide
+  anything. A sketch from `map_notes` is a page opening, never a summary, so
+  nothing is classified or called complete on one.
 - Drafts, audits, plans, and completion summaries appear only in chat.
 - Never send, book, update, close, or write anything on the user's behalf.
 - Cite page titles for material facts and label inference explicitly.

@@ -20,7 +20,10 @@ notebook. This is the exception to the one-page rule and to the one-action rule:
 a musician who has to ask page by page must already remember which pages to ask
 about, which is the burden this exists to remove.
 
-1. Sketch the notebook with `map_notes` to decide reading order.
+1. Sketch the notebook with `map_notes` to decide reading order. It caps how
+   many pages it sketches and says how many matched — call it again with a
+   `limit` covering all of them. A calendar built from part of a notebook is
+   the failure this whole section is meant to remove.
 2. Read the pages that carry dated work. A due date is not a page opening and
    may sit anywhere in a page, so a sketch cannot answer this — `policy:evidence`
    applies, and a page whose sketch shows no dates has not been shown to have

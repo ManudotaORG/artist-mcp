@@ -79,7 +79,7 @@
       "name": "Archivist",
       "description": "Find the smallest set of OneNote pages that answers a focused question.",
       "file": ".artist/roles/ARCHIVIST.md",
-      "sha256": "33ad68cd1520b2badf3dd2e0df84176f8a814ac3ddd9b340d7f34e633cbb8f0b"
+      "sha256": "fa814d9850de2bd32db418416eb7194f8ab82313c48309454d580b6171d858e9"
     },
     {
       "id": "role:auditor",
@@ -119,7 +119,7 @@
       "name": "Project Manager",
       "description": "Compare one working-unit page with its project-type playbook and identify the single most useful next project-management action. Or, across the chosen notebook, say what is due and what is overdue.",
       "file": ".artist/roles/PROJECT_MANAGER.md",
-      "sha256": "db02647b50f633a4e4fd178df0034929dfc3efc259b4d858f42c991b5e70b1bf"
+      "sha256": "c6ad5de3580b421966ba77dcfc8689dabc359b714ef87312b13ba240a3762e40"
     },
     {
       "id": "role:registrar",
