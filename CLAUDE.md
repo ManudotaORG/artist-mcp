@@ -81,8 +81,9 @@ docs/           the brief
   regenerate `agent-pack/registry.json`, and verify checksums when it changes.
 - **`init` writes absolute paths into the Claude Desktop entry.** Moving the
   checkout or the playbook directory leaves it launching something that no longer
-  exists, and nothing says so until a workflow tool fails naming a directory the
-  user has forgotten. Re-run `init` after moving either.
+  exists. Re-run `init` after moving either. `status` now checks what `init`
+  wrote and names the missing path, so this surfaces in the terminal rather than
+  as a workflow tool failing later on a directory the user has forgotten.
 - **A re-run of the editable install adds, and never changes.** An unedited
   playbook in a user's directory has been accepted, not left awaiting updates, so
   refreshing it would silently alter rules in force on a file they own. Tracking

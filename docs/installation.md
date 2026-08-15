@@ -89,11 +89,19 @@ This asks for `gmail.readonly` and `calendar.events.readonly`. The narrower
 events scope is deliberate — calendar metadata, sharing and settings are not
 read.
 
-Check what this machine holds at any time:
+Check this machine at any time:
 
 ```bash
 npx @manudota/artist-mcp status
 ```
+
+It reports the install as well as the connections: whether the Claude Desktop
+entry exists and where that config is, whether it runs the published package or
+a local build, and whether the playbook directory it recorded still resolves.
+That last one is the quiet failure — `init` writes absolute paths, so moving the
+checkout or renaming the playbook directory leaves a healthy-looking install
+whose workflow tools all fail. `status` names the missing path and the command
+that fixes it.
 
 ## 3. Verify the connection
 
@@ -229,7 +237,7 @@ OneNote, send mail, or change a calendar, because no such tool exists.
 ```bash
 npx @manudota/artist-mcp connect microsoft   # repeat consent, replace the stored token
 npx @manudota/artist-mcp disconnect google   # remove one connection from this machine
-npx @manudota/artist-mcp status              # what this machine currently holds
+npx @manudota/artist-mcp status              # this machine's install and connections
 ```
 
 `disconnect` removes the token from this machine. It does **not** withdraw the
