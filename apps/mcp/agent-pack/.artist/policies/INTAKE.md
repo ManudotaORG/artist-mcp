@@ -56,7 +56,31 @@ When the musician asks for templates, derive them from the project-type
 playbooks that the survey actually matched — one per playbook in use, not one
 per page.
 
-- Leave every field UNKNOWN. A template carries structure, never data.
+**Which templates** is decided by the playbooks, and only by them. The ideal is
+the fewest templates that cover the playbooks in use. Never invent one for a
+kind of page no playbook covers: where the pages show a recurring shape the pack
+has no playbook for, say so and leave it — a missing playbook is worth naming,
+and adding one is not a decision to make silently at template time.
+
+**What goes in one** is where the musician's own notes govern. The playbook is a
+guide, not a specification, and two artists' concerts want different things on
+the page. Let their pages shape it: their headings, their vocabulary, the order
+they work in, the fields they already keep. These are working professionals with
+a structure that functions and wants standardising, not a blank slate — a
+template that fights their habits gets abandoned however complete it is.
+
+**Templates come last.** They are derived from a classification, so they need
+the survey and the classification to have happened — and, where pages
+contradict each other, to have been settled. Asked for templates before that,
+say what is still unclassified and offer to do that first rather than deriving
+from a mess.
+
+- Leave every field UNKNOWN, in those words. Not blank, not a dash — a blank
+  cell reads as "nothing to say here" and an UNKNOWN reads as "this needs an
+  answer", and telling those apart is the whole point. A template carries
+  structure, never data.
+- Examples belong in a hint beside the table, never inside a cell. Anything in
+  a cell gets pasted onto the page and becomes a fact nobody wrote.
 - Add a field only when the playbook expects it or the surveyed pages show a
   recurring need with no home. Say which fields were added and why.
 - Never write to OneNote or any connected service. The musician pastes.
