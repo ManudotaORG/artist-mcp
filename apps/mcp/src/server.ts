@@ -139,7 +139,7 @@ const describeSize = (bytes: number): string => {
 const selectNotebook = async (
   notebook: string | undefined,
   tool: string,
-): Promise<{ pages: NoteSummary[] } | { message: string }> => {
+): Promise<{ pages: NoteSummary[]; scope: string | null } | { message: string }> => {
   const { notes } = await call<{ notes: NoteSummary[] }>("list_notes");
   if (notes.length === 0) return { message: "No notes found." };
 
@@ -171,7 +171,22 @@ const selectNotebook = async (
     return { message: `No notebook named "${notebook}". Available: ${names.join(", ")}.` };
   }
 
-  return { pages };
+  // A name that was supplied walks straight past the question above, so a
+  // guessed one is indistinguishable from a chosen one. Found in use: asked
+  // about "this notebook" in a fresh chat, a session inferred one from saved
+  // context outside OneNote and answered about it without saying which. The
+  // answer was correct and about the wrong notebook, which is the worst
+  // combination. So the scope travels with the pages and cannot be dropped
+  // silently on the way to the user.
+  const others = names.filter((name) => name.trim().toLowerCase() !== wanted);
+  const scope =
+    wanted && others.length > 0
+      ? `Answered for "${notebook}" only. This account also has: ${others.join(", ")}. ` +
+        "Say which notebook this covers when you answer. If the user did not name " +
+        "one, do not infer it from anything outside this conversation — ask."
+      : null;
+
+  return { pages, scope };
 };
 
 const serverVersion = '1.1.0'; // x-release-please-version
@@ -374,7 +389,12 @@ const runServer = async (): Promise<void> => {
         .optional()
         .describe(
           "Name of the notebook to list, exactly as returned by a previous " +
-            "call. Omit only when the user has not chosen one yet.",
+            "call in this conversation, or named by the user in it. Omit when " +
+            "they have not chosen one — omitting asks them, which is correct. " +
+            "Never fill this in from saved context, an earlier session, or a " +
+            "notebook you happen to know the user has: a plausible guess here " +
+            "is indistinguishable from their choice and produces a confident " +
+            "answer about the wrong notebook.",
         ),
       since: z
         .string()
@@ -435,6 +455,7 @@ const runServer = async (): Promise<void> => {
         // A truncated list that does not say so is read as the whole notebook,
         // and the answer built on it is wrong without looking wrong.
         const caveats: string[] = [];
+        if (chosen.scope) caveats.push(chosen.scope);
         if (shown.length < matched) {
           caveats.push(
             `Showing the ${shown.length} most recently modified of ${matched} matching ` +
@@ -474,8 +495,10 @@ const runServer = async (): Promise<void> => {
         .string()
         .optional()
         .describe(
-          "Name of the notebook to map, exactly as returned by list_notes. " +
-            "Omit only when the user has not chosen one yet.",
+          "Name of the notebook to map, exactly as returned by list_notes in " +
+            "this conversation, or named by the user in it. Omit when they have " +
+            "not chosen one. Never fill it in from saved context or an earlier " +
+            "session.",
         ),
       since: z
         .string()
@@ -539,6 +562,7 @@ const runServer = async (): Promise<void> => {
         });
 
         const caveats = [
+          ...(chosen.scope ? [chosen.scope] : []),
           "These are page openings, not summaries. Anything not visible here " +
             "is unsurveyed rather than absent — read the page with read_note " +
             "before concluding a field, a date or a decision is missing.",

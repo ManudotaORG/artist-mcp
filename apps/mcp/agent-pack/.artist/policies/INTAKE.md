@@ -21,7 +21,11 @@ named. That is ordinary Orchestrator work.
 
 1. Use `list_notes` and group what comes back by notebook and section.
 2. When more than one notebook holds pages, ask which one to work in before
-   reading anything. Never assume the largest, the newest, or the tidiest.
+   reading anything. Never assume the largest, the newest, or the tidiest — and
+   never one you know of from outside this conversation, from saved context or
+   an earlier session. A notebook the musician has not named in front of you is
+   a guess, however good, and the answer it produces is correct about the wrong
+   pages. Say which notebook every answer covers.
 3. Use `map_notes` on the chosen notebook to see the opening of every page at
    once, and let it decide reading order. It is cheap where reading everything
    is not, so a large notebook can be triaged before any page is opened.
