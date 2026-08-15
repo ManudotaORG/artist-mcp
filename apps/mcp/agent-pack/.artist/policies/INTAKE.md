@@ -50,17 +50,53 @@ When a page carries none of the evidence its likeliest playbook expects, say it
 is too thin to classify and ask which project it belongs to. A confident label
 on three lines of context is worse than an admission.
 
+A page of headings with every field `UNKNOWN` is a different thing from a thin
+page: it is structure, and the section below says what to do with it.
+
+## Pages with nothing filled in
+
+A page whose fields are all `UNKNOWN` is structure, not work. It may be a
+template the musician keeps or a project they pasted and never started, and
+those are byte-identical until the first field is filled — so do not try to tell
+them apart. You do not need to. While a page holds no facts:
+
+- It is **not a working unit**. Do not classify it as a live project, do not put
+  it in a list of what is due, and do not call it a duplicate of the pages it
+  resembles — it resembles them because they share a shape, which is the point
+  of a shape.
+- It is **usable as a template shape**, whichever of the two it is.
+- Say it is there and what it looks like. Silence about it is worse than either
+  label.
+
+Once any field carries a value, it is a working unit like any other, and the
+ambiguity is gone. That is the only moment the distinction would have mattered.
+
 ## Templates
 
-When the musician asks for templates, derive them from the project-type
-playbooks that the survey actually matched — one per playbook in use, not one
-per page.
+When the musician asks for templates, **look for one before deriving one.** The
+musician may already keep the shape they want, and deriving afresh each time is
+what makes a template's shape drift.
 
-**Which templates** is decided by the playbooks, and only by them. The ideal is
-the fewest templates that cover the playbooks in use. Never invent one for a
-kind of page no playbook covers: where the pages show a recurring shape the pack
-has no playbook for, say so and leave it — a missing playbook is worth naming,
-and adding one is not a decision to make silently at template time.
+- A template announces itself with a version line in its opening — `map_notes`
+  returns that for the whole notebook cheaply, so this costs one map, not a
+  read of every page.
+- A `Templates` section is a strong signal and not a requirement. The stamp is
+  what identifies a template; where it sits is a hint.
+- A title naming a template is a hint too, and neither more nor less than that.
+  A musician who paste-names their pages differently still has templates.
+- Reuse what you find: their shape, their headings, their fields. Say which
+  template governed, its version, and when it last changed, so the transcript
+  shows whether the shape came from them or from a playbook.
+- Two stamps for one project type: ask which. Never take the newer, the fuller
+  or the tidier.
+- A stamp naming a project type no playbook covers: ask what it is for. Do not
+  bind it to the nearest playbook.
+
+**Where none is found**, derive from the project-type playbooks the survey
+matched — one per playbook in use, not one per page, and the fewest that cover
+them. Never invent one for a kind of page no playbook covers: say so and leave
+it, because a missing playbook is worth naming and adding one is not a decision
+to make silently at template time.
 
 **What goes in one** is where the musician's own notes govern. The playbook is a
 guide, not a specification, and two artists' concerts want different things on
@@ -110,7 +146,11 @@ the whole point.
 A page pasted from a template inherits the line by copy-paste, so it keeps
 saying which shape it came from after the template has moved on. That is what
 makes "which of my pages predate my current template" answerable later without
-reading every page.
+reading every page — the versions are in the openings a single map returns.
+
+Report the version because it is what the musician meant, and the page's
+modified date because it is what is true. A template they edited without bumping
+the line is not a liar; the line records intent and the date records change.
 
 ### Delivery
 
