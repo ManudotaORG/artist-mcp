@@ -7,15 +7,15 @@
       "name": "Answering",
       "description": "Answer the question that was asked, in as few words as it takes, and keep the machinery out of it.",
       "file": ".artist/policies/ANSWERING.md",
-      "sha256": "b393901109d1296333202a417daa0d45ee69fdc0768f04cc02e60952f2f323e1"
+      "sha256": "b6fe44eca65991ecd8d69ee7474fb5e003b3e4d08a8336f615d988f14538bbee"
     },
     {
       "id": "policy:divergence",
       "kind": "policy",
       "name": "Divergence",
-      "description": "When two pages in the notebook describe the same event, say so, and let the musician settle each fact the two disagree on. Neither page is the project — the event is, and the pages are two records of it. Never decide for them, and never treat one as stale, superseded or the loser. Asked to tidy up, recommending is right and is covered below — recommending and deciding are not the same thing.",
+      "description": "When two pages in the notebook describe the same event, say so, and let the musician settle each fact the two disagree on. Neither page is the project — the event is, and the pages are two records of it.",
       "file": ".artist/policies/DIVERGENCE.md",
-      "sha256": "d928966cf938de86f9c67f56f1bcb52468e465f6d2e4a7c6dc37c31193b3afb7"
+      "sha256": "d70e7dbec2a2b345e2a2af1f9ce16b07645b145105e40b613b27c8efe99d5c3e"
     },
     {
       "id": "policy:evidence",
