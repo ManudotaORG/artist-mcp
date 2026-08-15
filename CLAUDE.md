@@ -79,19 +79,14 @@ docs/           the brief
   standalone.
 - **Workflow Markdown is executable policy.** Preserve the read-only boundary,
   regenerate `agent-pack/registry.json`, and verify checksums when it changes.
-  Before editing the pack, read "Editing the pack" in
-  [docs/releases-and-agents.md](docs/releases-and-agents.md) — a headline is a
-  rule, a tool description outranks a playbook, and extracting a concern means
-  deleting it where it came from in the same edit.
-- **A rule in a role is not in force.** The briefing loads project types and the
-  policies named in `alwaysInFull` in full; every role arrives as a one-line
-  summary until something loads it. So a rule that has to hold whether or not
-  anyone reached for that role belongs in a policy, not in a role. This has
-  caused three bugs already: the evidence boundary sat in `AGENTS.md`, which the
-  server never loads, and a session read a mailbox unasked; the Project
-  Manager's rule against pooling disputed milestones sat in its role file, and a
-  due list stated one page's date as fact. Test it the way those were found —
-  ask the server for the briefing and grep for the sentence.
+- **A rule in a role is not in force.** Roles arrive in the briefing as a
+  one-line summary; only project types and the policies in `alwaysInFull` load
+  in full. Three bugs came from rules sitting where no session could see them.
+  Read "Editing the pack" in
+  [docs/releases-and-agents.md](docs/releases-and-agents.md) before touching the
+  pack — that one, plus a headline is a rule, a tool description outranks a
+  playbook, and extracting a concern means deleting it where it came from in the
+  same edit.
 - **`init` writes absolute paths into the Claude Desktop entry.** Moving the
   checkout or the playbook directory leaves it launching something that no longer
   exists. Re-run `init` after moving either. `status` now checks what `init`
