@@ -17,6 +17,8 @@ const entry = (id, kind, overrides = {}) => ({
 
 const entries = [
   entry('policy:answering', 'policy'),
+  entry('policy:divergence', 'policy'),
+  entry('policy:evidence', 'policy'),
   entry('policy:intake', 'policy'),
   entry('policy:local-state', 'policy'),
   entry('project-type:concert', 'project-type'),
@@ -47,6 +49,21 @@ test('the answering policy is in force from the first reply, not summarised', as
   const text = await renderWorkflowBriefing(entries, loadAll);
   assert.match(text, /body of policy:answering/);
   assert.doesNotMatch(text, /- policy:answering:/);
+});
+
+/**
+ * Evidence and divergence have to bind before anything would think to load a
+ * policy. Evidence stops a cheap look that found nothing being reported as a
+ * gap — applied late, the false gap is already out. Divergence has to fire
+ * unprompted, because nobody asks whether two pages are one event.
+ */
+test('evidence and divergence are in force, and local state is not', async () => {
+  const text = await renderWorkflowBriefing(entries, loadAll);
+  assert.match(text, /body of policy:evidence/);
+  assert.match(text, /body of policy:divergence/);
+  // Answers a question that is asked out loud, so a one-liner is enough.
+  assert.doesNotMatch(text, /body of policy:local-state/);
+  assert.match(text, /- policy:local-state:/);
 });
 
 /**

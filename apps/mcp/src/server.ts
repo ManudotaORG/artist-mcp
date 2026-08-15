@@ -201,13 +201,24 @@ const renderWorkflowBriefing = async (
   // all of which happen before anything would think to load a policy.
   // A run that loaded nothing at all classified five pages and then
   // offered to write template files, which intake forbids.
-  // Answering is here on the same reasoning: it governs the shape of every
-  // reply, including the first one, so a summary of it is worth nothing. A rule
-  // that is merely available is not a rule.
+  // The other three policies are here on the same reasoning: each has to bind
+  // before anything would think to load a policy, so a summary of it is worth
+  // nothing. Answering shapes every reply including the first. Evidence governs
+  // every read, and its rule is that a cheap look which found nothing is not a
+  // finding — a rule that only applies once loaded would be applied after the
+  // false gap had already been reported. Divergence has to fire unprompted:
+  // nobody asks whether two pages are one event, and the damage is done by
+  // working in one of them as though the other were not there.
+  //
+  // Local state stays a summary. It answers a question that is asked out loud.
+  const ALWAYS: readonly string[] = [
+    "policy:intake",
+    "policy:answering",
+    "policy:evidence",
+    "policy:divergence",
+  ];
   const alwaysInFull = (entry: (typeof entries)[number]) =>
-    entry.kind === "project-type" ||
-    entry.id === "policy:intake" ||
-    entry.id === "policy:answering";
+    entry.kind === "project-type" || ALWAYS.includes(entry.id);
   const upfront = entries.filter(alwaysInFull);
   const rest = entries.filter((entry) => !alwaysInFull(entry));
 
