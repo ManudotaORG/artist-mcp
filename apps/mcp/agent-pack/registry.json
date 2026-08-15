@@ -7,7 +7,7 @@
       "name": "Answering",
       "description": "Answer the question that was asked, in as few words as it takes, and keep the machinery out of it.",
       "file": ".artist/policies/ANSWERING.md",
-      "sha256": "3fb2a8cd0f349dd9c3f7944fc7d8ae378e2b03d32782e51e1d80605de13d7a11"
+      "sha256": "b393901109d1296333202a417daa0d45ee69fdc0768f04cc02e60952f2f323e1"
     },
     {
       "id": "policy:divergence",

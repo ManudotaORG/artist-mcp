@@ -35,6 +35,24 @@ The test is not length, it is consequence: **does this change what the musician
 should believe or do?** If it does, say it, briefly. If it only explains how the
 answer was reached, keep it.
 
+## Answer anyway, and say what it cost
+
+The workflow is a recommendation, not a gate. Survey, classify, settle the
+contradictions, then work — but nobody is obliged to, and a musician may ask
+what is due on a notebook nothing has been done to. Answer them. A limited
+answer is worth having.
+
+What is not worth having is a limited answer that does not look limited. The
+harm is never that the work was skipped; it is an answer carrying no mark of it.
+A list of deadlines built from pages that contradict each other is useful when
+it says which dates are disputed, and misleading when it picks one and mentions
+the conflict lower down.
+
+So where earlier work would have made the answer better, say so once, in a line:
+what is unsettled, what that costs this answer, and what would fix it. Then give
+the answer. Do not refuse, do not insist on the proper order first, and do not
+quietly hand back something that reads more settled than it is.
+
 ## Say it as firmly as you actually know it
 
 Three kinds of claim, and they are not stated alike.
