@@ -129,6 +129,21 @@ const describeSize = (bytes: number): string => {
 };
 
 /**
+ * Whether this server has ever handed back the list of notebooks.
+ *
+ * The one thing the server can actually know about where a notebook name came
+ * from. It cannot see who typed it — but a name arriving before the list was
+ * ever served cannot have come from the tool, so it came from somewhere outside
+ * the conversation. That is the case worth catching: a session inferred a
+ * notebook from saved context and answered about the wrong one, correctly and
+ * without saying which.
+ *
+ * Only ever set to true, and only by serving the list. It says nothing after a
+ * session has seen the notebooks once, which is the honest limit of it.
+ */
+let notebooksHaveBeenListed = false;
+
+/**
  * Settle which notebook is being worked in, before anything reads a page.
  *
  * Shared by `list_notes` and `map_notes` rather than written twice: the rule
@@ -148,7 +163,13 @@ const selectNotebook = async (
   // Handing back every page across every notebook invites work on the wrong
   // one. With a choice to be made and nothing chosen, the pages are withheld
   // until the user has actually made it.
-  if (!notebook && names.length > 1) {
+  // A name that arrives before this session has ever seen the list did not come
+  // from the tool, so it is either the user's or a guess — and the two are
+  // indistinguishable from here. Ask, the same way an omitted name asks.
+  const unseenName = notebook !== undefined && !notebooksHaveBeenListed;
+
+  if ((!notebook || unseenName) && names.length > 1) {
+    notebooksHaveBeenListed = true;
     const counts = names.map((name) => {
       const total = notes.filter((n) => (n.notebook ?? "(unnamed notebook)") === name).length;
       return `- ${name} — ${total} page${total === 1 ? "" : "s"}`;
@@ -156,11 +177,19 @@ const selectNotebook = async (
     return {
       message:
         `This account has ${names.length} notebooks:\n${counts.join("\n")}\n\n` +
-        `Ask the user which notebook to work in, then call ${tool} again with ` +
-        "that name. Do not guess, and do not work across notebooks unless the " +
-        "user asks for it.",
+        (unseenName
+          ? `You asked for "${notebook}", but nothing in this conversation has ` +
+            "named a notebook yet. Ask the user which one they mean — including " +
+            "whether it is that one — and call " +
+            `${tool} again once they have said. A notebook you know of from ` +
+            "elsewhere is a guess, and a guess here produces an answer that is " +
+            "correct about the wrong pages."
+          : `Ask the user which notebook to work in, then call ${tool} again ` +
+            "with that name. Do not guess, and do not work across notebooks " +
+            "unless the user asks for it."),
     };
   }
+  notebooksHaveBeenListed = true;
 
   const wanted = notebook?.trim().toLowerCase();
   const pages = wanted
