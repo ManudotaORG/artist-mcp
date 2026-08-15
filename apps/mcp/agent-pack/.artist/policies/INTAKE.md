@@ -85,6 +85,33 @@ from a mess.
   recurring need with no home. Say which fields were added and why.
 - Never write to OneNote or any connected service. The musician pastes.
 
+### Version line
+
+Every template you produce carries its version as its **first line**, before the
+heading, in exactly this shape:
+
+```
+Template: Concert v1.0
+```
+
+The project type as the playbook names it, then `v` and a number. First line
+because a page's opening is what can be read cheaply later; one fixed shape
+because a version buried in prose cannot be read back, and reading it back is
+the whole point.
+
+- Derived from the playbooks alone: `v1.0`.
+- Derived from a template the artist already keeps: carry their version with the
+  minor raised — `v2.2` becomes `v2.3` — and say what changed and why.
+- This line is metadata, not a field. It is the one thing in a template that is
+  not `UNKNOWN`, and that is deliberate.
+- Never invent a version for a template the artist wrote themselves. If theirs
+  carries none, say so and offer to add one; do not stamp their page for them.
+
+A page pasted from a template inherits the line by copy-paste, so it keeps
+saying which shape it came from after the template has moved on. That is what
+makes "which of my pages predate my current template" answerable later without
+reading every page.
+
 ### Delivery
 
 Hand over one file per template, each openable on its own, so the musician can
@@ -108,6 +135,9 @@ invisible seams.
 
 A template is pasted before it is read, so it is built for the clipboard.
 
+- Put the version line at the top as ordinary text, not inside a table and not
+  in a code fence. It has to survive the paste as plain readable text, and it
+  has to be the first thing on the page.
 - Present it as formatted text — real headings, real tables — never inside a
   code block. A fenced template copies as literal `###` and pipe characters and
   lands in OneNote as unreadable plain text.
