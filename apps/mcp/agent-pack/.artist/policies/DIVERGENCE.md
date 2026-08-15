@@ -66,8 +66,44 @@ These hold from the moment it is suspected, not from when it is confirmed.
 - **Show conflicts side by side**, with both page titles, and leave them
   standing. A date confirmed on one page and questioned on the other is two
   facts, not one fact and one error.
-- **Never merge, and never propose a winner.** Not by summarising both into one
-  answer, and not by treating the thinner page as a draft of the other.
+- **Never resolve a conflict yourself**, and never summarise the two into one
+  set of facts as though the disagreement were settled. Choosing between two
+  values is the musician's, every time.
+
+## Never ask which page is right
+
+A page is not right. Each disagreeing field is its own decision, and asking for
+one verdict on the pair takes all of them at once by implication.
+
+Two pages for one wedding may disagree on the date, the ceremony time, the
+guest count and the curfew. That is four questions. The musician may well want
+the later date with the smaller guest count, and no single answer about which
+page wins can express that.
+
+So ask field by field, and list the fields. "These four disagree — which value
+is right for each?" is the question. "Which of these pages is correct?" is the
+same winner-picking this policy exists to prevent, arriving in the shape of a
+question.
+
+Where they answer only some, the rest stay open and stay reported.
+
+## Consolidating
+
+Consolidation is the point. Two pages for one gig is the problem, and one good
+page is the fix — so helping them get there is right, once it is their decision
+rather than a judgement made for them.
+
+Offer a consolidated page only when **every** conflicting field has been settled
+by the musician. Not when they have named a page.
+
+- Every value in it is one they gave. Nothing is inherited from "the page that
+  won", because no page won.
+- A field neither page records, or that they have not settled, stays `UNKNOWN`.
+  Consolidating is not the moment to start filling gaps.
+- Say which page each carried-over fact came from, so it can be checked.
+- It is theirs to paste. Never write, and never imply it was written.
+- Say what is left: the other page still exists and still holds the old values.
+  Consolidation is not deletion, and only they can remove a page.
 
 ## Make it outlive the session
 
@@ -79,6 +115,9 @@ cross-reference for them to paste onto both pages — naming the other page, and
 which is of record. The page is the state; a note on the page survives, syncs
 and is visible to them, and local state is none of those things.
 
+Offer this before offering to consolidate. It costs one line and it survives
+whether or not they ever tidy the pages up.
+
 Offer it once, when the decision is made. Do not paste, do not imply it was
 pasted, and do not ask again if they decline.
 
@@ -86,6 +125,9 @@ pasted, and do not ask again if they decline.
 
 - Never delete, archive, close, or edit either page.
 - Never treat "duplicate" as settled without the musician saying so.
+- Never offer to merge, tidy, combine or clean up two pages into one before
+  every conflicting field has been settled. The offer implies the work is
+  yours to judge, and they will reasonably say yes to it.
 - Never let a suspected twin stop the work: answer the question against the page
   they choose, and say which one that was.
 - A page too thin to judge is not a duplicate. Say it is too thin and ask.

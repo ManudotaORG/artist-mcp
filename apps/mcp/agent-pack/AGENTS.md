@@ -45,6 +45,10 @@ The MVP is strictly read-only:
 
 ## Supporting evidence is opt-in
 
+`policy:evidence` is the authoritative statement of this rule and is loaded on
+every session. What follows restates it for coding agents reading this file
+instead of the briefing. If the two ever disagree, the policy governs.
+
 Gmail, Google Calendar, and email attachments are readable through
 `list_emails`, `read_email`, `map_attachment`, `read_attachment`, `list_events`,
 and `read_event`. They are supporting evidence for a OneNote page and nothing

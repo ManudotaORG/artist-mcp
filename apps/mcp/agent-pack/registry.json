@@ -15,7 +15,7 @@
       "name": "Divergence",
       "description": "When two pages in the notebook describe the same event, say so and let the musician decide which one is the project. Never choose between them silently.",
       "file": ".artist/policies/DIVERGENCE.md",
-      "sha256": "1a32d465ba58e056a43d09d0f5ad0a5734a0ca4e4080776e1c95092cf5ff6889"
+      "sha256": "fadd092ab9f330adf05f9b78837f9100003218175b61ad1151620f0530917b1f"
     },
     {
       "id": "policy:evidence",
@@ -23,7 +23,7 @@
       "name": "Evidence",
       "description": "Assume the likely shape of a page, then verify it. When the assumption does not hold, widen the search — never report the assumption's failure as a finding.",
       "file": ".artist/policies/EVIDENCE.md",
-      "sha256": "50ab064bca2d4e1e8803e40f37707eb74e0f9db9bd8c85b749b5a42a19448129"
+      "sha256": "2766f548d1a23e0577f784a00db6971e8a5da69c23b700f02061f302055c9467"
     },
     {
       "id": "policy:intake",
