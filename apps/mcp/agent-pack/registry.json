@@ -77,9 +77,9 @@
       "id": "role:janitor",
       "kind": "role",
       "name": "Janitor",
-      "description": "Identify working units or tasks that appear complete, expired, duplicated, or superseded and summarize the cleanup a human may choose to perform.",
+      "description": "Identify working units or tasks on one page that appear complete or expired, and summarize the cleanup a human may choose to perform.",
       "file": ".artist/roles/JANITOR.md",
-      "sha256": "bb6592fa5955716c3ba1ac0d837291aafd43d6a0ad77ec2063c9e7fc3f6b4e52"
+      "sha256": "b974f41ed4fc871e3d6ad6e6f115388ea7122a71dd75eebe0ab59013bc8cc777"
     },
     {
       "id": "role:orchestrator",
