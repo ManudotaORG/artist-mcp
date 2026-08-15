@@ -13,9 +13,9 @@
       "id": "policy:divergence",
       "kind": "policy",
       "name": "Divergence",
-      "description": "When two pages in the notebook describe the same event, say so and let the musician decide which one is the project. Never choose between them silently.",
+      "description": "When two pages in the notebook describe the same event, say so, and let the musician settle each fact the two disagree on. Neither page is the project — the event is, and the pages are two records of it. Never pick between them, and never treat one as stale, superseded or the loser.",
       "file": ".artist/policies/DIVERGENCE.md",
-      "sha256": "fadd092ab9f330adf05f9b78837f9100003218175b61ad1151620f0530917b1f"
+      "sha256": "c61b6a7a80a4ff5ed38bd0a30cd56f27c9750dc09b411fb2c9dfa9fbf4cd7039"
     },
     {
       "id": "policy:evidence",

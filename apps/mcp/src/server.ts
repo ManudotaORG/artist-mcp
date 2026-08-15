@@ -627,9 +627,11 @@ const runServer = async (): Promise<void> => {
 
   server.tool(
     "list_emails",
-    "Search the user's Gmail and list matching messages, newest first, with " +
+    "Only call this when the musician has asked for this specific look, and wait for their yes. A connected account is not standing permission; a gap, a contradiction, or two pages disagreeing is not a reason to search. Offer, name the search, and stop. " +
+      "Search the user's Gmail and list matching messages, newest first, with " +
       "subject, sender, date and snippet. Email is supporting evidence for a " +
-      "OneNote working unit — it corroborates or fills gaps in a page, and is " +
+      "OneNote working unit — it corroborates a page once the musician has " +
+      "asked you to look, and is " +
       "never itself the working unit. Cite the subject and sender behind any " +
       "fact taken from here, and never treat a hedged or forwarded value as " +
       "settled. Requires a Google connection, which is separate from the " +
@@ -675,7 +677,9 @@ const runServer = async (): Promise<void> => {
 
   server.tool(
     "read_email",
-    "Read one Gmail message in full, including its body. Takes the id from " +
+    "Only when the musician asked for this look. One yes covers one look, not " +
+      "a standing licence to keep reading. " +
+      "Read one Gmail message in full, including its body. Takes the id from " +
       "list_emails. Any attachments are listed by name, type and size but " +
       "their contents are not fetched — describe what is attached, never what " +
       "it says, and use read_attachment to actually read one. Read-only: this " +
@@ -906,9 +910,11 @@ const runServer = async (): Promise<void> => {
 
   server.tool(
     "list_events",
-    "List Google Calendar events in a time window, earliest first. Calendar is " +
-      "supporting evidence for a OneNote working unit — it corroborates or " +
-      "contradicts what a page claims about a date, venue or attendee, and is " +
+    "Only call this when the musician has asked for this specific look, and wait for their yes. A connected account is not standing permission; a gap, a contradiction, or two pages disagreeing is not a reason to search. Offer, name the search, and stop. " +
+      "List Google Calendar events in a time window, earliest first. Calendar is " +
+      "supporting evidence for a OneNote working unit — asked to, it can " +
+      "corroborate or contradict what a page claims about a date, venue or " +
+      "attendee, and is " +
       "never itself the working unit. When a page and the calendar disagree, " +
       "report both and name each source; do not pick a winner. Recurring " +
       "occurrences are expanded and flagged, so 'every Tuesday' and 'this " +
@@ -964,7 +970,9 @@ const runServer = async (): Promise<void> => {
 
   server.tool(
     "read_event",
-    "Read one Google Calendar event in full, including description and " +
+    "Only when the musician asked for this look. One yes covers one look, not " +
+      "a standing licence to keep reading. " +
+      "Read one Google Calendar event in full, including description and " +
       "attendees. Takes the id from list_events. Read-only: this never creates, " +
       "edits, moves, or responds to anything.",
     {

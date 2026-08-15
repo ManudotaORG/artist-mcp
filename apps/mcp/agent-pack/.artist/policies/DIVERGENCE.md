@@ -1,7 +1,9 @@
 # Divergence
 
-When two pages in the notebook describe the same event, say so and let the
-musician decide which one is the project. Never choose between them silently.
+When two pages in the notebook describe the same event, say so, and let the
+musician settle each fact the two disagree on. Neither page is the project — the
+event is, and the pages are two records of it. Never pick between them, and
+never treat one as stale, superseded or the loser.
 
 One OneNote page is one working unit, and everything here rests on that. A
 notebook where one gig is held twice breaks it — not because the pages are
@@ -60,9 +62,9 @@ These hold from the moment it is suspected, not from when it is confirmed.
 - **Never switch silently.** Not between answers, not within one. Changing which
   page is being used is something to say out loud.
 - **Ask before assuming one.** Before a recommendation, a draft, a gap
-  inventory or a next action that treats one page as the project, ask which page
-  is the one of record. Never take the fuller, the newer, the tidier or the one
-  already open.
+  inventory or a next action that needs a single set of facts, ask for the
+  values it needs — not for a page. Never take the fuller, the newer, the tidier
+  or the one already open.
 - **Show conflicts side by side**, with both page titles, and leave them
   standing. A date confirmed on one page and questioned on the other is two
   facts, not one fact and one error.
@@ -81,9 +83,13 @@ the later date with the smaller guest count, and no single answer about which
 page wins can express that.
 
 So ask field by field, and list the fields. "These four disagree — which value
-is right for each?" is the question. "Which of these pages is correct?" is the
-same winner-picking this policy exists to prevent, arriving in the shape of a
-question.
+is right for each?" is the question.
+
+Every one of these is the same winner-picking in a different coat, and none of
+them may be said: which of these pages is correct; which page should I use;
+which one wins; which is current; shall I flag the stale one; shall I mark the
+other superseded. A page the musician has not ruled on is not stale, and saying
+so makes the choice for them while appearing to ask.
 
 Where they answer only some, the rest stay open and stay reported.
 
@@ -110,10 +116,11 @@ by the musician. Not when they have named a page.
 A twin found today is unknown tomorrow, and the drift resumes. Nothing here
 remembers, and nothing here writes.
 
-So when the musician settles which page is the project, offer a one-line
-cross-reference for them to paste onto both pages — naming the other page, and
-which is of record. The page is the state; a note on the page survives, syncs
-and is visible to them, and local state is none of those things.
+So once they have settled the facts, offer a one-line cross-reference for them
+to paste onto both pages, each naming the other as a record of the same event.
+It states the link, not a ranking. The page is the state; a note on the page
+survives, syncs and is visible to them, and local state is none of those
+things.
 
 Offer this before offering to consolidate. It costs one line and it survives
 whether or not they ever tidy the pages up.
@@ -128,6 +135,7 @@ pasted, and do not ask again if they decline.
 - Never offer to merge, tidy, combine or clean up two pages into one before
   every conflicting field has been settled. The offer implies the work is
   yours to judge, and they will reasonably say yes to it.
-- Never let a suspected twin stop the work: answer the question against the page
-  they choose, and say which one that was.
+- Never let a suspected twin stop the work. Answer from both, naming each; or
+  where a single answer is unavoidable, ask for the values it needs and say
+  which page supplied every fact you used.
 - A page too thin to judge is not a duplicate. Say it is too thin and ask.
