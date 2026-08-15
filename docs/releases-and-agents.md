@@ -91,14 +91,16 @@ npx @manudota/artist-mcp agents install
 ```
 
 It adds a root `AGENTS.md`, seven narrow roles, four starter project types, and
-the local-state policy under `.artist/`. Installation is idempotent. A
+five policies under `.artist/`. Installation is idempotent. A
 differing root `AGENTS.md` is kept; the command explains how to reference
 `.artist/` manually. Differing workflow files stop the install before anything
 is written.
 
 The roles are Orchestrator, Archivist, Registrar, Project Manager, Envoy,
 Auditor, and Janitor. The starter project types are Concert, Large Concert,
-Studio Session, and Rehearsal.
+Studio Session, and Rehearsal. The policies are Intake, Answering, Evidence,
+Divergence, and Local State; every one but Local State is loaded in full at the
+start of a session rather than summarised.
 
 One OneNote page is one working unit. The pack can read that page and produce a
 recommendation, plan, draft, audit, or cleanup summary in chat. It cannot write

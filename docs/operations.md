@@ -349,8 +349,8 @@ scoped to the `production` GitHub environment. Use the manual
 `telegram-release-notes.yml` workflow to retry a specific existing tag without
 republishing npm.
 
-Verify the MCP tools with a real client: `list_notes` and `read_note` against
-OneNote, `list_emails`, `read_email`, `read_attachment`, `list_events` and
+Verify the MCP tools with a real client: `list_notes`, `map_notes` and
+`read_note` against OneNote, `list_emails`, `read_email`, `read_attachment`, `list_events` and
 `read_event` against Google, and `list_agent_workflows` and `load_agent_workflow` against the pack. Registry
 and playbook content come from the installed npm package by default, preserving
 the version selected by the user. `ARTIST_MCP_REGISTRY_URL` and
