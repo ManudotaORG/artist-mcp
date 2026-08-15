@@ -124,7 +124,10 @@ OneNote holds the working unit:
   modified date for is left out of a `since` window rather than assumed recent,
   and a capped list says how many matched.
 - `read_note` — accepts a page ID returned by `list_notes` and returns readable
-  page text.
+  page text. A page too long for one answer comes back in parts, saying which
+  part it is and how to ask for the next; it is never cut short in silence. A
+  OneNote page records no page numbers, so a part is a length of text rather
+  than anything the page itself defines.
 
 Google is supporting evidence for a page, never a working unit of its own, and
 needs a separate Google connection:

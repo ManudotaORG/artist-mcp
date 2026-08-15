@@ -127,10 +127,77 @@ test('a note is returned as text, not markup', async () => {
     '/pages/p1/content': '<p>Line one</p><p>Line two</p>',
   });
 
+  // A normal page is unaffected, byte for byte, and reports itself as whole.
   assert.deepEqual(await readNote('token', 'p1'), {
     title: 'Soundcheck',
     text: 'Line one\nLine two',
+    chars_total: 17,
+    parts_total: 1,
+    part: 1,
+    next_from_part: null,
   });
+});
+
+/**
+ * A disorganised notebook is exactly where one enormous page lives — a year of
+ * gig notes under a single heading. Returning it whole swallowed the context
+ * the analysis needed, and said nothing about having done so.
+ */
+const longPage = (chars) => ({
+  '/pages/big?': { title: 'Gig notes' },
+  '/pages/big/content': `<p>${'x'.repeat(chars)}</p>`,
+});
+
+test('an oversized page is split into parts rather than returned whole', async () => {
+  stubGraph(longPage(100_000));
+
+  const first = await readNote('token', 'big');
+  assert.equal(first.part, 1);
+  assert.equal(first.parts_total, 3);
+  assert.equal(first.chars_total, 100_000);
+  assert.equal(first.text.length, 40_000);
+  // Never truncated silently: the way to read the rest comes back with it.
+  assert.equal(first.next_from_part, 2);
+});
+
+test('the parts cover the page exactly, with nothing dropped or repeated', async () => {
+  stubGraph(longPage(90_000));
+
+  const parts = [];
+  for (let part = 1; part !== null; ) {
+    const read = await readNote('token', 'big', part);
+    parts.push(read.text);
+    part = read.next_from_part;
+  }
+
+  assert.equal(parts.length, 3);
+  assert.equal(parts.join('').length, 90_000);
+});
+
+test('the last part says it is the last rather than pointing nowhere', async () => {
+  stubGraph(longPage(50_000));
+
+  const last = await readNote('token', 'big', 2);
+  assert.equal(last.part, 2);
+  assert.equal(last.next_from_part, null);
+  assert.equal(last.text.length, 10_000);
+});
+
+test('a part beyond the end is clamped to the last, not answered as empty', async () => {
+  stubGraph(longPage(50_000));
+
+  const read = await readNote('token', 'big', 99);
+  assert.equal(read.part, 2);
+  assert.ok(read.text.length > 0);
+});
+
+test('a nonsense part reads as the first rather than failing the read', async () => {
+  stubGraph(longPage(50_000));
+
+  for (const asked of [0, -3, 1.7, undefined, 'first']) {
+    const read = await readNote('token', 'big', asked);
+    assert.equal(read.part, 1, `from_part ${asked}`);
+  }
 });
 
 /**

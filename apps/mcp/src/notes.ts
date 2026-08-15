@@ -7,6 +7,7 @@
  * code alone.
  */
 
+import { MAX_TEXT_CHARS } from './attachments.js';
 import { GraphError } from './client.js';
 import { graphGet } from './api.js';
 
@@ -192,10 +193,41 @@ export const narrowNotes = <T extends { last_modified: string | null }>(
   };
 };
 
+export type NoteContent = {
+  title: string;
+  text: string;
+  chars_total: number;
+  parts_total: number;
+  part: number;
+  /** The part to ask for next, or null when the page is finished. */
+  next_from_part: number | null;
+};
+
+/**
+ * Read one page, in parts only when it is too long for a single answer.
+ *
+ * The cap is the attachment cap, not a second number: a whole page used to
+ * arrive however long it was, and the audience this is for is exactly where one
+ * enormous page lives — a year of gig notes under a single heading. Reading it
+ * swallowed the context the analysis needed, and the failure was silent. The
+ * page arrived, the analysis came back thinner than it should have been, and
+ * nothing said why.
+ *
+ * Parts, not page ranges. A OneNote page has no pages, the same way a .docx
+ * does not, so nothing here invents them — and the response says its unit is a
+ * part rather than reusing the PDF vocabulary for something that is not a page.
+ *
+ * Splitting on each call rather than handing back a character offset is
+ * deliberate: `htmlToText` collapses whitespace, so an offset would be into the
+ * converted text and would silently mean something different if the page were
+ * edited between calls. Parts move under an edit too, but they move visibly —
+ * the part count changes with them.
+ */
 export const readNote = async (
   token: string,
   noteId: unknown,
-): Promise<{ title: string; text: string }> => {
+  fromPart: unknown = 1,
+): Promise<NoteContent> => {
   if (typeof noteId !== 'string' || !ONENOTE_ID.test(noteId)) {
     throw new GraphError('note_id is missing or malformed.', false);
   }
@@ -206,6 +238,21 @@ export const readNote = async (
   const { title } = (await meta.json()) as { title?: string };
 
   const content = await graphGet(`/me/onenote/pages/${id}/content`, token);
+  const text = htmlToText(await content.text());
 
-  return { title: title ?? '(untitled)', text: htmlToText(await content.text()) };
+  const requested = typeof fromPart === 'number' ? fromPart : Number(fromPart ?? 1);
+  const parts = Math.max(1, Math.ceil(text.length / MAX_TEXT_CHARS));
+  const part = Math.min(
+    Math.max(1, Number.isFinite(requested) ? Math.trunc(requested) : 1),
+    parts,
+  );
+
+  return {
+    title: title ?? '(untitled)',
+    text: text.slice((part - 1) * MAX_TEXT_CHARS, part * MAX_TEXT_CHARS),
+    chars_total: text.length,
+    parts_total: parts,
+    part,
+    next_from_part: part < parts ? part + 1 : null,
+  };
 };

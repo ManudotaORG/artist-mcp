@@ -61,7 +61,7 @@ export const call = async <T>(
     case 'list_notes':
       return (await listNotes(token)) as T;
     case 'read_note':
-      return (await readNote(token, params.note_id)) as T;
+      return (await readNote(token, params.note_id, params.from_part)) as T;
     case 'list_emails':
       return (await listEmails(token, params.query)) as T;
     case 'read_email':

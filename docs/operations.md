@@ -214,7 +214,10 @@ Important invariants:
   against the message it names, so an attachment cannot be read out of another
   message; Gmail's own attachment ids are per-fetch and are never published.
   Fetching is capped at 10 MB, and extracted text at 40,000 characters during
-  extraction rather than after it. A call also ends once its image budget is
+  extraction rather than after it. `read_note` holds itself to that same
+  40,000-character limit and returns a longer page in parts — one policy on how
+  much text may arrive in a single answer, shared from one constant, rather than
+  two limits that happen to agree. A call also ends once its image budget is
   spent, reporting the page to resume from, so a long scan is read across
   several calls rather than one that would exhaust the function. Search syntax is passed as a query parameter, never
   interpolated into a path.

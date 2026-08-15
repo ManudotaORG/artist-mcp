@@ -38,7 +38,12 @@ const failure = (message: string): GraphError => new GraphError(message, false);
  * riders sit far below it — a real 7-page rider was 0.6 MB.
  */
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
-const MAX_TEXT_CHARS = 40_000;
+/**
+ * Exported because `read_note` holds itself to the same number. One policy on
+ * how much text may arrive in a single answer, in one place, rather than two
+ * limits that happen to agree until one of them is changed.
+ */
+export const MAX_TEXT_CHARS = 40_000;
 
 /**
  * Below this many characters, a page is carrying no content of its own.

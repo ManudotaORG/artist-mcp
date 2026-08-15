@@ -430,13 +430,48 @@ const runServer = async (): Promise<void> => {
 
   server.tool(
     "read_note",
-    "Read the text content of one OneNote page. Takes the id from list_notes.",
-    { note_id: z.string().describe("The id of the note, as returned by list_notes") },
-    async ({ note_id }) => {
+    "Read the text content of one OneNote page. Takes the id from list_notes. " +
+      "A page too long for one answer comes back in parts, and the answer says " +
+      "so and how to continue — a page is never truncated silently.",
+    {
+      note_id: z.string().describe("The id of the note, as returned by list_notes"),
+      from_part: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe(
+          "Which part of a long page to read. Omit for the first. A OneNote " +
+            "page has no page numbers, so parts are lengths of text, not " +
+            "anything the page itself records.",
+        ),
+    },
+    async ({ note_id, from_part }) => {
       try {
-        const { title, text } = await call<{ title: string; text: string }>("read_note", { note_id },
-        );
-        return { content: [{ type: "text", text: `# ${title}\n\n${text}` }] };
+        const { title, text, chars_total, parts_total, part, next_from_part } = await call<{
+          title: string;
+          text: string;
+          chars_total: number;
+          parts_total: number;
+          part: number;
+          next_from_part: number | null;
+        }>("read_note", { note_id, from_part });
+
+        // Truncation that does not announce itself is the failure this exists
+        // to prevent: the page arrives, the analysis is thinner than it should
+        // be, and nothing says why.
+        const note =
+          parts_total > 1
+            ? `\n\n(Part ${part} of ${parts_total} — this page is ${chars_total} ` +
+              "characters, more than fits in one answer, and is split by length " +
+              "alone, so a heading may fall across the join." +
+              (next_from_part === null
+                ? " This is the last part."
+                : ` Continue with from_part ${next_from_part}.`) +
+              " Do not treat this part as the whole page.)"
+            : "";
+
+        return { content: [{ type: "text", text: `# ${title}\n\n${text}${note}` }] };
       } catch (err) {
         return errorResult(err);
       }
