@@ -127,7 +127,6 @@ from a mess.
   a cell gets pasted onto the page and becomes a fact nobody wrote.
 - Add a field only when the playbook expects it or the surveyed pages show a
   recurring need with no home. Say which fields were added and why.
-- Never write to OneNote or any connected service. The musician pastes.
 
 ### Version line
 
@@ -146,10 +145,11 @@ the whole point.
 - Derived from the playbooks alone: `v1.0`.
 - Derived from a template the artist already keeps: carry their version with the
   minor raised — `v2.2` becomes `v2.3` — and say what changed and why.
-- This line is metadata, not a field. It is the one thing in a template that is
-  not `UNKNOWN`, and that is deliberate.
-- Never invent a version for a template the artist wrote themselves. If theirs
-  carries none, say so and offer to add one; do not stamp their page for them.
+- Metadata rather than a field, so it is the one thing in a template that is not
+  `UNKNOWN`.
+- Never stamp a template the artist wrote themselves. If theirs carries no
+  version, say so and offer; adding one uninvited is a write in all but
+  mechanism.
 
 A page pasted from a template inherits the line by copy-paste, so it keeps
 saying which shape it came from after the template has moved on. That is what
@@ -162,18 +162,14 @@ the line is not a liar; the line records intent and the date records change.
 
 ### Delivery
 
-Hand over one file per template, each openable on its own, so the musician can
-paste one page at a time instead of selecting the right span out of a long
-message. Three templates run together in chat are one wall of text with
-invisible seams.
+One file per template, openable on its own, so the musician pastes one page at a
+time rather than selecting the right span out of a long message — three
+templates run together in chat are one wall of text with invisible seams.
 
-- Produce each as a separate file the musician can open, preview, or download
-  from the conversation — a working copy, not a permanent addition to their
-  folder. Do not save into their project directory unless they ask, and do not
-  ask them where files should go.
-- Use self-contained HTML with visible table borders, one file per project
-  type, named for it. Bordered HTML tables carry their structure into OneNote
-  through the clipboard.
+- Self-contained HTML with visible table borders, named for its project type.
+  Bordered tables carry their structure into OneNote through the clipboard.
+- A working copy, not an addition to their folder: do not save into their
+  project directory unless asked, and do not ask them where files should go.
 - When the host cannot produce files, present the templates in chat instead,
   formatted as below. Say which you did; never silently drop one for the other.
 - Do not restate a template's contents in chat once it is in a file, beyond
@@ -183,10 +179,9 @@ invisible seams.
 
 A template is pasted before it is read, so it is built for the clipboard.
 
-- Put the version line at the top as ordinary text, not inside a table and not
-  in a code fence. It has to survive the paste as plain readable text, and it
-  has to be the first thing on the page.
-- Present it as formatted text — real headings, real tables — never inside a
+- The version line is ordinary text, outside any table and outside a fence, so
+  it survives the paste as text rather than markup.
+- Present the rest as formatted text — real headings, real tables — never inside a
   code block. A fenced template copies as literal `###` and pipe characters and
   lands in OneNote as unreadable plain text.
 - Each template stands alone. Where one project type extends another, repeat
