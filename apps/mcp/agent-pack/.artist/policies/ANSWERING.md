@@ -45,6 +45,13 @@ This is not hedging everything. A fact on a page is stated plainly and cited. It
 is the step from fact to explanation that carries the doubt, and that step is
 where certainty gets borrowed against evidence that does not cover it.
 
+**A heading may not be more certain than what sits under it.** A heading is read
+as the conclusion, and a careful paragraph does not survive being filed under a
+confident title. "Duplicate pairs — pick one, delete the other" is a verdict on
+everything beneath it, however well the third item is hedged. The same goes for
+a bolded lead, a table header, and the first clause of a bullet: whatever is
+read first carries the claim, so it carries the doubt too.
+
 ## When asked
 
 If they ask how something was determined, why a value is missing, or what was

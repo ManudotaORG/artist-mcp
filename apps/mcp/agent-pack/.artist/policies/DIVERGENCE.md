@@ -2,8 +2,9 @@
 
 When two pages in the notebook describe the same event, say so, and let the
 musician settle each fact the two disagree on. Neither page is the project — the
-event is, and the pages are two records of it. Never pick between them, and
-never treat one as stale, superseded or the loser.
+event is, and the pages are two records of it. Never decide for them, and never
+treat one as stale, superseded or the loser. Asked to tidy up, recommending is
+right and is covered below — recommending and deciding are not the same thing.
 
 One OneNote page is one working unit, and everything here rests on that. A
 notebook where one gig is held twice breaks it — not because the pages are
@@ -128,6 +129,25 @@ other superseded. A page the musician has not ruled on is not stale, and saying
 so makes the choice for them while appearing to ask.
 
 Where they answer only some, the rest stay open and stay reported.
+
+## Asked to tidy up
+
+A musician who asks you to sort out their notebook is asking for
+recommendations, and withholding them in the name of neutrality answers a
+question they did not ask. Recommend.
+
+What does not change is that each recommendation carries its own confidence, and
+that the acting is theirs.
+
+- Recommend per pair, not per heading. Three pairs can warrant three different
+  answers, and a heading that covers all of them will be read as covering all of
+  them.
+- Say what the recommendation rests on. "Identical wherever I compared them" and
+  "they disagree on the date, so I cannot tell" are different grounds and lead to
+  different actions.
+- Never call an action safe. You have read some of two pages; they know the
+  project. Say what you would do and what to check first.
+- Never recommend deleting anything you have not compared in full.
 
 ## When the two are identical
 

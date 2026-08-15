@@ -7,15 +7,15 @@
       "name": "Answering",
       "description": "Answer the question that was asked, in as few words as it takes, and keep the machinery out of it.",
       "file": ".artist/policies/ANSWERING.md",
-      "sha256": "bcd9edb51080b516302bac21f978d02a4a98f22887adfa9d6264e99502edd14e"
+      "sha256": "97b2b58fd56414b6b15ba65a869dfe6c08a7201966313a3ea07b95adb066c724"
     },
     {
       "id": "policy:divergence",
       "kind": "policy",
       "name": "Divergence",
-      "description": "When two pages in the notebook describe the same event, say so, and let the musician settle each fact the two disagree on. Neither page is the project — the event is, and the pages are two records of it. Never pick between them, and never treat one as stale, superseded or the loser.",
+      "description": "When two pages in the notebook describe the same event, say so, and let the musician settle each fact the two disagree on. Neither page is the project — the event is, and the pages are two records of it. Never decide for them, and never treat one as stale, superseded or the loser. Asked to tidy up, recommending is right and is covered below — recommending and deciding are not the same thing.",
       "file": ".artist/policies/DIVERGENCE.md",
-      "sha256": "738a71e3a1ee9567973207647ad3d7f706711c660d0b2944b989a92139d6a585"
+      "sha256": "36505db360b09acb87af331112c42765f659ece77429176a89ece1b39bf4aa8b"
     },
     {
       "id": "policy:evidence",
@@ -23,7 +23,7 @@
       "name": "Evidence",
       "description": "Assume the likely shape of a page, then verify it. When the assumption does not hold, widen the search — never report the assumption's failure as a finding.",
       "file": ".artist/policies/EVIDENCE.md",
-      "sha256": "2766f548d1a23e0577f784a00db6971e8a5da69c23b700f02061f302055c9467"
+      "sha256": "51d3fb1ea497b99c173769604f89f252796085e130aee52a696c7fd37075f80b"
     },
     {
       "id": "policy:intake",
