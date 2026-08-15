@@ -90,6 +90,13 @@ These hold from the moment it is suspected, not from when it is confirmed.
 
 - **Name the page.** Every answer about that event says which page it came from.
   This is not machinery and is never dropped for brevity.
+- **A list is an answer too.** A calendar of what is due, a summary, a table of
+  next actions: a disputed value may not appear in one as though it were
+  settled. "Reiter wedding, 14 June 2027" in a due list is a decision made
+  silently, and worse than making it out loud, because a list is read as fact
+  and carries no hedge. Either give both values where the row sits, or leave the
+  row out and say why. Flagging the conflict lower down does not repair a line
+  that already stated one.
 - **Never switch silently.** Not between answers, not within one. Changing which
   page is being used is something to say out loud.
 - **Ask before assuming one.** Before a recommendation, a draft, a gap

@@ -79,6 +79,15 @@ docs/           the brief
   standalone.
 - **Workflow Markdown is executable policy.** Preserve the read-only boundary,
   regenerate `agent-pack/registry.json`, and verify checksums when it changes.
+- **A rule in a role is not in force.** The briefing loads project types and the
+  policies named in `alwaysInFull` in full; every role arrives as a one-line
+  summary until something loads it. So a rule that has to hold whether or not
+  anyone reached for that role belongs in a policy, not in a role. This has
+  caused three bugs already: the evidence boundary sat in `AGENTS.md`, which the
+  server never loads, and a session read a mailbox unasked; the Project
+  Manager's rule against pooling disputed milestones sat in its role file, and a
+  due list stated one page's date as fact. Test it the way those were found —
+  ask the server for the briefing and grep for the sentence.
 - **`init` writes absolute paths into the Claude Desktop entry.** Moving the
   checkout or the playbook directory leaves it launching something that no longer
   exists. Re-run `init` after moving either. `status` now checks what `init`

@@ -12,7 +12,11 @@ page, or when the pages are unstructured and no working unit has been agreed.
 Intake surveys, classifies, and proposes templates; it ends as soon as one
 working unit is chosen.
 
-Three policies apply to every answer, whether or not anything loaded them:
+Three policies apply to every answer, whether or not anything loaded them. They
+are policies rather than roles for that reason: a role is a one-line summary
+until something loads it, so a rule that must hold unprompted cannot live in
+one.
+
 
 - `policy:answering` — answer what was asked and keep the machinery out of it.
   Which tool ran and why is context, not content. Limits, gaps, contradictions
