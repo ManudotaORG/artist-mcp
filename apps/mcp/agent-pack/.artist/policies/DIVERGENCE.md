@@ -141,10 +141,17 @@ they can check; not "byte-for-byte", which you cannot know and which is
 contradicted by naming a difference in the same breath. If anything differs
 beyond spelling, this is not that case.
 
-**A consolidated page** comes only once every conflicting field has been settled
-by the musician — not once they have named a page. Every value in it is one they
-gave, and each carried-over fact says which page it came from. The other page
-still exists and still holds the old values.
+**A consolidated page** comes only once the musician has ruled on every
+conflicting field — not once they have named a page. Every value in it is one
+they gave, and each carried-over fact says which page it came from. The other
+page still exists and still holds the old values.
+
+Ruling on a field includes saying they do not know it. "Not sure" is an answer,
+as above, and it settles that field as `UNKNOWN` on the consolidated page rather
+than holding the page back — waiting for a value they have told you they do not
+have leaves them with the two pages they came with. What may not happen is
+consolidating around fields they have not been asked about, or have not
+answered at all.
 
 The consolidated page is handed over under `policy:patch`, which governs its
 form and the fact that offering is not pasting. The cross-reference is not part
@@ -155,8 +162,8 @@ first reported, above.
 
 - Never delete, archive, close, or edit either page.
 - Never treat "duplicate" as settled without the musician saying so.
-- Never offer to merge, tidy or combine two pages before every conflicting field
-  has been settled. The offer implies the work is yours to judge.
+- Never offer to merge, tidy or combine two pages before the musician has ruled
+  on every conflicting field. The offer implies the work is yours to judge.
 - Never let a suspected twin stop the work. Answer from both, naming each; where
   a single answer is unavoidable, ask for the values it needs and say which page
   supplied every fact you used.
