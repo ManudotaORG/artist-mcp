@@ -200,8 +200,10 @@ One package, one `bin` entry, three modes.
 - [x] No arguments → runs the MCP server over stdio
 - [x] `init` → the installer
 - [x] `uninstall` → removes the entry from the Claude config
-- [x] Tool: `list_notes` — OneNote pages, with title, section, modified date
-- [x] Tool: `read_note` — takes a note id (not a path; OneNote pages are addressed by id), returns text content
+- [x] Tool: `list_notes` — OneNote pages, with title, section, modified date; narrows by notebook, by `since`, and by `limit` — verified over a real MCP client, which passed `{notebook, since}` to the tool rather than fetching everything and filtering, and got back the 2 pages of 11 modified in the window
+- [x] Tool: `map_notes` — the opening of every page in one notebook, from Graph's page previews, so a notebook can be triaged before anything is read. Measured against two real notebooks: 4 KB against 349 KB and about half the wall-clock, but still one call per page, so the saving is context rather than calls. A page with no usable preview is read in full instead and the answer says which — the preview is capped near 300 characters and is always a plain prefix, verified across 17 pages
+- [x] Tool: `read_note` — takes a note id (not a path; OneNote pages are addressed by id), returns text content, in parts when the page exceeds the attachment text cap. Parts rather than page ranges, because a OneNote page records no pages; a normal page is unaffected byte for byte
+- [x] `status` reports the install, not only the connections: which config, whether the entry exists, published package or local build, and whether the recorded playbook directory still resolves — the failure it exists for is a moved checkout, which used to surface as every workflow tool failing inside Claude
 - [x] Tools: `list_agent_workflows`, `load_agent_workflow` — discover and load checksummed Markdown roles and project types, with a bundled offline fallback
 - [x] Verified: no Graph calls made locally, no Microsoft token or service role key ever on the client — driven with a real MCP client over stdio: both tools listed, `list_notes` returned 6 pages, `read_note` 2,358 chars, malformed id rejected
 
@@ -284,6 +286,9 @@ a fixed pack means every adjustment is a package release.
 - [x] A missing or broken local directory fails loudly rather than falling back to the bundle the way an unreachable remote registry does
 - [x] Files capped at 64 KiB, empty files refused, paths contained against the local root
 - [x] Derivation shared by the build script and the runtime, with a test asserting the committed registry still matches it — two copies would give the same file different ids, and a user's edit would then shadow nothing
+- [x] Policies that must hold unprompted load in full, not as summaries: `answering`, `evidence`, `divergence` alongside `intake`. Found the hard way — the rule protecting the user's mailbox lived in `AGENTS.md`, which the server never loads, and a Desktop session read Gmail and Calendar unasked. A rule in a role is not in force; see "Editing the pack" in `docs/releases-and-agents.md`
+- [x] Constraints on when a tool may be called live in the tool's own description, not only in a playbook — `list_events` described the calendar as corroborating "what a page claims about a date", and a model facing two pages disagreeing about a date read that as an instruction while the policy forbidding it was loaded and lost
+- [x] Verified end to end in Claude Desktop, following the documented four-step workflow against a deliberately messy 11-page notebook holding three planted near-duplicate pairs: pages listed, each classified with evidence (a three-line page called too thin rather than labelled, two pages named as supporting evidence rather than working units, a wedding named as a missing playbook rather than forced into Concert), three HTML templates derived one per matched playbook with every field UNKNOWN and no page data in them, and the messiest page filled onto its template with 64 gaps left visible, a disputed seat count carried as disputed with both sources named, and a computed rehearsal date kept out of the artefact and marked in chat as worked out. No Gmail or Calendar call at any step
 
 Checksums mean something narrower for a local file: derived from the directory as
 it is read, they prove only that it did not change between being listed and being

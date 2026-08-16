@@ -207,14 +207,17 @@ Important invariants:
   verifies the connection key inside the function. It is not deployed today —
   see the dormant-storage section below.
 - Refresh-token rotation is written back on every Microsoft token exchange.
-- Callers select only `verify`, `list_notes`, `read_note`, `list_emails`,
+- Callers select only `verify`, `list_notes`, `map_notes`, `read_note`, `list_emails`,
   `read_email`, `read_attachment`, `map_attachment`, `list_events`, or
   `read_event`; no arbitrary
   Graph, Gmail, or Calendar URL is accepted. `read_attachment` resolves a MIME position
   against the message it names, so an attachment cannot be read out of another
   message; Gmail's own attachment ids are per-fetch and are never published.
   Fetching is capped at 10 MB, and extracted text at 40,000 characters during
-  extraction rather than after it. A call also ends once its image budget is
+  extraction rather than after it. `read_note` holds itself to that same
+  40,000-character limit and returns a longer page in parts — one policy on how
+  much text may arrive in a single answer, shared from one constant, rather than
+  two limits that happen to agree. A call also ends once its image budget is
   spent, reporting the page to resume from, so a long scan is read across
   several calls rather than one that would exhaust the function. Search syntax is passed as a query parameter, never
   interpolated into a path.
@@ -237,6 +240,28 @@ custody back would mean acting for a user while their machine is off — shared
 workspaces, or anything scheduled — and the schema is the cheap part of that to
 keep. Reviving it would still cost every user a reconnect, because the tokens
 are deliberately not here any more.
+
+That is a live intention, not sentiment:
+[#55](https://github.com/ManudotaORG/artist-mcp/issues/55) proposes a hosted MCP
+for a few named users, isolated from the public product. While that is open, this
+path is a head start rather than a tax, and **removing any part of it should be
+decided together with #55 rather than as cleanup.**
+
+### What is kept, in one place
+
+Listed here so a reader can confirm dormancy without inferring it four times.
+Every item is unwritten, unimported, or undeployed:
+
+| Kept | State |
+| --- | --- |
+| `connections`, `mcp_keys` tables | In the schema, RLS on, no rows, nothing writes them |
+| `apps/web/src/lib/crypto.ts` | Imported nowhere; encrypted the stored refresh tokens |
+| `supabase/functions/graph/` | Source and tests only, not deployed |
+| `verify_jwt = false` for `graph` in `supabase/config.toml` | Configuration for a function that is not deployed |
+| Dummy provider env vars in `ci.yml` | Needed by the Deno tests above, whose module scope reads them at import; the values are the string `unused` |
+
+Each of these has looked like dead code to a reader at some point, which is the
+cost of keeping it. Adding to the list is fine; removing from it is a decision.
 
 The credentials that made the old design dangerous were **not** kept. Done on
 2026-08-14, in this order:
@@ -324,8 +349,8 @@ scoped to the `production` GitHub environment. Use the manual
 `telegram-release-notes.yml` workflow to retry a specific existing tag without
 republishing npm.
 
-Verify the MCP tools with a real client: `list_notes` and `read_note` against
-OneNote, `list_emails`, `read_email`, `read_attachment`, `list_events` and
+Verify the MCP tools with a real client: `list_notes`, `map_notes` and
+`read_note` against OneNote, `list_emails`, `read_email`, `read_attachment`, `list_events` and
 `read_event` against Google, and `list_agent_workflows` and `load_agent_workflow` against the pack. Registry
 and playbook content come from the installed npm package by default, preserving
 the version selected by the user. `ARTIST_MCP_REGISTRY_URL` and

@@ -7,7 +7,16 @@ import { dirname } from "node:path";
 
 export const ENTRY_NAME = "artist-notes";
 
+/**
+ * The development and testing override, matching ARTIST_MCP_TOKENS and
+ * ARTIST_MCP_AGENTS_DIR. Without it there is no way to exercise the commands
+ * that read this file except against the developer's own Claude Desktop config,
+ * which a test suite has no business touching.
+ */
 export const configPath = (): string => {
+  const override = process.env.ARTIST_MCP_CONFIG;
+  if (override) return override;
+
   const home = homedir();
   switch (platform()) {
     case "darwin":

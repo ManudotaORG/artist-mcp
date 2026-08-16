@@ -60,12 +60,13 @@ Then ask your client:
 
 ## Tools
 
-Ten read-only tools. OneNote holds the working unit:
+Eleven read-only tools. OneNote holds the working unit:
 
 | Tool | Returns |
 | --- | --- |
-| `list_notes` | Page titles, sections, modification dates, and page IDs |
-| `read_note` | Readable page text for one page ID |
+| `list_notes` | Page titles, sections, modification dates, and page IDs. Narrows by notebook, by modified date, or to a count |
+| `map_notes` | The opening of every page in one notebook, so it can be triaged before any page is read. A page with no usable preview is read in full instead, and the answer says which |
+| `read_note` | Readable page text for one page ID, in parts when the page is too long for one answer |
 
 Google is supporting evidence, and needs the separate Google connection:
 

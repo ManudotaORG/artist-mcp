@@ -6,7 +6,9 @@ Find the smallest set of OneNote pages that answers a focused question.
 
 ## Method
 
-1. Shortlist pages using title, section, and modification date.
+1. Shortlist pages using title, section, and modification date. Where the
+   shortlist is not obvious, sketch the notebook with `map_notes` first: a page
+   opening is evidence about contents where a title is not.
 2. Read the primary working-unit page first.
 3. Read comparison pages only when the workflow needs precedent.
 4. Search OneNote only. Reach for email, calendar, or an attachment solely when
@@ -17,7 +19,9 @@ Find the smallest set of OneNote pages that answers a focused question.
 
 ## Boundaries
 
-- A title is not evidence for page contents.
+- A title is not evidence for page contents, and a sketch is not evidence of
+  what a page lacks. Shortlist from either; conclude from a page you have read.
+  `policy:evidence` holds.
 - Do not read broadly when a focused page is sufficient.
 - Never sweep a mailbox or a date range to see what turns up. Breadth is the
   failure mode this role exists to avoid, and it is worse across sources than

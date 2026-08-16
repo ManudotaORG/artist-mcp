@@ -2,12 +2,36 @@
   "schemaVersion": 1,
   "entries": [
     {
+      "id": "policy:answering",
+      "kind": "policy",
+      "name": "Answering",
+      "description": "Answer the question that was asked, in as few words as it takes, and keep the machinery out of it.",
+      "file": ".artist/policies/ANSWERING.md",
+      "sha256": "cd24def1d3946ee602aa592767361e86791415ea78f01a0631c577e75e869e95"
+    },
+    {
+      "id": "policy:divergence",
+      "kind": "policy",
+      "name": "Divergence",
+      "description": "When two pages in the notebook describe the same event, say so, and let the musician settle each fact the two disagree on. Neither page is the project — the event is, and the pages are two records of it.",
+      "file": ".artist/policies/DIVERGENCE.md",
+      "sha256": "fe423f0c661ca40174d71ff4d6e097cb7e873c419c3919e8f79063a77e81bacc"
+    },
+    {
+      "id": "policy:evidence",
+      "kind": "policy",
+      "name": "Evidence",
+      "description": "Assume the likely shape of a page, then verify it. When the assumption does not hold, widen the search — never report the assumption's failure as a finding.",
+      "file": ".artist/policies/EVIDENCE.md",
+      "sha256": "69025e82df3ef07176a292b894bb9a6e5c06bcf21be5cbdc0eb5377eb9153eb8"
+    },
+    {
       "id": "policy:intake",
       "kind": "policy",
       "name": "Intake",
       "description": "Turn an unorganized notebook into working units without inventing anything.",
       "file": ".artist/policies/INTAKE.md",
-      "sha256": "289744808b2b111445613060b564a65d41937e28109106ee5863d7b706cb2567"
+      "sha256": "413bf0d256a7842ea2568e1a6b1c91260f5aa29f76ebbb97ecdf637a3da9a52b"
     },
     {
       "id": "policy:local-state",
@@ -55,7 +79,7 @@
       "name": "Archivist",
       "description": "Find the smallest set of OneNote pages that answers a focused question.",
       "file": ".artist/roles/ARCHIVIST.md",
-      "sha256": "33ad68cd1520b2badf3dd2e0df84176f8a814ac3ddd9b340d7f34e633cbb8f0b"
+      "sha256": "fa814d9850de2bd32db418416eb7194f8ab82313c48309454d580b6171d858e9"
     },
     {
       "id": "role:auditor",
@@ -79,7 +103,7 @@
       "name": "Janitor",
       "description": "Identify working units or tasks that appear complete, expired, duplicated, or superseded and summarize the cleanup a human may choose to perform.",
       "file": ".artist/roles/JANITOR.md",
-      "sha256": "bb6592fa5955716c3ba1ac0d837291aafd43d6a0ad77ec2063c9e7fc3f6b4e52"
+      "sha256": "f7762bb005c95b31630b664a46de4078b8ea2ebbe63e4c10ff68acd068441cab"
     },
     {
       "id": "role:orchestrator",
@@ -87,15 +111,15 @@
       "name": "Orchestrator",
       "description": "Turn the user's request and live OneNote evidence into one useful next action.",
       "file": ".artist/roles/ORCHESTRATOR.md",
-      "sha256": "4aa639019e9894b262afa2f967a517b037d9596c7d00a361b36b3c08b36b5bfa"
+      "sha256": "5370bf9f5ec2561a481f883dd7546cbd0cd607ea704aa4695774ee8724de4cb5"
     },
     {
       "id": "role:project-manager",
       "kind": "role",
       "name": "Project Manager",
-      "description": "Compare one working-unit page with its project-type playbook and identify the single most useful next project-management action.",
+      "description": "Compare one working-unit page with its project-type playbook and identify the single most useful next project-management action. Or, across the chosen notebook, say what is due and what is overdue.",
       "file": ".artist/roles/PROJECT_MANAGER.md",
-      "sha256": "00cb754ccda592a2fd0a0ac42be8c8ec1d9d06f8f028dcac175e9a2ef1567197"
+      "sha256": "c6ad5de3580b421966ba77dcfc8689dabc359b714ef87312b13ba240a3762e40"
     },
     {
       "id": "role:registrar",

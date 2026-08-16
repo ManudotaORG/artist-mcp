@@ -15,6 +15,15 @@ import {
 
 const concertPath = (root) => resolve(root, '.artist/project-types/CONCERT.md');
 
+/**
+ * Read from the bundled registry rather than written as a number. The assertion
+ * that matters is "as many as the pack ships", and a literal here means every
+ * playbook added to the pack breaks five unrelated tests.
+ */
+const BUNDLED_COUNT = JSON.parse(
+  await readFile(new URL('../agent-pack/registry.json', import.meta.url), 'utf8'),
+).entries.length;
+
 /** A pack-shaped directory, seeded with whatever the test needs. */
 const withLocalPack = async (files, run) => {
   const root = await mkdtemp(resolve(tmpdir(), 'artist-local-pack-'));
@@ -48,8 +57,8 @@ test('shadowing one file leaves the rest of the pack in place', async () => {
     { '.artist/project-types/CONCERT.md': '# Concert\n\nMine.\n' },
     async (root) => {
       const entries = await listAgentWorkflows();
-      // The bundled pack ships thirteen; shadowing must not drop any of them.
-      assert.equal(entries.length, 13);
+      // Shadowing must not drop any of them.
+      assert.equal(entries.length, BUNDLED_COUNT);
 
       const concert = entries.find((entry) => entry.id === 'project-type:concert');
       assert.equal(concert.source, 'local');
@@ -69,7 +78,7 @@ test('a local-only playbook is added to the pack', async () => {
     { '.artist/project-types/WEDDING.md': '# Wedding\n\nOne page describing one wedding gig.\n' },
     async () => {
       const entries = await listAgentWorkflows();
-      assert.equal(entries.length, 14);
+      assert.equal(entries.length, BUNDLED_COUNT + 1);
       const wedding = entries.find((entry) => entry.id === 'project-type:wedding');
       assert.equal(wedding.kind, 'project-type');
       assert.equal(wedding.source, 'local');
@@ -130,14 +139,14 @@ test('the editable install copies the whole pack', async () => {
   const root = await mkdtemp(resolve(tmpdir(), 'artist-seed-'));
   try {
     const { added, unchanged, yours, container } = await seedEditablePack(root);
-    assert.equal(added.length, 13);
+    assert.equal(added.length, BUNDLED_COUNT);
     assert.deepEqual(unchanged, []);
     assert.deepEqual(yours, []);
     assert.equal(container, 'artist');
 
     process.env.ARTIST_MCP_AGENTS_DIR = root;
     const entries = await listAgentWorkflows();
-    assert.equal(entries.length, 13);
+    assert.equal(entries.length, BUNDLED_COUNT);
     assert.ok(entries.every((entry) => entry.source === 'local'));
   } finally {
     delete process.env.ARTIST_MCP_AGENTS_DIR;
@@ -158,7 +167,7 @@ test('re-running adds what is new and never touches an edit', async () => {
     const { added, unchanged, yours } = await seedEditablePack(root);
     assert.deepEqual(added, ['project-type:rehearsal']);
     assert.deepEqual(yours, ['project-type:concert']);
-    assert.equal(unchanged.length, 11);
+    assert.equal(unchanged.length, BUNDLED_COUNT - 2);
     // The edit survived verbatim.
     assert.equal(await readFile(edited, 'utf8'), '# Concert\n\nMy own rules.\n');
   } finally {
@@ -229,7 +238,7 @@ test('a playbook a user adds becomes a first-class entry', async () => {
     { '.artist/project-types/WEDDING.md': '# Wedding\n\nOne page describing one wedding.\n' },
     async () => {
       const entries = await listAgentWorkflows();
-      assert.equal(entries.length, 14);
+      assert.equal(entries.length, BUNDLED_COUNT + 1);
       const wedding = entries.find((entry) => entry.id === 'project-type:wedding');
       assert.equal(wedding.kind, 'project-type');
       assert.equal(wedding.description, 'One page describing one wedding.');
@@ -271,7 +280,7 @@ test('the id is the same whichever container holds the file', async () => {
       { [`${container}/project-types/CONCERT.md`]: '# Concert\n\nMine.\n' },
       async () => {
         const entries = await listAgentWorkflows();
-        assert.equal(entries.length, 13);
+        assert.equal(entries.length, BUNDLED_COUNT);
         assert.equal(
           entries.find((entry) => entry.id === 'project-type:concert').source,
           'local',
@@ -327,6 +336,6 @@ test('both containers at once is refused rather than merged', async () => {
 test('no local directory means the bundled pack, unchanged', async () => {
   delete process.env.ARTIST_MCP_AGENTS_DIR;
   const entries = await listAgentWorkflows();
-  assert.equal(entries.length, 13);
+  assert.equal(entries.length, BUNDLED_COUNT);
   assert.ok(entries.every((entry) => entry.source === 'bundled'));
 });
