@@ -64,3 +64,30 @@ test('preserves an existing AGENTS.md while installing workflow files', async ()
     await rm(fixture, { recursive: true, force: true });
   }
 });
+
+/**
+ * Keeping their file is right, but "left unchanged" alone reads the same for an
+ * edit they made and a copy that merely predates the current text — and those
+ * need different actions. The second case is a user still holding rules that
+ * have since been rewritten, which is how the shipped AGENTS.md came to contain
+ * phrasing `policy:divergence` forbids while nothing could detect it.
+ */
+test('a kept AGENTS.md says what the shipped one now is, and how to take it', async () => {
+  const fixture = await mkdtemp(resolve(tmpdir(), 'artist-agent-pack-'));
+  const written = [];
+  const log = console.log;
+  console.log = (...parts) => written.push(parts.join(' '));
+  try {
+    await writeFile(resolve(fixture, 'AGENTS.md'), 'owner instructions\n');
+    await installAgentPack(fixture);
+  } finally {
+    console.log = log;
+    await rm(fixture, { recursive: true, force: true });
+  }
+  const output = written.join('\n');
+  // Names the ambiguity rather than implying their file was judged.
+  assert.match(output, /cannot tell from an edit of yours/);
+  // Says what they would be taking, so an untouched old copy is recognisable.
+  assert.match(output, /no longer restates any rules/);
+  assert.match(output, /delete AGENTS\.md and run this again/);
+});

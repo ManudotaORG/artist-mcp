@@ -218,7 +218,7 @@ const selectNotebook = async (
   return { pages, scope };
 };
 
-const serverVersion = '1.1.0'; // x-release-please-version
+const serverVersion = '1.2.0'; // x-release-please-version
 
 const errorResult = (err: unknown) => {
   const message =
@@ -254,12 +254,20 @@ const renderWorkflowBriefing = async (
   // nobody asks whether two pages are one event, and the damage is done by
   // working in one of them as though the other were not there.
   //
+  // Patch binds at the moment a recommendation is agreed, which is the end of
+  // an ordinary answer and not a moment anything reaches for a policy. Left as
+  // a summary it would be read after the fragment had already been handed over
+  // — restating the whole page, inventing the date nobody gave, or written as
+  // though the page had been updated. Divergence and answering both delegate to
+  // it by name, so summarising it breaks two policies that are loaded in full.
+  //
   // Local state stays a summary. It answers a question that is asked out loud.
   const ALWAYS: readonly string[] = [
     "policy:intake",
     "policy:answering",
     "policy:evidence",
     "policy:divergence",
+    "policy:patch",
   ];
   const alwaysInFull = (entry: (typeof entries)[number]) =>
     entry.kind === "project-type" || ALWAYS.includes(entry.id);
@@ -353,14 +361,42 @@ const runServer = async (): Promise<void> => {
   // rather than an account that needs connecting, which is a much worse
   // sentence to act on. stderr, not stdout — stdout is the protocol channel.
 
-  const server = new McpServer({ name: "artist-notes", version: serverVersion });
+  // Without this the pack is inert on a client that has no repository to read
+  // `AGENTS.md` from — which is Claude Desktop, the surface `init` configures.
+  // `list_agent_workflows` is a tool like any other, so nothing calls it unless
+  // something says to, and a session then answers from the tool descriptions
+  // alone with no policy in force. That is the "a rule in a role is not in
+  // force" failure one level up: the briefing was correct and never arrived.
+  //
+  // It deliberately carries no rules of its own. `AGENTS.md` restated the pack
+  // for repository clients and drifted from it — it still announces three
+  // always-loaded policies, and still uses the winner-picking phrasing that
+  // `policy:divergence` was edited to forbid. A third copy would drift too, so
+  // this says only where the rules are and that they bind, and the briefing
+  // stays the single statement of what they are.
+  const instructions =
+    "Call `list_agent_workflows` before answering anything about the user's " +
+    "notes, once per session. It returns the workflow playbooks that govern " +
+    "this server, and whatever comes back in full is in force from that moment " +
+    "— it is not reference material to consult if a question seems to call for " +
+    "it. Working from these tool descriptions alone means working with no " +
+    "policy in force, which is not a lighter version of this server's " +
+    "behaviour but a different one. If a call fails or the briefing reports a " +
+    "playbook it could not read, say so before answering.";
+
+  const server = new McpServer(
+    { name: "artist-notes", version: serverVersion },
+    { instructions },
+  );
 
   server.tool(
     "list_agent_workflows",
     "List the read-only artist roles, project types, and policies available " +
-      "at runtime. The project-type playbooks and the intake policy are " +
-      "returned in full and are in force as returned — they govern the survey, " +
-      "the classification and any templates, and are not optional reading. " +
+      "at runtime. Whatever comes back in full is in force as returned and is " +
+      "not optional reading — the project-type playbooks and several policies " +
+      "arrive that way, governing the survey, the classification, what is " +
+      "stated and how firmly, and how anything is handed over for pasting. " +
+      "Anything listed as a one-line summary is not in force until loaded. " +
       "Load the Orchestrator before handling a project.",
     {},
     async () => {
