@@ -361,7 +361,33 @@ const runServer = async (): Promise<void> => {
   // rather than an account that needs connecting, which is a much worse
   // sentence to act on. stderr, not stdout — stdout is the protocol channel.
 
-  const server = new McpServer({ name: "artist-notes", version: serverVersion });
+  // Without this the pack is inert on a client that has no repository to read
+  // `AGENTS.md` from — which is Claude Desktop, the surface `init` configures.
+  // `list_agent_workflows` is a tool like any other, so nothing calls it unless
+  // something says to, and a session then answers from the tool descriptions
+  // alone with no policy in force. That is the "a rule in a role is not in
+  // force" failure one level up: the briefing was correct and never arrived.
+  //
+  // It deliberately carries no rules of its own. `AGENTS.md` restated the pack
+  // for repository clients and drifted from it — it still announces three
+  // always-loaded policies, and still uses the winner-picking phrasing that
+  // `policy:divergence` was edited to forbid. A third copy would drift too, so
+  // this says only where the rules are and that they bind, and the briefing
+  // stays the single statement of what they are.
+  const instructions =
+    "Call `list_agent_workflows` before answering anything about the user's " +
+    "notes, once per session. It returns the workflow playbooks that govern " +
+    "this server, and whatever comes back in full is in force from that moment " +
+    "— it is not reference material to consult if a question seems to call for " +
+    "it. Working from these tool descriptions alone means working with no " +
+    "policy in force, which is not a lighter version of this server's " +
+    "behaviour but a different one. If a call fails or the briefing reports a " +
+    "playbook it could not read, say so before answering.";
+
+  const server = new McpServer(
+    { name: "artist-notes", version: serverVersion },
+    { instructions },
+  );
 
   server.tool(
     "list_agent_workflows",
