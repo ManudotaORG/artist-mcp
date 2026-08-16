@@ -218,7 +218,7 @@ const selectNotebook = async (
   return { pages, scope };
 };
 
-const serverVersion = '1.1.0'; // x-release-please-version
+const serverVersion = '1.2.0'; // x-release-please-version
 
 const errorResult = (err: unknown) => {
   const message =

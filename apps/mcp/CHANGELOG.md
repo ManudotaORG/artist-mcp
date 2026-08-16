@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.2.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.1.0...artist-mcp-v1.2.0) (2026-08-16)
+
+
+### Features
+
+* **agent-pack:** answer anyway, and say what the skipped work cost ([d88aec1](https://github.com/ManudotaORG/artist-mcp/commit/d88aec139e02835a7ab907487f1b8064a9af8a79))
+* **agent-pack:** answer the question, and keep the machinery out of it ([f09b57d](https://github.com/ManudotaORG/artist-mcp/commit/f09b57da0667a22bb6129c0aeb7e854f4abca926))
+* **agent-pack:** ask when the answer changes the work, otherwise decide ([2c7def2](https://github.com/ManudotaORG/artist-mcp/commit/2c7def2628b3b2d5961865628e0d7b3a7b1e3227))
+* **agent-pack:** reuse the artist's template, and stop guessing at empty pages ([59d894a](https://github.com/ManudotaORG/artist-mcp/commit/59d894a73cc108ac383aeab4fd3048aa6fe850ec))
+* **agent-pack:** stamp every generated template with its version ([bed4b1d](https://github.com/ManudotaORG/artist-mcp/commit/bed4b1d154bf2fadbfdd838d8efd7400b3bba228))
+* **agent-pack:** stop one event drifting across two pages ([3383f80](https://github.com/ManudotaORG/artist-mcp/commit/3383f8022cd2edf3331a62888e935d327086801c)), closes [#65](https://github.com/ManudotaORG/artist-mcp/issues/65)
+* **agent-pack:** tell a copied page from a duplicated one ([7bb4169](https://github.com/ManudotaORG/artist-mcp/commit/7bb41698b829a156143946e6ff7e260dc26936b5))
+* **mcp:** cap and continue long note reads, as attachments already do ([296a3b2](https://github.com/ManudotaORG/artist-mcp/commit/296a3b28b885b60bf0b9f9d4f662c36c79c464cd)), closes [#67](https://github.com/ManudotaORG/artist-mcp/issues/67)
+* **mcp:** let list_notes narrow by modified date and count ([216a7e7](https://github.com/ManudotaORG/artist-mcp/commit/216a7e769c936433fd919c316aa4f1236b6e7c2b)), closes [#66](https://github.com/ManudotaORG/artist-mcp/issues/66)
+* **mcp:** make status verify the install, not only the connections ([4d2b464](https://github.com/ManudotaORG/artist-mcp/commit/4d2b46454b038bf5d2eebc35567d190a6600c7e4)), closes [#61](https://github.com/ManudotaORG/artist-mcp/issues/61)
+* **mcp:** map a notebook from page previews before reading it ([339664e](https://github.com/ManudotaORG/artist-mcp/commit/339664e65161ad2be60614c48dc87af2ca4f7a74)), closes [#65](https://github.com/ManudotaORG/artist-mcp/issues/65)
+
+
+### Bug Fixes
+
+* **agent-pack:** a due list is an answer, so it may not settle a conflict ([205588b](https://github.com/ManudotaORG/artist-mcp/commit/205588b27f53b38e3434b4507afb9de926c535b4))
+* **agent-pack:** a fact worked out is not a fact read, and a heading is a claim ([fd699c2](https://github.com/ManudotaORG/artist-mcp/commit/fd699c25aa866afa90b135c44d8fb46fff0ebad1))
+* **agent-pack:** answer first, then offer the file — and never list formats ([a28c310](https://github.com/ManudotaORG/artist-mcp/commit/a28c3108d63a72c7238d3a8cd19bc8f60873a4f6))
+* **agent-pack:** decide duplicates on identity, not on resemblance ([a933381](https://github.com/ManudotaORG/artist-mcp/commit/a933381a282af00c9ef8a14ce7e6e5f0856f8798)), closes [#65](https://github.com/ManudotaORG/artist-mcp/issues/65)
+* **agent-pack:** look for templates when asked about them, not only for them ([2f7effb](https://github.com/ManudotaORG/artist-mcp/commit/2f7effb196060f15c01a4825d376e015c1484b46))
+* **agent-pack:** put the evidence boundary where a user's session can see it ([9492e3a](https://github.com/ManudotaORG/artist-mcp/commit/9492e3a780408bf2fa551bbfad2bdd9ec38d47fb))
+* **agent-pack:** stop answering and intake contradicting each other on files ([6428f31](https://github.com/ManudotaORG/artist-mcp/commit/6428f31799efe97975c1dba2f533af915682443e))
+* **agent-pack:** stop the Janitor claiming cross-page work it cannot do ([1907045](https://github.com/ManudotaORG/artist-mcp/commit/19070457006c74ef399d1a681522b3e95ed9bfec)), closes [#72](https://github.com/ManudotaORG/artist-mcp/issues/72)
+* **agent-pack:** templates keep the playbooks' set and the artist's shape ([8a4b6d7](https://github.com/ManudotaORG/artist-mcp/commit/8a4b6d7ce8eeac66a2aa655ab15b57330aa2064c))
+* **mcp:** a guessed notebook is not a chosen one ([c7a57f7](https://github.com/ManudotaORG/artist-mcp/commit/c7a57f7f61155774c596783cea98912edc43493f))
+* **mcp:** ask which notebook, rather than answering and disclaiming ([f4224ba](https://github.com/ManudotaORG/artist-mcp/commit/f4224ba69be3993c814badedb573db4f549d84bc))
+* **mcp:** stop the Google tools inviting the search their policy forbids ([5b1b396](https://github.com/ManudotaORG/artist-mcp/commit/5b1b39618b7e1f74d7558ed01f3fc0ea5e2120fd))
+
 ## [1.1.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.0.1...artist-mcp-v1.1.0) (2026-08-14)
 
 
