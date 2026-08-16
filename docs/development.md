@@ -280,6 +280,31 @@ The npm package uses a separate branch-aware release workflow:
 - Merging that PR creates the release, publishes npm `latest` using GitHub OIDC,
   and sends deduplicated patch notes to Telegram.
 
+**The Release Please pull request needs its CI approved by hand, every time.**
+GitHub does not run workflows for a pull request opened by a bot without a
+maintainer approving them, so CI sits at `action_required` and reports no checks
+at all. `main` requires `Lint and build` with `enforce_admins`, so the release
+pull request is unmergeable until that run is approved — and the failure mode is
+a pull request that looks merely slow rather than blocked. Approve the run from
+the Actions tab, or with:
+
+```bash
+gh run list --branch release-please--branches--main--components--artist-mcp --limit 1
+gh api -X POST repos/ManudotaORG/artist-mcp/actions/runs/<id>/approve
+```
+
+This is a repository Actions setting rather than anything in the workflow, so it
+can be removed rather than lived with.
+
+**A failed publish is retried by re-running the job, never by publishing from a
+laptop.** `1.2.0`'s follow-on staging prerelease died at the registry with
+`TLOG_CREATE_ENTRY_ERROR` — a Sigstore transparency-log 409 on a duplicate
+signing entry — after building a correct tarball. `gh run rerun <id> --failed`
+published it as `1.2.1-staging.58.2`: the run attempt is appended to the version,
+so a retry mints a new immutable version instead of colliding. Confirm a publish
+against the registry (`npm view @manudota/artist-mcp dist-tags`) rather than the
+workflow log, since the build can succeed and the publish still fail.
+
 Do not run `npm publish` from a laptop. npm has one trusted-publisher mapping:
 `ManudotaORG/artist-mcp`, workflow `release.yml`, blank npm environment field.
 The workflow itself binds stable and staging jobs to separate GitHub

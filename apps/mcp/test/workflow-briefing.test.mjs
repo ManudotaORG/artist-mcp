@@ -21,6 +21,7 @@ const entries = [
   entry('policy:evidence', 'policy'),
   entry('policy:intake', 'policy'),
   entry('policy:local-state', 'policy'),
+  entry('policy:patch', 'policy'),
   entry('project-type:concert', 'project-type'),
   entry('project-type:rehearsal', 'project-type'),
   entry('role:orchestrator', 'role'),
@@ -64,6 +65,18 @@ test('evidence and divergence are in force, and local state is not', async () =>
   // Answers a question that is asked out loud, so a one-liner is enough.
   assert.doesNotMatch(text, /body of policy:local-state/);
   assert.match(text, /- policy:local-state:/);
+});
+
+/**
+ * Patch binds when a recommendation is agreed — the end of an ordinary answer,
+ * and not a moment anything reaches for a policy. Summarised, it would be read
+ * after the fragment had already gone out. Divergence and answering also
+ * delegate to it by name, so a summary here breaks two policies loaded in full.
+ */
+test('the patch policy is in force, not summarised', async () => {
+  const text = await renderWorkflowBriefing(entries, loadAll);
+  assert.match(text, /body of policy:patch/);
+  assert.doesNotMatch(text, /- policy:patch:/);
 });
 
 /**

@@ -283,7 +283,6 @@ const installAgentPack = async (directory = process.cwd()): Promise<void> => {
   for (const file of packFiles) {
     const destination = resolve(destinationRoot, file);
     if (file === 'AGENTS.md' && agentsInstructionsSkipped) {
-      console.log('Left existing AGENTS.md unchanged');
       continue;
     }
     await mkdir(dirname(destination), { recursive: true });
@@ -295,8 +294,24 @@ const installAgentPack = async (directory = process.cwd()): Promise<void> => {
     }
   }
 
+  // The skip is right — this file is the user's to edit, and nothing here can
+  // tell a deliberate edit from a copy that simply predates the current one.
+  // But the two read identically at the terminal, and they need different
+  // actions: one is finished, the other is a user still holding rules that have
+  // since been rewritten. So say what the shipped file now contains and how to
+  // take it, rather than only that theirs was kept.
   if (agentsInstructionsSkipped) {
-    console.log('Reference the files under .artist/ from your existing AGENTS.md.');
+    console.log(
+      'Left existing AGENTS.md unchanged — it differs from the shipped one, ' +
+        'which this cannot tell from an edit of yours.',
+    );
+    console.log(
+      'The shipped AGENTS.md no longer restates any rules: it points at ' +
+        '.artist/ and list_agent_workflows, because every summary it used to ' +
+        'carry drifted from the playbooks. If yours still summarises policies, ' +
+        'it may be describing rules that have changed.',
+    );
+    console.log('To take the shipped version, delete AGENTS.md and run this again.');
   }
   console.log('Read-only artist workflow pack is ready.');
 };
