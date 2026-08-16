@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.2.0...artist-mcp-v1.3.0) (2026-08-16)
+
+
+### Features
+
+* **agent-pack:** hand the musician a paste-ready page patch ([ecd95ef](https://github.com/ManudotaORG/artist-mcp/commit/ecd95efaaaeb9f6bfd407ff8b5d83faf12d5371d))
+
+
+### Bug Fixes
+
+* **agent-pack:** let "not sure" settle a field, so the page is reachable ([ea2b803](https://github.com/ManudotaORG/artist-mcp/commit/ea2b803d4b8cccacb1f38188a847e8a1a201028d))
+* **agent-pack:** stop AGENTS.md restating rules it cannot keep current ([b0364c7](https://github.com/ManudotaORG/artist-mcp/commit/b0364c725c1b22fd2548a5bf8d42ae48df27011f))
+* **mcp:** announce the playbooks in the handshake, so they are in force ([46acdab](https://github.com/ManudotaORG/artist-mcp/commit/46acdab0d6e51e3e9ff212988dc7790be6aab064))
+
 ## [1.2.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.1.0...artist-mcp-v1.2.0) (2026-08-16)
 
 
