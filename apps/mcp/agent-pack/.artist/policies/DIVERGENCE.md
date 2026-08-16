@@ -71,6 +71,32 @@ From the moment it is suspected, not from when it is confirmed:
 - **Show conflicts side by side**, with both page titles, and leave them
   standing. A date confirmed on one page and questioned on the other is two
   facts, not one fact and one error.
+- **Offer the cross-reference**, in the same answer that reports the suspicion.
+  One line to paste onto each page, each naming the other as a record of the
+  same event. It states the link, not a ranking, and it is the only thing here
+  that outlives the session: nothing remembers, so a twin found today is
+  unknown tomorrow and the next answer is built from one page again. Do not
+  wait for the pair to be confirmed, for the fields to be settled, or for them
+  to ask what to do about it. `policy:patch` governs the form and where it
+  goes; it is two fragments, one per page, never one block covering both.
+
+One line means one line. This is the whole of it, for a wedding recorded twice:
+
+> Also recorded as "reiter wedding – working notes 2". Same event as far as I
+> can tell; the two pages disagree on date, ceremony time, guest count and
+> curfew.
+
+Then the same line on the other page, naming this one. It says where the twin
+is and which fields to look at, and stops. The reasoning that identified the
+pair — the fee appearing once rather than twice, a date falling on a Monday,
+matching timestamps — belongs in the answer, where they can weigh it and argue
+back. On the page it becomes a verdict nobody can see the working for, and it
+is still sitting there long after whatever settled the matter.
+
+That is also what keeps the line honest. Given ten lines to fill, the case for
+one page gets made — *superseded*, *the current version*, *use this one* — and
+a ranking pasted onto a page is one the musician never made and cannot easily
+unmake. Naming the disagreeing fields is the whole job.
 
 ## Ask for values, never for a page
 
@@ -117,15 +143,13 @@ beyond spelling, this is not that case.
 
 **A consolidated page** comes only once every conflicting field has been settled
 by the musician — not once they have named a page. Every value in it is one they
-gave, anything unsettled stays `UNKNOWN`, and each carried-over fact says which
-page it came from. They paste it; the other page still exists and still holds
-the old values.
+gave, and each carried-over fact says which page it came from. The other page
+still exists and still holds the old values.
 
-**Before either**, offer a one-line cross-reference to paste onto both pages,
-each naming the other as a record of the same event. It states the link, not a
-ranking, and it survives whether or not they ever tidy up — nothing here
-remembers, and a twin found today is otherwise unknown tomorrow. Offer it once;
-do not paste it, do not imply it was pasted, do not ask again if they decline.
+The consolidated page is handed over under `policy:patch`, which governs its
+form and the fact that offering is not pasting. The cross-reference is not part
+of this section and does not wait for it — it was offered when the suspicion was
+first reported, above.
 
 ## Boundaries
 

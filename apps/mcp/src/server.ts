@@ -254,12 +254,20 @@ const renderWorkflowBriefing = async (
   // nobody asks whether two pages are one event, and the damage is done by
   // working in one of them as though the other were not there.
   //
+  // Patch binds at the moment a recommendation is agreed, which is the end of
+  // an ordinary answer and not a moment anything reaches for a policy. Left as
+  // a summary it would be read after the fragment had already been handed over
+  // — restating the whole page, inventing the date nobody gave, or written as
+  // though the page had been updated. Divergence and answering both delegate to
+  // it by name, so summarising it breaks two policies that are loaded in full.
+  //
   // Local state stays a summary. It answers a question that is asked out loud.
   const ALWAYS: readonly string[] = [
     "policy:intake",
     "policy:answering",
     "policy:evidence",
     "policy:divergence",
+    "policy:patch",
   ];
   const alwaysInFull = (entry: (typeof entries)[number]) =>
     entry.kind === "project-type" || ALWAYS.includes(entry.id);
@@ -358,9 +366,11 @@ const runServer = async (): Promise<void> => {
   server.tool(
     "list_agent_workflows",
     "List the read-only artist roles, project types, and policies available " +
-      "at runtime. The project-type playbooks and the intake policy are " +
-      "returned in full and are in force as returned — they govern the survey, " +
-      "the classification and any templates, and are not optional reading. " +
+      "at runtime. Whatever comes back in full is in force as returned and is " +
+      "not optional reading — the project-type playbooks and several policies " +
+      "arrive that way, governing the survey, the classification, what is " +
+      "stated and how firmly, and how anything is handed over for pasting. " +
+      "Anything listed as a one-line summary is not in force until loaded. " +
       "Load the Orchestrator before handling a project.",
     {},
     async () => {
