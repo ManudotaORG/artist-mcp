@@ -93,7 +93,7 @@ try {
           '                       sign in to a provider in your browser\n' +
           '  artist-mcp disconnect [microsoft|google]\n' +
           '                       remove a connection from this machine\n' +
-          '  artist-mcp status     show what this machine is connected to\n' +
+          '  artist-mcp status     check this install and what it is connected to\n' +
           '  artist-mcp agents status [directory]\n' +
           '                       show which playbooks are in force\n' +
           '  artist-mcp agents install [directory]\n' +

@@ -79,6 +79,25 @@ docs/           the brief
   standalone.
 - **Workflow Markdown is executable policy.** Preserve the read-only boundary,
   regenerate `agent-pack/registry.json`, and verify checksums when it changes.
+- **A rule in a role is not in force.** Roles arrive in the briefing as a
+  one-line summary; only project types and the policies in `alwaysInFull` load
+  in full. Three bugs came from rules sitting where no session could see them.
+  Read "Editing the pack" in
+  [docs/releases-and-agents.md](docs/releases-and-agents.md) before touching the
+  pack — that one, plus a headline is a rule, a tool description outranks a
+  playbook, and extracting a concern means deleting it where it came from in the
+  same edit.
+- **`init` writes absolute paths into the Claude Desktop entry.** Moving the
+  checkout or the playbook directory leaves it launching something that no longer
+  exists. Re-run `init` after moving either. `status` now checks what `init`
+  wrote and names the missing path, so this surfaces in the terminal rather than
+  as a workflow tool failing later on a directory the user has forgotten.
+- **A re-run of the editable install adds, and never changes.** An unedited
+  playbook in a user's directory has been accepted, not left awaiting updates, so
+  refreshing it would silently alter rules in force on a file they own. Tracking
+  seed hashes to make that possible was considered and rejected — see
+  `docs/releases-and-agents.md`. Deleting a copy and re-running is the explicit
+  way back to the shipped version.
 - **A local playbook directory must never fall back silently.** An unreachable
   remote registry falls back to the bundle; a broken local directory does not.
   The user said which rules govern their work, and quietly running different

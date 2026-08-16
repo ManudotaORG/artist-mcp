@@ -91,14 +91,16 @@ npx @manudota/artist-mcp agents install
 ```
 
 It adds a root `AGENTS.md`, seven narrow roles, four starter project types, and
-the local-state policy under `.artist/`. Installation is idempotent. A
+five policies under `.artist/`. Installation is idempotent. A
 differing root `AGENTS.md` is kept; the command explains how to reference
 `.artist/` manually. Differing workflow files stop the install before anything
 is written.
 
 The roles are Orchestrator, Archivist, Registrar, Project Manager, Envoy,
 Auditor, and Janitor. The starter project types are Concert, Large Concert,
-Studio Session, and Rehearsal.
+Studio Session, and Rehearsal. The policies are Intake, Answering, Evidence,
+Divergence, and Local State; every one but Local State is loaded in full at the
+start of a session rather than summarised.
 
 One OneNote page is one working unit. The pack can read that page and produce a
 recommendation, plan, draft, audit, or cleanup summary in chat. It cannot write
@@ -109,6 +111,82 @@ Agents may optionally keep small, disposable working context in
 format, but may not store secrets, copy source systems, or turn local files into
 claims, queues, locks, reviews, or other coordination infrastructure. The
 backend never stores this local state.
+
+## Editing the pack: what a day of testing taught
+
+These come from running the pack against a deliberately messy notebook in Claude
+Desktop and fixing what broke. They are cheap to forget and expensive to
+rediscover.
+
+**A rule in a role is not in force.** The briefing loads project types and the
+policies listed in `alwaysInFull` in full; every role arrives as a one-line
+summary until something loads it. Three separate bugs came from this — the
+evidence boundary sat in `AGENTS.md`, which the server never loads, and a
+session read the user's mailbox unasked; the Project Manager's rule against
+pooling disputed milestones sat in its role file, and a due list stated one
+page's date as fact. If a rule has to hold whether or not anyone reached for a
+role, it belongs in a policy.
+
+Test it the way those were found. Ask the server for the briefing and grep for
+the sentence:
+
+```bash
+node dist/index.js --agents <pack> # or drive list_agent_workflows over stdio
+```
+
+**A tool description outranks a playbook.** `list_events` described the calendar
+as corroborating "what a page claims about a date", and a model facing two pages
+that disagreed about a date read that as an instruction. The policy forbidding
+it was loaded and lost. Where a constraint governs when a tool may be called,
+put it in the tool's own description — that is what the model reads at the
+moment it decides.
+
+**A headline is a rule.** Four self-contradictions surfaced in one day, each the
+same shape: a purpose promising what the method forbids. The Janitor claimed
+cross-page work its method could not do; `policy:divergence` said "let the
+musician decide which page is the project" seventy lines above the rule against
+exactly that; `policy:answering` said to answer in chat first while
+`policy:intake` said templates are handed over as files. In every case the model
+followed the headline, which is the reasonable thing to do. The first paragraph
+is also what the registry uses as the entry's description, so it is read more
+often than the body.
+
+**Prohibiting a phrase moves it, it does not remove it.** Six rounds of banning
+winner-picking vocabulary produced six synonyms: `stale`, then `the losing
+page`, then `which version wins`, then `the survivors`. The first thing that
+changed the behaviour was giving a sentence to say instead. Prefer one worked
+example over three prohibitions.
+
+**Extract a concern, then delete it where it came from — in the same edit.**
+`INTAKE.md` originally carried everything. Pulling answering, evidence and
+divergence out of it without removing the originals left it restating all three,
+and left one rule directly contradicting its replacement. Every duplication
+found in a later cleanup was a refactor that stopped halfway. Grep the other
+policies for the subject before adding a rule.
+
+**Do not tune against adversarial data.** The test notebook held planted
+duplicates, a misspelt title and a half-edited copy-paste. That is a worst case
+and it is useful for finding edge cases, but a wide prompt against it puts
+maximum pressure on the model to summarise and conclude — the conditions that
+produce winner-picking. Most of the phrasing churn came from treating variance
+under those conditions as a defect. The documented workflow is narrow prompts,
+one step at a time, and it behaved better.
+
+**Check the editable pack before you trust a green test run.** Working against
+`init --editable` means two copies of every playbook, and the direction of an
+edit is easy to lose: a change made in the user's directory runs correctly for
+them and ships to nobody, because `registry.json` and its checksums are
+generated from the bundle while a local pack is checksummed from the directory
+as it is read. `pnpm --filter @manudota/artist-mcp check-pack <dir>` names
+anything that differs, exists only locally, or is missing. Divergence is the
+normal state of an editable pack, so it reports rather than fails — which side
+is right is not something a script can know.
+
+**Watch the size of what loads.** Every policy in `alwaysInFull` is paid for at
+the start of every session. The briefing went from 13k to 37k characters in a
+day, and a third of that growth was one rule written in several places. A rule
+earns its place by naming a failure it prevents; where two rules prevent the
+same failure, merge them.
 
 ## Runtime registry
 
@@ -179,6 +257,23 @@ the install being re-runnable: run it again after an upgrade and playbooks new i
 that version are added, anything edited is left alone, and the summary says which
 files were treated as the user's. Nothing is ever overwritten, because a file
 that differs cannot be told apart from a deliberate edit.
+
+**A file the user has *not* edited is not refreshed either, and that is the
+decision rather than a limitation.** Recording the shipped hash each file was
+seeded from would make it possible: untouched files could then track later
+versions while edited ones stayed put. It was considered and rejected.
+
+Choosing the editable install is choosing to own the pack. An unedited file in
+that directory has been read and accepted, not left in a queue awaiting updates —
+a musician may simply be content with it. Refreshing it on their behalf would
+change rules that are in force, silently, on a file they own, which is the one
+thing this layer must never do; the same principle already forbids a broken local
+directory falling back to the bundle. Adding an id the user has never seen is a
+different act from rewriting one they have.
+
+So the contract is narrow and worth stating plainly: **a re-run adds, and never
+changes.** A user who does want the shipped version of a playbook back can delete
+their copy and re-run, which is explicit and theirs to choose.
 
 `agents install` still copies the pack into a repository for a coding agent to
 read, which is a different job and unchanged.

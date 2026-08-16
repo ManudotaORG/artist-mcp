@@ -5,6 +5,10 @@ import { z } from "zod";
 import { listAgentWorkflows, loadAgentWorkflow, type ResolvedEntry } from "./agents.js";
 import { GraphError } from "./client.js";
 import { call } from "./dispatch.js";
+import { narrowNotes } from "./notes.js";
+
+/** One call per page, so a notebook nobody put a number on does not become hundreds of requests. */
+const DEFAULT_MAP_PAGES = 40;
 
 type NoteSummary = {
   id: string;
@@ -13,6 +17,15 @@ type NoteSummary = {
   /** Absent from responses served by an older edge function. */
   notebook?: string | null;
   last_modified: string | null;
+};
+
+type NoteSketch = NoteSummary & {
+  sketch: string | null;
+  source: "preview" | "page" | "none";
+  fell_back: string | null;
+  more: boolean;
+  chars_total: number | null;
+  error: string | null;
 };
 
 type EmailSummary = {
@@ -115,6 +128,96 @@ const describeSize = (bytes: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
+/**
+ * Whether this server has ever handed back the list of notebooks.
+ *
+ * The one thing the server can actually know about where a notebook name came
+ * from. It cannot see who typed it — but a name arriving before the list was
+ * ever served cannot have come from the tool, so it came from somewhere outside
+ * the conversation. That is the case worth catching: a session inferred a
+ * notebook from saved context and answered about the wrong one, correctly and
+ * without saying which.
+ *
+ * Only ever set to true, and only by serving the list. It says nothing after a
+ * session has seen the notebooks once, which is the honest limit of it.
+ */
+let notebooksHaveBeenListed = false;
+
+/**
+ * Settle which notebook is being worked in, before anything reads a page.
+ *
+ * Shared by `list_notes` and `map_notes` rather than written twice: the rule
+ * that a notebook must be chosen before pages are handed back is the scope rule
+ * intake depends on, and two copies of it would eventually disagree. The caller
+ * names itself so the instruction says which tool to call again.
+ */
+const selectNotebook = async (
+  notebook: string | undefined,
+  tool: string,
+): Promise<{ pages: NoteSummary[]; scope: string | null } | { message: string }> => {
+  const { notes } = await call<{ notes: NoteSummary[] }>("list_notes");
+  if (notes.length === 0) return { message: "No notes found." };
+
+  const names = [...new Set(notes.map((n) => n.notebook ?? "(unnamed notebook)"))];
+
+  // Handing back every page across every notebook invites work on the wrong
+  // one. With a choice to be made and nothing chosen, the pages are withheld
+  // until the user has actually made it.
+  // A name that arrives before this session has ever seen the list did not come
+  // from the tool, so it is either the user's or a guess — and the two are
+  // indistinguishable from here. Ask, the same way an omitted name asks.
+  const unseenName = notebook !== undefined && !notebooksHaveBeenListed;
+
+  if ((!notebook || unseenName) && names.length > 1) {
+    notebooksHaveBeenListed = true;
+    const counts = names.map((name) => {
+      const total = notes.filter((n) => (n.notebook ?? "(unnamed notebook)") === name).length;
+      return `- ${name} — ${total} page${total === 1 ? "" : "s"}`;
+    });
+    return {
+      message:
+        `This account has ${names.length} notebooks:\n${counts.join("\n")}\n\n` +
+        (unseenName
+          ? `You asked for "${notebook}", but nothing in this conversation has ` +
+            "named a notebook yet. Ask the user which one they mean — including " +
+            "whether it is that one — and call " +
+            `${tool} again once they have said. A notebook you know of from ` +
+            "elsewhere is a guess, and a guess here produces an answer that is " +
+            "correct about the wrong pages."
+          : `Ask the user which notebook to work in, then call ${tool} again ` +
+            "with that name. Do not guess, and do not work across notebooks " +
+            "unless the user asks for it."),
+    };
+  }
+  notebooksHaveBeenListed = true;
+
+  const wanted = notebook?.trim().toLowerCase();
+  const pages = wanted
+    ? notes.filter((n) => (n.notebook ?? "").trim().toLowerCase() === wanted)
+    : notes;
+
+  if (wanted && pages.length === 0) {
+    return { message: `No notebook named "${notebook}". Available: ${names.join(", ")}.` };
+  }
+
+  // A name that was supplied walks straight past the question above, so a
+  // guessed one is indistinguishable from a chosen one. Found in use: asked
+  // about "this notebook" in a fresh chat, a session inferred one from saved
+  // context outside OneNote and answered about it without saying which. The
+  // answer was correct and about the wrong notebook, which is the worst
+  // combination. So the scope travels with the pages and cannot be dropped
+  // silently on the way to the user.
+  const others = names.filter((name) => name.trim().toLowerCase() !== wanted);
+  const scope =
+    wanted && others.length > 0
+      ? `Answered for "${notebook}" only. This account also has: ${others.join(", ")}. ` +
+        "Say which notebook this covers when you answer. If the user did not name " +
+        "one, do not infer it from anything outside this conversation — ask."
+      : null;
+
+  return { pages, scope };
+};
+
 const serverVersion = '1.1.0'; // x-release-please-version
 
 const errorResult = (err: unknown) => {
@@ -142,8 +245,24 @@ const renderWorkflowBriefing = async (
   // all of which happen before anything would think to load a policy.
   // A run that loaded nothing at all classified five pages and then
   // offered to write template files, which intake forbids.
+  // The other three policies are here on the same reasoning: each has to bind
+  // before anything would think to load a policy, so a summary of it is worth
+  // nothing. Answering shapes every reply including the first. Evidence governs
+  // every read, and its rule is that a cheap look which found nothing is not a
+  // finding — a rule that only applies once loaded would be applied after the
+  // false gap had already been reported. Divergence has to fire unprompted:
+  // nobody asks whether two pages are one event, and the damage is done by
+  // working in one of them as though the other were not there.
+  //
+  // Local state stays a summary. It answers a question that is asked out loud.
+  const ALWAYS: readonly string[] = [
+    "policy:intake",
+    "policy:answering",
+    "policy:evidence",
+    "policy:divergence",
+  ];
   const alwaysInFull = (entry: (typeof entries)[number]) =>
-    entry.kind === "project-type" || entry.id === "policy:intake";
+    entry.kind === "project-type" || ALWAYS.includes(entry.id);
   const upfront = entries.filter(alwaysInFull);
   const rest = entries.filter((entry) => !alwaysInFull(entry));
 
@@ -299,66 +418,210 @@ const runServer = async (): Promise<void> => {
         .optional()
         .describe(
           "Name of the notebook to list, exactly as returned by a previous " +
-            "call. Omit only when the user has not chosen one yet.",
+            "call in this conversation, or named by the user in it. Omit when " +
+            "they have not chosen one — omitting asks them, which is correct. " +
+            "Never fill this in from saved context, an earlier session, or a " +
+            "notebook you happen to know the user has: a plausible guess here " +
+            "is indistinguishable from their choice and produces a confident " +
+            "answer about the wrong notebook.",
+        ),
+      since: z
+        .string()
+        .optional()
+        .describe(
+          "Only pages modified on or after this date, as an ISO date such as " +
+            "2026-08-10. Use it for 'what moved this week'. Pages the account " +
+            "records no modified date for are left out rather than guessed at.",
+        ),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe(
+          "Cap the number of pages returned, newest first. The reply says how " +
+            "many matched, so a capped list is never mistaken for the whole " +
+            "notebook.",
         ),
     },
-    async ({ notebook }) => {
+    async ({ notebook, since, limit }) => {
       try {
-        const { notes } = await call<{ notes: NoteSummary[] }>("list_notes");
-        if (notes.length === 0) {
-          return { content: [{ type: "text", text: "No notes found." }] };
+        const chosen = await selectNotebook(notebook, "list_notes");
+        if ("message" in chosen) {
+          return { content: [{ type: "text", text: chosen.message }] };
         }
+        const selected = chosen.pages;
 
-        const names = [...new Set(notes.map((n) => n.notebook ?? "(unnamed notebook)"))];
+        // Narrowed only after the notebook is settled, so a `since` window can
+        // never be what makes a notebook look empty enough to skip choosing.
+        const { notes: shown, matched, undated } = narrowNotes(selected, { since, limit });
 
-        // Handing back every page across every notebook invites work on the
-        // wrong one. With a choice to be made and nothing chosen, the pages
-        // are withheld until the user has actually made it.
-        if (!notebook && names.length > 1) {
-          const counts = names.map((name) => {
-            const total = notes.filter(
-              (n) => (n.notebook ?? "(unnamed notebook)") === name,
-            ).length;
-            return `- ${name} — ${total} page${total === 1 ? "" : "s"}`;
-          });
+        if (shown.length === 0) {
+          const scope = notebook ? `"${notebook}"` : "this account";
           return {
             content: [
               {
                 type: "text",
                 text:
-                  `This account has ${names.length} notebooks:\n${counts.join("\n")}\n\n` +
-                  "Ask the user which notebook to work in, then call list_notes " +
-                  "again with that name. Do not guess, and do not work across " +
-                  "notebooks unless the user asks for it.",
+                  `No pages in ${scope} modified on or after ${since}.` +
+                  (undated > 0
+                    ? ` ${undated} page${undated === 1 ? " has" : "s have"} no modified date ` +
+                      "recorded and were left out of the window rather than assumed recent; " +
+                      "list without `since` to see them."
+                    : ""),
               },
             ],
           };
         }
 
-        const wanted = notebook?.trim().toLowerCase();
-        const selected = wanted
-          ? notes.filter((n) => (n.notebook ?? "").trim().toLowerCase() === wanted)
-          : notes;
-
-        if (wanted && selected.length === 0) {
-          return {
-            content: [
-              {
-                type: "text",
-                text:
-                  `No notebook named "${notebook}". Available: ${names.join(", ")}.`,
-              },
-            ],
-          };
-        }
-
-        const lines = selected.map((n) => {
+        const lines = shown.map((n) => {
           const location = [n.notebook, n.section].filter(Boolean).join(" / ");
           return `- ${n.title}${location ? ` (${location})` : ""} — modified ${
             n.last_modified ?? "unknown"
           }\n  id: ${n.id}`;
         });
-        return { content: [{ type: "text", text: lines.join("\n") }] };
+
+        // A truncated list that does not say so is read as the whole notebook,
+        // and the answer built on it is wrong without looking wrong.
+        const caveats: string[] = [];
+        if (chosen.scope) caveats.push(chosen.scope);
+        if (shown.length < matched) {
+          caveats.push(
+            `Showing the ${shown.length} most recently modified of ${matched} matching ` +
+              "pages. Raise `limit` or narrow with `since` for the rest.",
+          );
+        }
+        if (undated > 0) {
+          caveats.push(
+            `${undated} page${undated === 1 ? "" : "s"} with no modified date recorded ` +
+              `${undated === 1 ? "is" : "are"} not in this window. That is unrecorded, ` +
+              "not old — list without `since` to see them.",
+          );
+        }
+
+        return {
+          content: [
+            { type: "text", text: [lines.join("\n"), ...caveats].join("\n\n") },
+          ],
+        };
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  server.tool(
+    "map_notes",
+    "Sketch every page in one notebook without reading them, so a notebook can " +
+      "be triaged before any page is read in full. Returns the opening of each " +
+      "page — for a well-kept page that is its headline facts. Use it to decide " +
+      "which pages are worth read_note. What it returns is the TOP of a page, " +
+      "not a summary of one: never classify a page, judge it complete, or call " +
+      "two pages duplicates on a sketch alone. Read the page before saying " +
+      "anything the sketch cannot show.",
+    {
+      notebook: z
+        .string()
+        .optional()
+        .describe(
+          "Name of the notebook to map, exactly as returned by list_notes in " +
+            "this conversation, or named by the user in it. Omit when they have " +
+            "not chosen one. Never fill it in from saved context or an earlier " +
+            "session.",
+        ),
+      since: z
+        .string()
+        .optional()
+        .describe("Only sketch pages modified on or after this ISO date."),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe(
+          `Cap how many pages are sketched, newest first. Defaults to ${DEFAULT_MAP_PAGES}.`,
+        ),
+    },
+    async ({ notebook, since, limit }) => {
+      try {
+        const chosen = await selectNotebook(notebook, "map_notes");
+        if ("message" in chosen) {
+          return { content: [{ type: "text", text: chosen.message }] };
+        }
+
+        // A default cap, because this is one call per page: a notebook of two
+        // hundred pages should not become two hundred requests because nobody
+        // said a number. It reports itself, as every other truncation does.
+        const { notes: pages, matched, undated } = narrowNotes(chosen.pages, {
+          since,
+          limit: limit ?? DEFAULT_MAP_PAGES,
+        });
+
+        if (pages.length === 0) {
+          return {
+            content: [
+              { type: "text", text: `No pages to map${since ? ` modified on or after ${since}` : ""}.` },
+            ],
+          };
+        }
+
+        const { sketches, read_in_full } = await call<{
+          sketches: NoteSketch[];
+          read_in_full: number;
+        }>("map_notes", { pages });
+
+        const blocks = sketches.map((s) => {
+          const location = [s.notebook, s.section].filter(Boolean).join(" / ");
+          const head =
+            `## ${s.title}${location ? ` (${location})` : ""} — modified ${s.last_modified ?? "unknown"}` +
+            `\nid: ${s.id}`;
+          if (s.sketch === null) {
+            // Named as a gap. A page missing from a survey reads as a page
+            // that is not there.
+            return `${head}\nNOT SKETCHED: ${s.error ?? "unknown error"} (${s.fell_back}). ` +
+              "Treat this page as unsurveyed, not as empty.";
+          }
+          const how =
+            s.source === "preview"
+              ? "opening of the page"
+              : `read in full because ${s.fell_back}`;
+          // "Probably", because Graph does not say it truncated — a preview
+          // that arrived at full length is the only evidence there is more.
+          return `${head}\n[${how}${s.more ? "; the page probably continues past this" : ""}]\n${s.sketch}`;
+        });
+
+        const caveats = [
+          ...(chosen.scope ? [chosen.scope] : []),
+          "These are page openings, not summaries. Anything not visible here " +
+            "is unsurveyed rather than absent — read the page with read_note " +
+            "before concluding a field, a date or a decision is missing.",
+        ];
+        if (read_in_full > 0) {
+          // Said plainly: these sketches are better evidence than the others,
+          // and a caller that cannot tell them apart will trust the weaker one
+          // exactly as much.
+          caveats.push(
+            `${read_in_full} of ${sketches.length} page${read_in_full === 1 ? "" : "s"} had no ` +
+              "usable preview and were read in full instead, so those sketches " +
+              "cover more of the page than the rest.",
+          );
+        }
+        if (pages.length < matched) {
+          caveats.push(
+            `Sketched the ${pages.length} most recently modified of ${matched} pages. ` +
+              "Raise `limit` or narrow with `since` for the rest.",
+          );
+        }
+        if (undated > 0) {
+          caveats.push(
+            `${undated} page${undated === 1 ? "" : "s"} with no modified date recorded ` +
+              `${undated === 1 ? "is" : "are"} not in this window.`,
+          );
+        }
+
+        return {
+          content: [{ type: "text", text: `${blocks.join("\n\n")}\n\n${caveats.join("\n\n")}` }],
+        };
       } catch (err) {
         return errorResult(err);
       }
@@ -367,13 +630,48 @@ const runServer = async (): Promise<void> => {
 
   server.tool(
     "read_note",
-    "Read the text content of one OneNote page. Takes the id from list_notes.",
-    { note_id: z.string().describe("The id of the note, as returned by list_notes") },
-    async ({ note_id }) => {
+    "Read the text content of one OneNote page. Takes the id from list_notes. " +
+      "A page too long for one answer comes back in parts, and the answer says " +
+      "so and how to continue — a page is never truncated silently.",
+    {
+      note_id: z.string().describe("The id of the note, as returned by list_notes"),
+      from_part: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe(
+          "Which part of a long page to read. Omit for the first. A OneNote " +
+            "page has no page numbers, so parts are lengths of text, not " +
+            "anything the page itself records.",
+        ),
+    },
+    async ({ note_id, from_part }) => {
       try {
-        const { title, text } = await call<{ title: string; text: string }>("read_note", { note_id },
-        );
-        return { content: [{ type: "text", text: `# ${title}\n\n${text}` }] };
+        const { title, text, chars_total, parts_total, part, next_from_part } = await call<{
+          title: string;
+          text: string;
+          chars_total: number;
+          parts_total: number;
+          part: number;
+          next_from_part: number | null;
+        }>("read_note", { note_id, from_part });
+
+        // Truncation that does not announce itself is the failure this exists
+        // to prevent: the page arrives, the analysis is thinner than it should
+        // be, and nothing says why.
+        const note =
+          parts_total > 1
+            ? `\n\n(Part ${part} of ${parts_total} — this page is ${chars_total} ` +
+              "characters, more than fits in one answer, and is split by length " +
+              "alone, so a heading may fall across the join." +
+              (next_from_part === null
+                ? " This is the last part."
+                : ` Continue with from_part ${next_from_part}.`) +
+              " Do not treat this part as the whole page.)"
+            : "";
+
+        return { content: [{ type: "text", text: `# ${title}\n\n${text}${note}` }] };
       } catch (err) {
         return errorResult(err);
       }
@@ -382,9 +680,11 @@ const runServer = async (): Promise<void> => {
 
   server.tool(
     "list_emails",
-    "Search the user's Gmail and list matching messages, newest first, with " +
+    "Only call this when the musician has asked for this specific look, and wait for their yes. A connected account is not standing permission; a gap, a contradiction, or two pages disagreeing is not a reason to search. Offer, name the search, and stop. " +
+      "Search the user's Gmail and list matching messages, newest first, with " +
       "subject, sender, date and snippet. Email is supporting evidence for a " +
-      "OneNote working unit — it corroborates or fills gaps in a page, and is " +
+      "OneNote working unit — it corroborates a page once the musician has " +
+      "asked you to look, and is " +
       "never itself the working unit. Cite the subject and sender behind any " +
       "fact taken from here, and never treat a hedged or forwarded value as " +
       "settled. Requires a Google connection, which is separate from the " +
@@ -430,7 +730,9 @@ const runServer = async (): Promise<void> => {
 
   server.tool(
     "read_email",
-    "Read one Gmail message in full, including its body. Takes the id from " +
+    "Only when the musician asked for this look. One yes covers one look, not " +
+      "a standing licence to keep reading. " +
+      "Read one Gmail message in full, including its body. Takes the id from " +
       "list_emails. Any attachments are listed by name, type and size but " +
       "their contents are not fetched — describe what is attached, never what " +
       "it says, and use read_attachment to actually read one. Read-only: this " +
@@ -661,9 +963,11 @@ const runServer = async (): Promise<void> => {
 
   server.tool(
     "list_events",
-    "List Google Calendar events in a time window, earliest first. Calendar is " +
-      "supporting evidence for a OneNote working unit — it corroborates or " +
-      "contradicts what a page claims about a date, venue or attendee, and is " +
+    "Only call this when the musician has asked for this specific look, and wait for their yes. A connected account is not standing permission; a gap, a contradiction, or two pages disagreeing is not a reason to search. Offer, name the search, and stop. " +
+      "List Google Calendar events in a time window, earliest first. Calendar is " +
+      "supporting evidence for a OneNote working unit — asked to, it can " +
+      "corroborate or contradict what a page claims about a date, venue or " +
+      "attendee, and is " +
       "never itself the working unit. When a page and the calendar disagree, " +
       "report both and name each source; do not pick a winner. Recurring " +
       "occurrences are expanded and flagged, so 'every Tuesday' and 'this " +
@@ -719,7 +1023,9 @@ const runServer = async (): Promise<void> => {
 
   server.tool(
     "read_event",
-    "Read one Google Calendar event in full, including description and " +
+    "Only when the musician asked for this look. One yes covers one look, not " +
+      "a standing licence to keep reading. " +
+      "Read one Google Calendar event in full, including description and " +
       "attendees. Takes the id from list_events. Read-only: this never creates, " +
       "edits, moves, or responds to anything.",
     {

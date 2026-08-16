@@ -79,7 +79,9 @@ The MCP package reads three optional overrides during development:
 `~/.artist-mcp/tokens.json`, `ARTIST_MCP_SITE` to fetch client configuration
 from a site other than the one its version implies, and
 `ARTIST_MCP_AGENTS_DIR` to read playbooks from a directory instead of the
-bundled pack.
+bundled pack, and `ARTIST_MCP_CONFIG` to point at a Claude Desktop config other
+than the real one — the suite uses it so testing `status` never touches a
+developer's own install.
 
 ## Run the app
 
@@ -196,6 +198,44 @@ its modules at spawn. A **playbook** edit needs nothing — the directory is re-
 on every tool call — but a conversation already holding a `list_agent_workflows`
 result will not notice a playbook you add mid-conversation, so start a new one.
 
+### Staying on the local build
+
+Since 1.0.x shipped, the normal state is to sit on `release` for a while — days,
+not minutes — with Claude Desktop pointed at this checkout. Register it once:
+
+```bash
+pnpm --filter @manudota/artist-mcp build
+node apps/mcp/dist/index.js init --local --editable
+```
+
+To go back to what users have, and to return:
+
+```bash
+npx @manudota/artist-mcp init --editable      # published, npm latest
+node apps/mcp/dist/index.js init --local --editable   # back to this checkout
+```
+
+To see which of the two is registered right now, read the entry rather than
+guessing — a local one names an absolute path into this repository:
+
+```bash
+node -e "const {configPath,readConfig}=await import('./apps/mcp/dist/config.js');
+console.log((await readConfig(configPath())).mcpServers['artist-notes'].args.join(' '))"
+```
+
+**`init` records absolute paths, so moving anything breaks the entry.** Renaming
+the playbook directory or moving the checkout leaves Claude Desktop launching a
+path that no longer exists. Re-run `init` after moving either. This is not
+hypothetical: renaming `~/artist-playbooks` to `~/artist-mcp` left every workflow
+tool in a working Desktop failing for exactly that reason, with nothing saying
+why — which is what `status` checking the install was built for. It now names the
+missing path in the terminal instead.
+
+**Sync the release bump immediately after a release, not before the next
+promotion.** Release Please bumps the version on `main` only, so until `main` is
+merged back, every local build on `release` reports the previous version — while
+testing, on the branch, which is precisely when the version has to be trustworthy.
+
 Promote only when the thing you need to check cannot be checked locally:
 
 - **The published artifact** — that `dist/` and `agent-pack/` arrive in the
@@ -248,7 +288,12 @@ environments.
 ## Workflow Markdown
 
 `apps/mcp/agent-pack` contains the root policy, seven narrow roles, four starter
-project types, and the local-state policy. One OneNote page is one working unit.
+project types, and five policies. Four of those — intake, answering, evidence
+and divergence — are loaded in full at the start of every session because they
+have to hold whether or not anyone reached for them; local-state is summarised
+like a role. That list lives in `alwaysInFull` in `server.ts`, and "Editing the
+pack" in [releases-and-agents.md](releases-and-agents.md) explains why a rule in
+a role is not in force. One OneNote page is one working unit.
 The roles may read and return a result in chat; they may not write notes, send
 messages, edit calendars, or create background coordination infrastructure.
 
@@ -260,6 +305,17 @@ pnpm --filter @manudota/artist-mcp test
 
 The build regenerates `agent-pack/registry.json` with SHA-256 checksums. The
 runtime uses the registry and playbooks bundled into the installed npm version.
+
+Working against `init --editable` means two copies of every playbook. Check they
+have not diverged in the direction you did not intend:
+
+```bash
+pnpm --filter @manudota/artist-mcp check-pack ~/artist-mcp
+```
+
+An edit made in the editable directory runs correctly there and ships to nobody,
+because the registry is generated from the bundle while a local pack is
+checksummed from the directory as it is read.
 `ARTIST_MCP_REGISTRY_URL` is an explicit development/testing override; it must
 point to a registry whose Markdown files are resolvable relative to that URL.
 

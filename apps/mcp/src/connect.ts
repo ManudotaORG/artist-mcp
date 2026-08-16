@@ -11,6 +11,9 @@
  * opt-in — the same asymmetry the product has everywhere else.
  */
 
+import { access } from 'node:fs/promises';
+import { resolveRegistry, setLocalAgentRoot } from './agents.js';
+import { ENTRY_NAME, configPath, readConfig } from './config.js';
 import { connect } from './oauth.js';
 import { PROVIDERS } from './oauth.js';
 import { type ProviderName, clearProvider, loadTokens, readProvider } from './tokens.js';
@@ -66,7 +69,110 @@ export const runDisconnect = async (input?: string): Promise<void> => {
   );
 };
 
+/** `--agents <dir>`, read back out of the entry `init` wrote. */
+const recordedAgentsDir = (args: unknown): string | undefined => {
+  if (!Array.isArray(args)) return undefined;
+  const at = args.indexOf('--agents');
+  const value = at === -1 ? undefined : args[at + 1];
+  return typeof value === 'string' && value !== '' ? value : undefined;
+};
+
+const isPresent = async (path: string): Promise<boolean> => {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Check what `init` wrote, not only what `connect` did.
+ *
+ * The connection lines alone leave the most confusing failure uncovered,
+ * because it is not a connection problem: `init` records absolute paths, so
+ * moving the checkout or renaming the playbook directory leaves an entry
+ * launching something that no longer exists. Nothing complains — the server
+ * starts, `status` reports both providers connected, and the install looks
+ * entirely healthy right up until every workflow tool fails naming a directory
+ * the user may have forgotten about.
+ *
+ * Renaming ~/artist-playbooks to ~/artist-mcp produced exactly that. This turns
+ * it into one line in the terminal.
+ *
+ * Nothing here is re-derived: the pack is resolved through `resolveRegistry`,
+ * the same call the server loads from, so this report cannot disagree with what
+ * actually runs.
+ */
+const describeInstall = async (): Promise<void> => {
+  const path = configPath();
+
+  let entry: { command?: unknown; args?: unknown } | undefined;
+  try {
+    const config = await readConfig(path);
+    const servers = (config.mcpServers ?? {}) as Record<string, unknown>;
+    entry = servers[ENTRY_NAME] as typeof entry;
+  } catch (err) {
+    // An unreadable config is not an absent one, and saying "not installed"
+    // would send the user to re-run init against a file init will refuse too.
+    console.log(`Install    config unreadable — ${err instanceof Error ? err.message : err}`);
+    return;
+  }
+
+  if (entry === undefined) {
+    console.log(`Install    no "${ENTRY_NAME}" entry in ${path}`);
+    console.log('           Run: artist-mcp init');
+    return;
+  }
+
+  // Which of the two an entry is cannot be told from inside a chat, and they
+  // fail in the same way when crossed, so it leads the line.
+  const args = Array.isArray(entry.args) ? entry.args : [];
+  const local = entry.command !== 'npx';
+  const build = local ? 'local build' : `published package (${args[1] ?? 'unversioned'})`;
+
+  if (local) {
+    const target = typeof args[0] === 'string' ? args[0] : undefined;
+    if (target === undefined || !(await isPresent(target))) {
+      console.log(`Install    ${build} — MISSING: ${target ?? 'no path recorded'}`);
+      console.log('           The checkout has moved since init ran. Re-run: artist-mcp init --local');
+      return;
+    }
+    console.log(`Install    ${build} — ${target}`);
+  } else {
+    console.log(`Install    ${build}`);
+  }
+
+  const agentsDir = recordedAgentsDir(entry.args);
+  if (agentsDir === undefined) {
+    console.log('Playbooks  the shipped, checksummed ones');
+    return;
+  }
+
+  // A local pack that cannot be read must never be reported as fine, for the
+  // same reason it must never fall back silently: the user said which rules
+  // govern their work, and running different ones misreports what is in force.
+  try {
+    setLocalAgentRoot(agentsDir);
+    const { entries, localRoot } = await resolveRegistry();
+    const mine = entries.filter((item) => item.source === 'local').length;
+    console.log(`Playbooks  ${mine} of ${entries.length} from ${localRoot ?? agentsDir}`);
+    if (mine === 0) {
+      console.log('           That directory holds no playbooks — the shipped ones are in force.');
+    }
+  } catch (err) {
+    // The resolver's own message already names the path and the command, so
+    // repeating the advice here would only make a short report longer.
+    console.log(`Playbooks  UNREADABLE: ${agentsDir}`);
+    console.log(`           ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    setLocalAgentRoot(undefined);
+  }
+};
+
 export const runStatus = async (): Promise<void> => {
+  await describeInstall();
+
   const { providers } = await loadTokens();
   const connected = PROVIDER_NAMES.filter((name) => providers[name] !== undefined);
 

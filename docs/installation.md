@@ -89,11 +89,19 @@ This asks for `gmail.readonly` and `calendar.events.readonly`. The narrower
 events scope is deliberate — calendar metadata, sharing and settings are not
 read.
 
-Check what this machine holds at any time:
+Check this machine at any time:
 
 ```bash
 npx @manudota/artist-mcp status
 ```
+
+It reports the install as well as the connections: whether the Claude Desktop
+entry exists and where that config is, whether it runs the published package or
+a local build, and whether the playbook directory it recorded still resolves.
+That last one is the quiet failure — `init` writes absolute paths, so moving the
+checkout or renaming the playbook directory leaves a healthy-looking install
+whose workflow tools all fail. `status` names the missing path and the command
+that fixes it.
 
 ## 3. Verify the connection
 
@@ -105,14 +113,28 @@ Then choose a returned page and ask:
 
 > Read the note titled “Test”.
 
-The MCP server exposes ten read-only tools.
+The MCP server exposes eleven read-only tools.
 
 OneNote holds the working unit:
 
 - `list_notes` — returns page titles, section names, modification dates, and
-  OneNote page IDs.
+  OneNote page IDs. Narrows to one notebook, and optionally to pages modified
+  since a date or to a capped number of them, so "what moved this week" does
+  not mean paying for the whole notebook. A page the account records no
+  modified date for is left out of a `since` window rather than assumed recent,
+  and a capped list says how many matched.
+- `map_notes` — sketches every page in one notebook without reading them, so a
+  notebook can be triaged before any page is opened. It returns the opening of
+  each page, which for a well-kept page is its headline facts, at a fraction of
+  the cost of reading the notebook. Where a page has no usable preview, that
+  page alone is read in full and its sketch derived instead — the answer says
+  which pages went that way and why, because the two are not equally good
+  evidence. What it returns is the top of a page, never a summary of one.
 - `read_note` — accepts a page ID returned by `list_notes` and returns readable
-  page text.
+  page text. A page too long for one answer comes back in parts, saying which
+  part it is and how to ask for the next; it is never cut short in silence. A
+  OneNote page records no page numbers, so a part is a length of text rather
+  than anything the page itself defines.
 
 Google is supporting evidence for a page, never a working unit of its own, and
 needs a separate Google connection:
@@ -225,7 +247,7 @@ OneNote, send mail, or change a calendar, because no such tool exists.
 ```bash
 npx @manudota/artist-mcp connect microsoft   # repeat consent, replace the stored token
 npx @manudota/artist-mcp disconnect google   # remove one connection from this machine
-npx @manudota/artist-mcp status              # what this machine currently holds
+npx @manudota/artist-mcp status              # this machine's install and connections
 ```
 
 `disconnect` removes the token from this machine. It does **not** withdraw the
