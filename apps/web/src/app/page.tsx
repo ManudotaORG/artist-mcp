@@ -404,7 +404,7 @@ const Connections = ({ connections, mcpUrl }: { connections: Connection[]; mcpUr
                 </form>
               ) : (
                 <a
-                  href={`/api/connect/${provider}`}
+                  href={`/api/auth/${provider}`}
                   className="border border-foreground px-3 py-2 font-mono text-sm hover:bg-signal-cyan hover:text-black"
                 >
                   CONNECT

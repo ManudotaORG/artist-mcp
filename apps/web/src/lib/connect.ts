@@ -47,9 +47,16 @@ const ENV: Record<ProviderName, { id: string; secret: string }> = {
 export const isProvider = (value: string): value is ProviderName =>
   value === 'microsoft' || value === 'google';
 
-/** Where the provider sends the person back. Registered with them, exactly. */
+/**
+ * Where the provider sends the person back. Registered with them, exactly.
+ *
+ * `/api/auth/` rather than `/api/connect/` because the previous hosted design
+ * registered these paths in Entra for all three environments, and they are
+ * still there. Matching what exists beats adding a fourth spelling of the same
+ * idea and then maintaining both.
+ */
 export const redirectUriFor = (provider: ProviderName): string =>
-  `${getSiteUrl()}/api/connect/${provider}/callback`;
+  `${getSiteUrl()}/api/auth/${provider}/callback`;
 
 /** Null when this deployment has no web client for the provider. */
 export const webClient = (provider: ProviderName): WebClient | null => {

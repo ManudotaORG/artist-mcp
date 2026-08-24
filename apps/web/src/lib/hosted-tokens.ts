@@ -1,7 +1,8 @@
 import 'server-only';
 
 import { GraphError } from '@manudota/artist-mcp/client';
-import { PROVIDERS, postToken } from '@manudota/artist-mcp/oauth';
+import { postToken } from '@manudota/artist-mcp/oauth';
+import { webClient } from '@/lib/connect';
 import { createClient } from '@supabase/supabase-js';
 
 /**
@@ -64,7 +65,21 @@ export const hostedTokens =
   (userId: string) =>
   async (provider: ProviderName): Promise<string> => {
     const db = admin();
-    const config = PROVIDERS[provider];
+
+    // The same client that obtained the refresh token must be the one to
+    // spend it — a refresh token is bound to its client, and presenting it as
+    // anyone else is refused. Hosted connections are made by the web flow, so
+    // they refresh as the web client. Using the package's desktop client here
+    // produced exactly that refusal: AADSTS70002 from Microsoft, a bare
+    // "Unauthorized" from Google.
+    const client = webClient(provider);
+    if (client === null) {
+      throw new GraphError(
+        `This deployment has no web client for ${provider}, so it cannot refresh the connection.`,
+        false,
+      );
+    }
+    const config = client.config;
 
     const cached = async (): Promise<string | null> => {
       const { data, error } = await db.rpc('connection_access_token', {
@@ -132,21 +147,20 @@ export const hostedTokens =
         throw new GraphError(`No ${config.label} connection for this account.`, true);
       }
 
-      // Google demands its secret on every refresh; Microsoft has none. This is
-      // a deployment secret here rather than a value cached beside the token,
-      // because unlike an install this server can simply be given it.
-      const clientSecret = config.needsClientSecret
-        ? need('GOOGLE_DESKTOP_CLIENT_SECRET')
-        : undefined;
-
+      // Both providers need the web client's secret here, Microsoft included:
+      // a confidential client must authenticate on every exchange, which is
+      // the difference from the desktop flow the package uses.
       const tokens = await postToken(
         config,
         {
           grant_type: 'refresh_token',
           refresh_token: refreshToken as string,
           scope: config.scope,
+          // The package's config carries its own client id; hosted connections
+          // belong to the web registration.
+          client_id: client.clientId,
         },
-        clientSecret,
+        client.clientSecret,
       );
 
       if (tokens.access_token === undefined) {

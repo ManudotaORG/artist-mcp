@@ -29,7 +29,7 @@ export const GET = async (
     const response = NextResponse.redirect(new URL(`/?${query}`, base));
     // Spent or failed, it has no further use and should not outlive the round
     // trip it was created for.
-    response.cookies.delete({ name: HANDOFF_COOKIE, path: '/api/connect' });
+    response.cookies.delete({ name: HANDOFF_COOKIE, path: '/api/auth' });
     return response;
   };
   const fail = (message: string) => done(`error=${encodeURIComponent(message)}`);

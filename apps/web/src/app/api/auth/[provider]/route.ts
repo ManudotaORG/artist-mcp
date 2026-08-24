@@ -68,7 +68,7 @@ export const GET = async (
     httpOnly: true,
     sameSite: 'lax',
     secure: base.startsWith('https://'),
-    path: '/api/connect',
+    path: '/api/auth',
     maxAge: HANDOFF_MAX_AGE,
   });
   return response;
