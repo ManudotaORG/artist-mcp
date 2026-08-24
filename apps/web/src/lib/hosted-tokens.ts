@@ -90,6 +90,21 @@ export const hostedTokens =
     if (lockError) throw new GraphError(`Could not claim a refresh: ${lockError.message}`, false);
 
     if (locked !== true) {
+      // False means the UPDATE matched no row, and there are two ways for that
+      // to happen: someone else holds the lease, or there is no connection at
+      // all. Treating them alike sent a user with no connection into a
+      // ten-second wait for a refresh nobody was performing, and then reported
+      // a timeout — which is both slow and false. Found by deleting a
+      // connection and watching the server describe it as contention.
+      const { data: exists } = await db.rpc('connection_refresh_token', {
+        p_user_id: userId,
+        p_key: need('TOKEN_ENCRYPTION_KEY'),
+        p_provider: provider,
+      });
+      if (exists === null) {
+        throw new GraphError(`No ${config.label} connection for this account.`, true);
+      }
+
       for (let i = 0; i < WAIT_ATTEMPTS; i += 1) {
         await sleep(WAIT_STEP_MS);
         const written = await cached();
