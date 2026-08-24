@@ -2,19 +2,22 @@
  * The hosted MCP endpoint — Streamable HTTP, for clients that cannot spawn a
  * local process.
  *
- * This is the de-risking stub described in issue #55, and it is deliberately
- * incomplete: it serves one hardcoded connection, not a user's. What it proves
- * is everything that is not token custody — that the transport negotiates, that
- * Vercel routes it, and that a remote connector completes its handshake against
- * this URL. Those either work or they do not, and finding out costs an hour
- * here versus a day inside the OAuth work.
+ * Every request is one named user's, resolved from the key it presents, and the
+ * dispatcher is built per request around that user. Nothing here is ambient:
+ * there is no default account and no way to express "whoever the server is
+ * configured for", because that is how one user's request ends up spending
+ * another user's token.
  *
- * It refuses to exist without ARTIST_MCP_STUB_TOKEN, so a deployment that has
- * not been given one serves 404 rather than an endpoint that half-answers.
+ * What this means for the people using it is the sentence issue #55 asks be
+ * said plainly — their tokens are held here so this works while their machine
+ * is off, and a maintainer can technically reach what those tokens reach. That
+ * is why access is issued rather than requested.
  */
 
 import { join } from 'node:path';
 import { createServer } from '@manudota/artist-mcp/server';
+import { hostedTokens } from '@/lib/hosted-tokens';
+import { userForRequest } from '@/lib/mcp-auth';
 import { dispatchWith } from '@manudota/artist-mcp/dispatch';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 
@@ -42,14 +45,23 @@ export const maxDuration = 60;
  * buys nothing this stub is trying to learn. Stateless is what the platform
  * actually supports, so it is what is proven.
  */
-const handle = async (request: Request): Promise<Response> => {
-  const token = process.env.ARTIST_MCP_STUB_TOKEN;
-  if (!token) return new Response('Not found', { status: 404 });
+const unauthorized = () =>
+  new Response(JSON.stringify({ error: 'A connection key is required.' }), {
+    status: 401,
+    headers: {
+      'content-type': 'application/json',
+      // Names the scheme without hinting at what a valid key looks like.
+      'www-authenticate': 'Bearer realm="artist-mcp"',
+    },
+  });
 
-  // Every operation gets the same token, which is exactly why this is a stub:
-  // that token belongs to one provider, so only that provider's tools can
-  // work. Notes are Microsoft, and notes are what this is proving.
-  const server = await createServer(dispatchWith(async () => token));
+const handle = async (request: Request): Promise<Response> => {
+  const userId = await userForRequest(request);
+  // Before the transport, so an unauthenticated caller learns nothing about
+  // the server: not its name, not its version, not which tools it has.
+  if (userId === null) return unauthorized();
+
+  const server = await createServer(dispatchWith(hostedTokens(userId)));
 
   const transport = new WebStandardStreamableHTTPServerTransport({
     // Undefined disables session management. Not an oversight — see above.
