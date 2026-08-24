@@ -15,6 +15,7 @@
  */
 
 import { join } from 'node:path';
+import { getSiteUrl } from '@/lib/siteUrl';
 import { createServer } from '@manudota/artist-mcp/server';
 import { hostedTokens } from '@/lib/hosted-tokens';
 import { userForRequest } from '@/lib/mcp-auth';
@@ -50,8 +51,11 @@ const unauthorized = () =>
     status: 401,
     headers: {
       'content-type': 'application/json',
-      // Names the scheme without hinting at what a valid key looks like.
-      'www-authenticate': 'Bearer realm="artist-mcp"',
+      // The pointer is the whole message. A client that cannot set a header
+      // reads this, fetches the metadata, and discovers where to send someone
+      // to sign in. Without it the 401 is a dead end — which is exactly what
+      // ChatGPT hit before this existed.
+      'www-authenticate': `Bearer realm="artist-mcp", resource_metadata="${getSiteUrl()}/.well-known/oauth-protected-resource"`,
     },
   });
 

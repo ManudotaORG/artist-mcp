@@ -21,6 +21,34 @@ const nextConfig: NextConfig = {
    */
   outputFileTracingRoot: join(import.meta.dirname, '../..'),
 
+  /**
+   * Discovery lives under /.well-known, which Next cannot route directly — a
+   * directory whose name starts with a dot is not a route segment. The handlers
+   * live under /api/well-known and are rewritten onto the paths clients look
+   * for. RFC 9728 also allows the resource path to be appended, and some
+   * clients do that, so both shapes are answered.
+   */
+  async rewrites() {
+    return [
+      {
+        source: '/.well-known/oauth-authorization-server',
+        destination: '/api/well-known/oauth-authorization-server',
+      },
+      {
+        source: '/.well-known/oauth-authorization-server/:path*',
+        destination: '/api/well-known/oauth-authorization-server',
+      },
+      {
+        source: '/.well-known/oauth-protected-resource',
+        destination: '/api/well-known/oauth-protected-resource',
+      },
+      {
+        source: '/.well-known/oauth-protected-resource/:path*',
+        destination: '/api/well-known/oauth-protected-resource',
+      },
+    ];
+  },
+
   /** The pack is data, not imports, so nothing in the graph would pull it in. */
   outputFileTracingIncludes: {
     '/api/mcp': ['../mcp/agent-pack/**/*', '../mcp/dist/**/*'],

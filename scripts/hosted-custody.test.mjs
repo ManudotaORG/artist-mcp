@@ -25,6 +25,8 @@ const CUSTODY_FUNCTIONS = [
   'set_connection',
   'connection_refresh_token',
   'resolve_mcp_key',
+  'redeem_oauth_code',
+  'resolve_oauth_token',
 ];
 
 const allMigrations = [
@@ -33,6 +35,7 @@ const allMigrations = [
   '20260824120000_hosted_token_custody.sql',
   '20260824130000_revoke_hosted_functions_from_roles.sql',
   '20260824140000_resolve_mcp_key.sql',
+  '20260824150000_oauth_server.sql',
 ]
   .map(read)
   .join('\n');
@@ -85,6 +88,29 @@ test('tokens are encrypted with a key the database never stores', () => {
   // The key arrives as an argument on every call. A column holding it would
   // make the encryption decorative, since a dump would carry both halves.
   assert.doesNotMatch(init + custody, /add column[^;]*encryption_key/);
+});
+
+test('every oauth table has row level security enabled', () => {
+  const oauth = read('20260824150000_oauth_server.sql');
+  // Every table in this schema is served by PostgREST, so one without RLS is a
+  // public endpoint — and these hold client registrations, live authorization
+  // codes and token hashes.
+  for (const table of ['oauth_clients', 'oauth_codes', 'oauth_tokens']) {
+    assert.match(
+      oauth,
+      new RegExp(`alter table public\\.${table}\\s+enable row level security`),
+      `${table} is exposed through PostgREST without RLS`,
+    );
+  }
+});
+
+test('an authorization code is redeemed in a single statement', () => {
+  const oauth = read('20260824150000_oauth_server.sql');
+  // Check-then-update lets two simultaneous redemptions both pass the check,
+  // and a code that can be spent twice is an account takeover.
+  assert.match(oauth, /update public\.oauth_codes[\s\S]*?set redeemed_at = now\(\)/);
+  assert.match(oauth, /where[\s\S]*?redeemed_at is null/);
+  assert.match(oauth, /and expires_at > now\(\)/);
 });
 
 test('the refresh lease is claimed in a single statement', () => {
