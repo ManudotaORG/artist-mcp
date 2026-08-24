@@ -90,6 +90,13 @@ This process calls Microsoft Graph, Gmail and Google Calendar directly, using
 tokens it holds itself. Nothing is proxied through a service of ours, so no
 request of yours is visible to anyone but you and the provider.
 
+**Google connections currently expire after seven days.** The Google OAuth app
+is in Google's *Testing* publishing status, which caps the life of a refresh
+token; when it lapses, the next Gmail or Calendar call reports that the
+connection needs reconnecting, and `connect google` restores it. Microsoft is
+unaffected. Tracked in
+[#94](https://github.com/ManudotaORG/artist-mcp/issues/94).
+
 ## Workflow pack
 
 ```bash

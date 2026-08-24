@@ -9,7 +9,9 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "declaration": false,
+    // The web app imports this package as a workspace dependency and needs to
+    // typecheck against it, so the build emits declarations.
+    "declaration": true,
     "sourceMap": false
   },
   "include": ["src/**/*.ts"]

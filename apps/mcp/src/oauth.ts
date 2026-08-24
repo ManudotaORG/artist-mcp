@@ -56,7 +56,7 @@ const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}/callback`;
 /** How long to wait for the user to finish consenting before giving up. */
 const CONSENT_TIMEOUT_MS = 5 * 60 * 1000;
 
-type ProviderConfig = {
+export type ProviderConfig = {
   readonly label: string;
   readonly authorize: string;
   readonly token: string;
@@ -245,9 +245,15 @@ const awaitCode = (expectedState: string): Promise<string> =>
     server.listen(REDIRECT_PORT);
   });
 
-type TokenResponse = {
+export type TokenResponse = {
   access_token?: string;
   refresh_token?: string;
+  /**
+   * Seconds. Unused on this machine, which refreshes on every call and so
+   * never has to decide whether a token is still good; the hosted server
+   * caches and does.
+   */
+  expires_in?: number;
   scope?: string;
   error?: string;
   error_description?: string;
@@ -257,8 +263,13 @@ type TokenResponse = {
  * Both providers explain a 4xx in the body. Throwing that away makes every
  * failure look identical, which cost real time on the hosted side, so the
  * provider's own words are used whenever it sends any.
+ *
+ * Exported because the hosted server performs the same exchange against the
+ * same providers, and the error semantics below are the part worth not
+ * reimplementing: which failures mean reconnect and which do not is a
+ * distinction that took a while to get right.
  */
-const postToken = async (
+export const postToken = async (
   config: ProviderConfig,
   form: Record<string, string>,
   clientSecret?: string,

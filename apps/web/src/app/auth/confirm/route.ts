@@ -12,9 +12,24 @@ import { supabaseServer } from '@/lib/supabase/server';
  *   ?token_hash=...  a custom template using {{ .TokenHash }}.
  * Both are supported so this works whichever template the project has.
  */
+/**
+ * Where to go after a successful sign-in.
+ *
+ * Only a path on this site, and never one starting with `//`, which a browser
+ * reads as protocol-relative and would send the freshly created session to
+ * someone else's domain. An open redirect here would hand a signed-in session
+ * to whoever crafted the link — the one thing a sign-in flow must not do.
+ */
+const safeNext = (value: string | null): string => {
+  if (value === null) return '/';
+  if (!value.startsWith('/') || value.startsWith('//')) return '/';
+  return value;
+};
+
 export const GET = async (request: NextRequest) => {
   const params = request.nextUrl.searchParams;
   const base = getSiteUrl();
+  const next = safeNext(params.get('next'));
 
   const fail = (message: string) =>
     NextResponse.redirect(new URL(`/?error=${encodeURIComponent(message)}`, base));
@@ -28,14 +43,14 @@ export const GET = async (request: NextRequest) => {
   const code = params.get('code');
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
-    return error ? fail(error.message) : NextResponse.redirect(new URL('/', base));
+    return error ? fail(error.message) : NextResponse.redirect(new URL(next, base));
   }
 
   const tokenHash = params.get('token_hash');
   const type = params.get('type') as EmailOtpType | null;
   if (tokenHash && type) {
     const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
-    return error ? fail(error.message) : NextResponse.redirect(new URL('/', base));
+    return error ? fail(error.message) : NextResponse.redirect(new URL(next, base));
   }
 
   return fail('Invalid sign-in link.');

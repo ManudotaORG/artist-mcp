@@ -4,8 +4,17 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { listAgentWorkflows, loadAgentWorkflow, type ResolvedEntry } from "./agents.js";
 import { GraphError } from "./client.js";
-import { call } from "./dispatch.js";
+import { call as localCall, type Operation } from "./dispatch.js";
 import { narrowNotes } from "./notes.js";
+
+/**
+ * How a tool reaches the outside world. Injected rather than imported so the
+ * same tool definitions serve both custody models: on this machine `call`
+ * resolves tokens from ~/.artist-mcp, and hosted it resolves them for whichever
+ * user the request authenticated as. The tools cannot tell the difference, and
+ * that is the point — there is one set of them, not two that drift.
+ */
+type Dispatch = <T>(op: Operation, params?: Record<string, unknown>) => Promise<T>;
 
 /** One call per page, so a notebook nobody put a number on does not become hundreds of requests. */
 const DEFAULT_MAP_PAGES = 40;
@@ -152,6 +161,7 @@ let notebooksHaveBeenListed = false;
  * names itself so the instruction says which tool to call again.
  */
 const selectNotebook = async (
+  call: Dispatch,
   notebook: string | undefined,
   tool: string,
 ): Promise<{ pages: NoteSummary[]; scope: string | null } | { message: string }> => {
@@ -218,7 +228,7 @@ const selectNotebook = async (
   return { pages, scope };
 };
 
-const serverVersion = '1.2.0'; // x-release-please-version
+const serverVersion = '1.3.0'; // x-release-please-version
 
 const errorResult = (err: unknown) => {
   const message =
@@ -354,7 +364,7 @@ const renderWorkflowBriefing = async (
   ].join("\n");
 };
 
-const runServer = async (): Promise<void> => {
+const createServer = async (call: Dispatch): Promise<McpServer> => {
   // Nothing is checked here on purpose. The server starts whether or not a
   // provider is connected, and a tool that needs one says so when it is called:
   // refusing to start would leave Claude Desktop reporting a broken server
@@ -482,7 +492,7 @@ const runServer = async (): Promise<void> => {
     },
     async ({ notebook, since, limit }) => {
       try {
-        const chosen = await selectNotebook(notebook, "list_notes");
+        const chosen = await selectNotebook(call, notebook, "list_notes");
         if ("message" in chosen) {
           return { content: [{ type: "text", text: chosen.message }] };
         }
@@ -580,7 +590,7 @@ const runServer = async (): Promise<void> => {
     },
     async ({ notebook, since, limit }) => {
       try {
-        const chosen = await selectNotebook(notebook, "map_notes");
+        const chosen = await selectNotebook(call, notebook, "map_notes");
         if ("message" in chosen) {
           return { content: [{ type: "text", text: chosen.message }] };
         }
@@ -1100,7 +1110,16 @@ const runServer = async (): Promise<void> => {
     },
   );
 
+  return server;
+};
+
+/**
+ * The stdio entry point, unchanged in behaviour: one process, one user, tokens
+ * from this machine. It is now the only place that knows about stdio.
+ */
+const runServer = async (): Promise<void> => {
+  const server = await createServer(localCall);
   await server.connect(new StdioServerTransport());
 };
 
-export { renderWorkflowBriefing, runServer };
+export { createServer, renderWorkflowBriefing, runServer, type Dispatch };
