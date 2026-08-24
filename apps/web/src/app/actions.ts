@@ -19,7 +19,19 @@ export const signIn = async (_prev: unknown, formData: FormData) => {
     options: { emailRedirectTo: `${getSiteUrl()}/auth/confirm`, shouldCreateUser: false },
   });
 
-  if (error) return { error: error.message };
+  // Supabase reports a closed signup in its own words, which describe the
+  // instance rather than the person's situation. Someone who was never added
+  // has done nothing wrong and can do nothing about "signups not allowed", so
+  // they are told what is actually true and what would change it.
+  if (error) {
+    const closed = /signup|not allowed|disabled/i.test(error.message);
+    return {
+      error: closed
+        ? 'That address is not set up for artist-mcp. Accounts are arranged directly — get in touch and we will add you.'
+        : error.message,
+    };
+  }
+
   return { sent: true };
 };
 

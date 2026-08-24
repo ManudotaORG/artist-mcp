@@ -3,10 +3,9 @@ import { Typography } from '@/components/ui/Typography';
 import { getDeploymentMetadata } from '@/lib/deployment';
 import { supabaseServer } from '@/lib/supabase/server';
 import { signOut } from './actions';
-import { SignInForm } from './sign-in-form';
 
 type HomeProps = {
-  searchParams: Promise<{ error?: string; connected?: string }>;
+  searchParams: Promise<{ error?: string }>;
 };
 
 const roles = [
@@ -205,14 +204,26 @@ const PublicHome = ({ installChannel }: PublicHomeProps) => (
           workflow playbooks, and return one useful next result in chat.
         </Typography>
       </div>
+      {/*
+        A sign-in form stood here. It offered something nobody could take:
+        signup is closed, so every visitor who tried it got an error, which is a
+        worse front page than one that simply says how this works. Hosted access
+        is arranged with named people, and the honest way to say that is a
+        sentence rather than a button that refuses.
+      */}
       <aside className="self-end border border-signal-cyan p-5">
         <Typography as="h2" variant="label" color="cyan">
-          SIGN IN WITH EMAIL
+          RUNS ON YOUR MACHINE
         </Typography>
         <Typography variant="small" className="my-3">
-          We email you a secure link. No password.
+          Install it below and your notes never leave your computer. Your Microsoft and Google
+          connections are stored there, not here.
         </Typography>
-        <SignInForm />
+        <Typography variant="small">
+          There is also a hosted version for people who need this to work while their machine is
+          off. It holds your credentials on our infrastructure, so it is set up with each person
+          directly rather than signed up for.
+        </Typography>
       </aside>
     </section>
     <Workflow />
@@ -329,17 +340,22 @@ const PublicHome = ({ installChannel }: PublicHomeProps) => (
 
 type DashboardProps = {
   email?: string;
-  connected?: string;
   error?: string;
   installChannel: InstallChannel;
 };
 
-const Dashboard = ({ email, connected, error, installChannel }: DashboardProps) => (
+const Dashboard = ({ email, error, installChannel }: DashboardProps) => (
   <main className="grid gap-8 py-10">
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div>
+        {/*
+          Called CONNECTION CONSOLE while the hosted design was live, then kept
+          after custody moved to user machines, where it managed nothing. The
+          hosted design is back but different — connections are arranged, not
+          self-served — so the old name would mislead in a new way.
+        */}
         <Typography as="h1" variant="pageTitle" color="yellow">
-          CONNECTION CONSOLE
+          YOUR ACCOUNT
         </Typography>
         <Typography variant="small" color="cyan" className="mt-2">
           SIGNED IN: {email ?? 'UNKNOWN'}
@@ -352,11 +368,12 @@ const Dashboard = ({ email, connected, error, installChannel }: DashboardProps) 
       </form>
     </div>
     {error ? <Typography color="red">ERROR: {error}</Typography> : null}
-    {connected ? (
-      <Typography color="green">
-        {connected === 'google' ? 'GMAIL CONNECTED.' : 'MICROSOFT CONNECTED.'}
-      </Typography>
-    ) : null}
+    {/*
+      A "MICROSOFT CONNECTED" banner lived here, set by a provider callback this
+      app no longer has. Connecting a hosted account is done with a maintainer
+      until that flow exists, so a banner would be reporting on something this
+      page cannot observe.
+    */}
     <section className="border-t border-signal-cyan pt-5">
       <Typography as="h2" variant="sectionTitle" color="yellow">
         INSTALL CLAUDE DESKTOP
@@ -395,7 +412,7 @@ const Dashboard = ({ email, connected, error, installChannel }: DashboardProps) 
 );
 
 const Home = async ({ searchParams }: HomeProps) => {
-  const { error, connected } = await searchParams;
+  const { error } = await searchParams;
   const supabase = await supabaseServer();
   const {
     data: { user },
@@ -411,12 +428,7 @@ const Home = async ({ searchParams }: HomeProps) => {
     <div className="mx-auto w-full max-w-[1440px] px-4 py-4 sm:px-6 lg:px-8">
       <ServiceHeader />
       {user ? (
-        <Dashboard
-          email={user.email}
-          connected={connected}
-          error={error}
-          installChannel={installChannel}
-        />
+        <Dashboard email={user.email} error={error} installChannel={installChannel} />
       ) : (
         <PublicHome installChannel={installChannel} />
       )}
