@@ -36,7 +36,8 @@ Users move between live performance, studio work, and practical production admin
 - Results appear only in chat.
 - No writes to any source: no OneNote edits, message sending, replying, drafting, labelling, calendar creation or editing, RSVP responses, background jobs, synchronization, or workflow state in Supabase.
 - No availability computation or scheduling suggestions; reading a calendar is not planning against it.
-- Operator access is no longer a limit, and this line used to say it was. The hosted design had a service role that could resolve any connection key to the credential behind it, so anyone holding that credential could technically reach connected account data — bounded by policy rather than cryptography. [#22](https://github.com/ManudotaORG/artist-mcp/issues/22) removed the mechanism: sign-in happens on the user's own machine, the refresh tokens stay there, and no deployed credential can read them. `connections` and `mcp_keys` remain in the schema, dormant and unwritten.
+- Operator access is not a limit for the published package: sign-in happens on the user's own machine, the refresh tokens stay there, and no deployed credential can read them. [#22](https://github.com/ManudotaORG/artist-mcp/issues/22) removed the mechanism that made it one.
+- It *is* a limit for the hosted server, deliberately and visibly. [#55](https://github.com/ManudotaORG/artist-mcp/issues/55) added a remote MCP for clients that cannot run a local process, and acting for someone while their machine is off means holding their credentials. Tokens are encrypted at rest with a key the database never holds, and only the service role can decrypt them — which narrows who can read them without reducing it to nobody. Hosted users are told exactly that before they consent, access is arranged directly rather than signed up for, and the published package has no way to be pointed at a hosted server. The two custody models are separate offerings, not one product with a setting.
 - The limit that replaced it is smaller and stated plainly to users: tokens sit in a file readable by the user's own account (`~/.artist-mcp/tokens.json`, mode `0600`) rather than the OS keychain, which would need a native dependency the package cannot take. Anything already running as that user can use the token — reading their notes takes code on their specific machine, not a query someone could run against every user at once.
 - The authentication, Claude Desktop, and Codex installation flows must remain functional. There is no connection key to keep working; the installer stopped asking for one.
 
@@ -44,7 +45,7 @@ Users move between live performance, studio work, and practical production admin
 
 - Product name: artist-mcp.
 - Voice: direct, calm, practical, and respectful of the musician's attention.
-- The public site should introduce the product before sign-in; the authenticated state should operate as a focused connection dashboard.
+- The public site introduces the product and offers no sign-in: accounts are arranged directly, so a form that refuses every visitor would be a promise not kept. The signed-in state shows what a hosted account has connected, and lets that person connect or disconnect it themselves.
 - A new identity may be created from scratch and should unite live performance, studio precision, and the production desk.
 
 ## Evidence on Hand

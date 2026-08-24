@@ -53,47 +53,61 @@ export const connectedProviders = async (): Promise<ProviderName[]> => {
   );
 };
 
-export const call = async <T>(
-  op: Operation,
-  params: Record<string, unknown> = {},
-): Promise<T> => {
-  const token = await accessTokenFor(PROVIDER_FOR[op]);
+/**
+ * Where the access token for a provider comes from.
+ *
+ * Injected because that is the one thing custody changes. On this machine it is
+ * `accessTokenFor`, reading ~/.artist-mcp and refreshing in a single process.
+ * Hosted it resolves against whichever user the request authenticated as. The
+ * operation table below is identical either way, which is the property worth
+ * keeping: a Gmail call must never spend a Microsoft token, and that rule is
+ * stated once regardless of where the token was found.
+ */
+export type ResolveToken = (provider: ProviderName) => Promise<string>;
 
-  switch (op) {
-    case 'list_notes':
-      return (await listNotes(token)) as T;
-    case 'map_notes':
-      // The pages are chosen by the caller, which is where the notebook scope
-      // is settled; nothing here maps a notebook it was not given.
-      return (await mapNotes(token, params.pages as Parameters<typeof mapNotes>[1])) as T;
-    case 'read_note':
-      return (await readNote(token, params.note_id, params.from_part)) as T;
-    case 'list_emails':
-      return (await listEmails(token, params.query)) as T;
-    case 'read_email':
-      return (await readEmail(token, params.email_id)) as T;
-    case 'map_attachment':
-      return (await mapAttachment(token, params.email_id, params.attachment_id)) as T;
-    case 'read_attachment':
-      return (await readAttachment(
-        token,
-        params.email_id,
-        params.attachment_id,
-        params.from_page,
-        params.page_count,
-      )) as T;
-    case 'list_events':
-      return (await listEvents(
-        token,
-        params.calendar_id,
-        params.query,
-        params.time_min,
-        params.time_max,
-      )) as T;
-    case 'read_event':
-      return (await readEvent(token, params.event_id, params.calendar_id)) as T;
-    default:
-      // Unreachable through the tool definitions, which name every operation.
-      throw new GraphError(`Unknown operation ${String(op)}.`, false);
-  }
-};
+export const dispatchWith =
+  (resolve: ResolveToken) =>
+  async <T>(op: Operation, params: Record<string, unknown> = {}): Promise<T> => {
+    const token = await resolve(PROVIDER_FOR[op]);
+
+    switch (op) {
+      case 'list_notes':
+        return (await listNotes(token)) as T;
+      case 'map_notes':
+        // The pages are chosen by the caller, which is where the notebook scope
+        // is settled; nothing here maps a notebook it was not given.
+        return (await mapNotes(token, params.pages as Parameters<typeof mapNotes>[1])) as T;
+      case 'read_note':
+        return (await readNote(token, params.note_id, params.from_part)) as T;
+      case 'list_emails':
+        return (await listEmails(token, params.query)) as T;
+      case 'read_email':
+        return (await readEmail(token, params.email_id)) as T;
+      case 'map_attachment':
+        return (await mapAttachment(token, params.email_id, params.attachment_id)) as T;
+      case 'read_attachment':
+        return (await readAttachment(
+          token,
+          params.email_id,
+          params.attachment_id,
+          params.from_page,
+          params.page_count,
+        )) as T;
+      case 'list_events':
+        return (await listEvents(
+          token,
+          params.calendar_id,
+          params.query,
+          params.time_min,
+          params.time_max,
+        )) as T;
+      case 'read_event':
+        return (await readEvent(token, params.event_id, params.calendar_id)) as T;
+      default:
+        // Unreachable through the tool definitions, which name every operation.
+        throw new GraphError(`Unknown operation ${String(op)}.`, false);
+    }
+  };
+
+/** The local dispatcher: this machine's own connections, one process, one user. */
+export const call = dispatchWith(accessTokenFor);

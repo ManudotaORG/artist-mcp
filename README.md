@@ -14,26 +14,52 @@ Everything is read-only. No writes to any source, no sending, no sync.
 
 The project has three parts:
 
-- `apps/web` — magic-link sign-in, the install instructions, and one open
-  endpoint serving Google's Desktop client secret. It performs no provider OAuth
-  and holds nothing that can read an account.
+- `apps/web` — sign-in, the install instructions, an open endpoint serving
+  Google's Desktop client secret, and the hosted MCP: a remote server, an OAuth
+  authorization server for clients that can only speak OAuth, and the pages
+  where a hosted user connects their own accounts.
 - `apps/mcp` — the npm-published stdio MCP server. It signs in to Microsoft and
   Google on the user's own machine and keeps the tokens there.
-- `supabase` — sign-in, and dormant schema from the previous hosted design.
+- `supabase` — sign-in, and encrypted credential storage for hosted accounts.
 
 ## Where your credentials live
 
-On your own machine, and nowhere else. You sign in to Microsoft and Google in
-your browser, and the refresh token stays on the computer you signed in on. No
-server here stores it, so no maintainer can reach your notes or mail — that is a
-property of the architecture, not a policy we ask you to trust.
+That depends on which of the two you use, and the difference is the whole
+point — so it is stated plainly rather than averaged into one reassuring
+sentence.
 
-This replaced a hosted design in which the service held every user's refresh
-token, and anyone with the production database credential could technically read
-any connected account. That is resolved in
-[#22](https://github.com/ManudotaORG/artist-mcp/issues/22): the stored tokens
-were deleted and the credentials that could read them removed from every
-deployment.
+**The published package — on your own machine, and nowhere else.** You sign in
+to Microsoft and Google in your browser, and the refresh token stays on the
+computer you signed in on. No server here stores it, so no maintainer can reach
+your notes or mail. That is a property of the architecture, not a policy we ask
+you to trust, and it is what most people should use.
+
+**The hosted server — on our infrastructure, for people who were told so.**
+Some clients cannot run a program on your machine; ChatGPT's connectors fetch
+from OpenAI's servers, so `localhost` is unreachable. Acting for you while your
+machine is off means holding your credentials, and no protocol removes that.
+Hosted users see this sentence before they consent:
+
+> Your tokens are stored on our infrastructure so this works while your machine
+> is off. A maintainer can technically read what they reach.
+
+Refresh tokens are encrypted at rest with a key the database never holds, and
+the functions that decrypt them are reachable only by the service role. That
+narrows who can read them; it does not reduce it to nobody, and claiming
+otherwise would be the thing this section exists to avoid.
+
+Hosted access is arranged directly with named people. Signup is closed, so
+nobody can put themselves in that arrangement, and an installed copy of the
+package has no endpoint override — it cannot be pointed at a hosted server even
+by misconfiguration. The two custody models cannot be confused for one another
+by accident.
+
+The history: an earlier hosted design held every user's refresh token, and
+[#22](https://github.com/ManudotaORG/artist-mcp/issues/22) removed it — stored
+tokens deleted, credentials pulled from every deployment. What returned in
+[#55](https://github.com/ManudotaORG/artist-mcp/issues/55) is not that design
+restored to everyone. It is a separate offering, opt-in, disclosed, and closed
+by default.
 
 The honest remaining limit: the token is a file readable by your own user
 account (`~/.artist-mcp/tokens.json`, mode `0600`), not an entry in the OS

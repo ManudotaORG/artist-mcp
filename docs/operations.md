@@ -32,15 +32,20 @@ including in issues and documentation.
 
 ## Secret inventory
 
-| Secret                       | Stored in                | Rotation impact                                                                 |
-| ---------------------------- | ------------------------ | ------------------------------------------------------------------------------- |
-| Google desktop client secret | Web runtime, both envs   | Add the new secret in Google first, deploy, then delete the old one — see below |
-| Supabase service role key    | Supabase platform only   | Rotate in the dashboard; no deployment holds a copy                             |
+| Secret                          | Stored in              | Rotation impact                                                                 |
+| ------------------------------- | ---------------------- | ------------------------------------------------------------------------------- |
+| Google desktop client secret    | Web runtime, both envs | Add the new secret in Google first, deploy, then delete the old one — see below |
+| Supabase secret key             | Web runtime, both envs | Create the replacement, deploy, then disable the old one                        |
+| `TOKEN_ENCRYPTION_KEY`          | Web runtime, both envs | **Not rotatable in place.** Every stored connection becomes unreadable; everyone reconnects |
+| Microsoft web client secret     | Web runtime, both envs | Add in Entra, deploy, then delete the old. Expires — note the date              |
+| Google web client secret        | Web runtime, both envs | Add in Google, deploy, then delete the old                                      |
 
-Nothing else is deployed. The Microsoft and Google client secrets that belonged
-to the hosted OAuth flow, and the token encryption key that protected stored
-refresh tokens, were removed when custody moved to users' machines (#22). There
-is no connection key any more.
+The last four returned with the hosted MCP
+([#55](https://github.com/ManudotaORG/artist-mcp/issues/55)); see *Hosted
+credential storage* below for what they protect and how they differ from the
+package's own clients. `TOKEN_ENCRYPTION_KEY` is the one with no safe rotation
+story — it is not held anywhere but the deployment and a password manager, and
+losing it is unrecoverable by design.
 
 **The Google desktop client secret is public by necessity.** Google refuses the
 token exchange for a Desktop client without one, and the client types that need
@@ -201,11 +206,14 @@ Important invariants:
 
 - RLS remains enabled on every exposed table.
 - User-facing policies include `auth.uid() = user_id`.
-- Privileged `SECURITY DEFINER` functions revoke execution from `PUBLIC` and
-  grant only the required service role.
+- Privileged `SECURITY DEFINER` functions revoke execution from `PUBLIC`,
+  `anon` **and** `authenticated`, and grant only the service role. All three:
+  see *The grants trap* below for why two of those look like one.
+- Every new table in `public` has RLS enabled, even with no policies. PostgREST
+  serves the whole schema, so a table without RLS is a public endpoint.
 - The Graph function, if it is ever redeployed, keeps `verify_jwt = false` and
   verifies the connection key inside the function. It is not deployed today —
-  see the dormant-storage section below.
+  see *What is still kept dormant* below.
 - Refresh-token rotation is written back on every Microsoft token exchange.
 - Callers select only `verify`, `list_notes`, `map_notes`, `read_note`, `list_emails`,
   `read_email`, `read_attachment`, `map_attachment`, `list_events`, or
@@ -227,66 +235,127 @@ Important invariants:
   `--db-url` for the branch you mean: the CLI is linked to production, so
   `--linked` targets production whatever you intended.
 
-## Dormant hosted credential storage
+## Hosted credential storage
 
-`connections` and `mcp_keys` are still in the schema and are no longer written
-to. They belonged to the hosted design, where this service held every user's
-refresh token and resolved a connection key on their behalf. An installed copy
-now holds its own tokens and calls Microsoft and Google directly, so there is
-nothing for this service to store or resolve.
+`connections` and `mcp_keys` are live again. They were kept dormant through the
+period when custody sat on user machines, on the stated bet that hosted access
+would return; [#55](https://github.com/ManudotaORG/artist-mcp/issues/55) is that
+return, and the bet paid — the tables, the pgcrypto functions and the sign-in
+flow were all reused rather than rebuilt.
 
-They were left in place rather than dropped, deliberately. Bringing hosted
-custody back would mean acting for a user while their machine is off — shared
-workspaces, or anything scheduled — and the schema is the cheap part of that to
-keep. Reviving it would still cost every user a reconnect, because the tokens
-are deliberately not here any more.
+Read this alongside the two custody models, because conflating them is the
+mistake this section exists to prevent:
 
-That is a live intention, not sentiment:
-[#55](https://github.com/ManudotaORG/artist-mcp/issues/55) proposes a hosted MCP
-for a few named users, isolated from the public product. While that is open, this
-path is a head start rather than a tax, and **removing any part of it should be
-decided together with #55 rather than as cleanup.**
+- **The published package** holds its own tokens on the user's machine. Nothing
+  here can read them, and nothing here should claim to.
+- **The hosted server** holds a named user's refresh tokens, encrypted. A
+  maintainer with the service role and the encryption key can decrypt them.
+  Hosted users are told this on the consent screen before they connect.
 
-### What is kept, in one place
+### What is stored, and what protects it
 
-Listed here so a reader can confirm dormancy without inferring it four times.
-Every item is unwritten, unimported, or undeployed:
+| Stored | Protection |
+| --- | --- |
+| `connections.refresh_token`, `.access_token` | `pgp_sym_encrypt`; the key is passed per call and never lives in the database |
+| `mcp_keys.key_hash` | sha256 of a maintainer-issued key; the key itself is shown once and never stored |
+| `oauth_clients`, `oauth_codes`, `oauth_tokens` | RLS with **no policies**, so PostgREST exposes nothing; secrets stored as sha256 |
+
+Two protections doing different jobs, as in the original schema: RLS keeps one
+signed-in user out of another's rows, pgcrypto keeps a stolen dump from yielding
+usable tokens. Neither substitutes for the other.
+
+### The grants trap, which has now caught us twice
+
+Supabase configures `ALTER DEFAULT PRIVILEGES` on `public` to grant `EXECUTE` on
+new functions to `anon` and `authenticated`. That is an *explicit* grant per
+role, separate from the implicit one to `PUBLIC`. **Revoking from `PUBLIC` alone
+leaves the function callable.** Every custody function needs both revokes.
+
+Migration `20260810010000` describes the first revoke as a no-op. It was not —
+both were load-bearing — and copying that conclusion reproduced the hole in
+`20260824120000`, fixed in `20260824130000`. `scripts/hosted-custody.test.mjs`
+asserts both revokes for every custody function so it cannot recur silently.
+
+When verifying by hand, **send valid arguments**. An empty `{}` body returns 404
+for a signature mismatch, which reads exactly like "hidden by permissions" and
+proves nothing.
+
+### Deployment secrets
+
+Both Vercel projects carry these, all Sensitive except the two client IDs:
+
+| Variable | Purpose |
+| --- | --- |
+| `SUPABASE_SERVICE_ROLE_KEY` | Reads a connection for a user holding no browser session; bypasses RLS by design |
+| `TOKEN_ENCRYPTION_KEY` | pgcrypto key. **Different per environment.** Losing it makes every connection unreadable |
+| `ARTIST_MCP_WEB_MS_CLIENT_ID` / `_SECRET` | Web OAuth client for connecting Microsoft |
+| `ARTIST_MCP_WEB_GOOGLE_CLIENT_ID` / `_SECRET` | Web OAuth client for connecting Google |
+
+The web clients are **separate registrations from the package's**. The package
+uses desktop clients, and its Google secret is served openly by
+`/api/client-config` — harmless there because PKCE protects a desktop client,
+and not harmless at all for a web client. One registration serving both would
+have to be the weaker of the two.
+
+A refresh token is bound to the client that obtained it. Hosted connections are
+made by the web flow and must be refreshed by the web client; refreshing one as
+the desktop client returns `AADSTS70002` from Microsoft and a bare
+`Unauthorized` from Google. Connections seeded any other way must be
+reconnected through the web page.
+
+### Onboarding a hosted user
+
+1. Create the account. Signup is closed, so this is deliberate:
+   `POST /auth/v1/admin/users` with the service role. `auth.users` **is** the
+   allowlist; no second mechanism exists.
+2. They sign in at `/sign-in` (unlinked from the landing page) and connect
+   Microsoft and Google themselves at `/`. No maintainer handles their
+   credentials.
+3. For a client that can send a header, issue a key:
+   `node scripts/issue-mcp-key.mjs <email> --env <env file>`. Shown once.
+4. For a client that cannot — ChatGPT — they add
+   `https://<site>/api/mcp` as a remote MCP server and complete OAuth. Dynamic
+   registration is required: ChatGPT registers a redirect URI unique to each
+   connector instance, which cannot be known in advance.
+
+Disconnecting the last provider deletes that user's `mcp_keys` rows, by design —
+a key outlives a single disconnect and dies with the last connection. OAuth
+tokens are unaffected and expire on their own.
+
+### Supabase API keys
+
+Both projects are on `sb_publishable_` / `sb_secret_` keys with legacy keys
+**disabled**. Rotating a JWT *signing* key does **not** revoke the legacy
+`anon` / `service_role` API keys — they are separate credentials, and verifying
+this by hand in August 2026 is the only reason a live exposed key was found.
+Disabling legacy keys is what revokes them.
+
+Vercel snapshots environment variables per deployment, so migrate consumers and
+**redeploy** before disabling legacy keys, or the running deployment keeps using
+values that have stopped working.
+
+### What is still kept dormant
 
 | Kept | State |
 | --- | --- |
-| `connections`, `mcp_keys` tables | In the schema, RLS on, no rows, nothing writes them |
-| `apps/web/src/lib/crypto.ts` | Imported nowhere; encrypted the stored refresh tokens |
-| `supabase/functions/graph/` | Source and tests only, not deployed |
+| `supabase/functions/graph/` | Source and tests only, not deployed. Speaks the old `/v1/` POST shape, not MCP |
 | `verify_jwt = false` for `graph` in `supabase/config.toml` | Configuration for a function that is not deployed |
-| Dummy provider env vars in `ci.yml` | Needed by the Deno tests above, whose module scope reads them at import; the values are the string `unused` |
+| Dummy provider env vars in `ci.yml` | Needed by the Deno tests, whose module scope reads them at import; the values are the string `unused` |
 
-Each of these has looked like dead code to a reader at some point, which is the
-cost of keeping it. Adding to the list is fine; removing from it is a decision.
+`apps/web/src/lib/crypto.ts` is no longer on this list: encryption happens in
+the database through `set_connection`, so if it is still unimported it is now
+cleanup rather than a considered bet.
 
-The credentials that made the old design dangerous were **not** kept. Done on
-2026-08-14, in this order:
+### History
 
-1. Every row deleted from `connections` and `mcp_keys`, in production and
-   staging.
-2. The `graph` edge function undeployed, and its `TOKEN_ENCRYPTION_KEY`,
-   `MS_CLIENT_SECRET` and `GOOGLE_CLIENT_SECRET` unset.
-3. `SUPABASE_SERVICE_ROLE_KEY`, `TOKEN_ENCRYPTION_KEY` and the provider client
-   secrets removed from both Vercel projects, **followed by a redeploy**. A
-   variable removed from project settings stays injected in the deployment
-   already running, so without the redeploy every secret would still have been
-   live.
+The 2026-08-14 teardown (#22) deleted every stored row, undeployed the `graph`
+function, and removed the service role, encryption key and provider secrets from
+both Vercel projects **followed by a redeploy** — that last step is what ended
+the exposure, not the row deletion. Empty tables plus a deployed service-role
+key is not the same as no exposure.
 
-Step 3 is what ended the exposure, not step 1. Empty tables plus a deployed
-service-role key is not the same as no exposure — the risk ends when the secrets
-leave the deployment.
-
-The token encryption key is gone and was not recorded anywhere, which is fine
-only because no encrypted rows survive. Reviving hosted custody means a new key
-and a reconnect for every user; there is nothing to decrypt with the old one.
-
-If you revive any of this, change the public page in the same breath. The
-"WHERE YOUR CREDENTIALS LIVE" callout now tells musicians that no maintainer can
-read their notes, and a revival makes that false (#22).
+The current `TOKEN_ENCRYPTION_KEY` values were generated fresh in August 2026,
+one per environment. The old one was never recorded and nothing needs it.
 
 ## Publish the MCP package
 
