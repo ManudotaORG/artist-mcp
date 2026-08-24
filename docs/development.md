@@ -10,7 +10,7 @@ state.
 ```text
 apps/web        Next.js App Router web app
 apps/mcp        npm package, installer, and stdio MCP server
-supabase        database migrations, and dormant schema from the hosted design
+supabase        database migrations, including hosted credential storage
 docs            product, user, developer, and operations documentation
 ```
 
@@ -21,11 +21,13 @@ email sign-in, the install instructions, and `/api/client-config`, which serves
 Google's client secret openly because Google refuses a Desktop-client exchange
 without one.
 
-Nothing here holds a credential that can read a user's account. That is the
-result of [#22](https://github.com/ManudotaORG/artist-mcp/issues/22) and the
-reason the hosted design was retired; `connections` and `mcp_keys` survive in
-the schema, dormant and unwritten, for the case where hosted custody is ever
-needed again.
+Since [#55](https://github.com/ManudotaORG/artist-mcp/issues/55) this app also
+serves the hosted MCP, so it *does* hold credentials that can read a hosted
+user's account: the service role and the token encryption key. That is true of
+hosted accounts only — the published package still keeps its tokens on the
+user's own machine, and nothing here can reach those. Do not describe either
+model in the other's terms; the difference is disclosed to hosted users and is
+the point of both.
 
 The system is deliberately stateless with respect to artist content. OneNote
 remains the source of truth, and the optional agent workflow state stays locally
@@ -151,15 +153,23 @@ flow and record verified results in [mvp-brief.md](mvp-brief.md).
 
 ## Database
 
-The migrations create `connections` and `mcp_keys`, enable RLS, and restrict
-privileged functions to `service_role`. Do not grant their execution to
-`PUBLIC`, `anon`, or `authenticated` — Postgres grants EXECUTE to `PUBLIC` on
-new functions, so revoking from `anon` and `authenticated` alone is a no-op.
+The migrations create `connections`, `mcp_keys`, the OAuth server tables, and
+the functions that encrypt and decrypt stored tokens. Privileged functions are
+restricted to `service_role`.
 
-Both tables are dormant. Nothing writes to them, they hold no rows, and the
-credentials that could read them are no longer deployed anywhere. They are kept
-against the possibility of needing hosted custody again; see the dormant-storage
-section of [operations.md](operations.md) before reviving either.
+**Revoke from `public`, `anon` and `authenticated` — all three.** Postgres
+grants EXECUTE to `PUBLIC` on new functions, *and* Supabase's default privileges
+on this schema grant it explicitly to `anon` and `authenticated`. Those are
+different grants that look alike, and revoking either alone leaves the function
+callable. An earlier note here said the second revoke was a no-op; that was
+wrong and it produced a real hole (`20260824130000` fixes it).
+`scripts/hosted-custody.test.mjs` asserts all three for every custody function.
+
+New tables need RLS enabled even with no policies, because PostgREST serves
+every table in `public` — one without RLS is a public endpoint.
+
+These tables hold real encrypted credentials for hosted accounts. See the
+hosted credential storage section of [operations.md](operations.md).
 
 The Graph edge function is gone. Its source remains under `supabase/functions`
 for reference, and it is not deployed — an installed copy calls the providers
