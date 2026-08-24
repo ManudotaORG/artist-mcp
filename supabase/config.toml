@@ -24,6 +24,11 @@ additional_redirect_urls = ["http://localhost:3000/**"]
 project_id = "zxiemadwrkcoovvpscfb"
 
 [remotes.production.auth]
+# Closed by default. A hosted server would make auth.users the gate on real
+# provider credentials, so the account pool is named users only: they are
+# created deliberately with the admin API, never by anyone who finds the form.
+# Existing users can still request a magic link; only creation is refused.
+enable_signup = false
 site_url = "https://artist-mcp.vercel.app"
 additional_redirect_urls = [
   "https://artist-mcp.vercel.app/**",

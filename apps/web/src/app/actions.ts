@@ -9,9 +9,14 @@ export const signIn = async (_prev: unknown, formData: FormData) => {
   if (!email) return { error: 'Enter your email address.' };
 
   const supabase = await supabaseServer();
+  // Accounts are not self-served. Signup is disabled on the project itself,
+  // which is what actually enforces this — the anon key is public and reaches
+  // GoTrue directly, so nothing decided here could be relied on. Saying it
+  // again from this side only makes the refusal arrive as a refusal, instead
+  // of as a 'check your email' for a message that is never sent.
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: `${getSiteUrl()}/auth/confirm` },
+    options: { emailRedirectTo: `${getSiteUrl()}/auth/confirm`, shouldCreateUser: false },
   });
 
   if (error) return { error: error.message };
