@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.4.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.3.0...artist-mcp-v1.4.0) (2026-08-24)
+
+
+### Features
+
+* a hosted MCP over HTTPS, for clients that cannot spawn a process ([01b2fbb](https://github.com/ManudotaORG/artist-mcp/commit/01b2fbb91bb9385455e273dd9e5235eb903ec1c2)), closes [#55](https://github.com/ManudotaORG/artist-mcp/issues/55)
+* a hosted MCP server, OAuth 2.1, and server-side token custody ([#55](https://github.com/ManudotaORG/artist-mcp/issues/55)) ([c1ad7eb](https://github.com/ManudotaORG/artist-mcp/commit/c1ad7ebdd0afaaa0750c351aa0a04286a819e5c9))
+* **web:** resolve a user's provider token from server-side custody ([9381dfe](https://github.com/ManudotaORG/artist-mcp/commit/9381dfed253e490258aa2544a0e908ccb98f67a9)), closes [#55](https://github.com/ManudotaORG/artist-mcp/issues/55)
+
+
+### Bug Fixes
+
+* **mcp:** say which throttle it is, and how long it actually asked for ([a76d221](https://github.com/ManudotaORG/artist-mcp/commit/a76d221e5ff9a724df62fa0de35c46c08720d175)), closes [#91](https://github.com/ManudotaORG/artist-mcp/issues/91)
+* **mcp:** wait as long as the provider asks, and no longer than is useful ([1b27af5](https://github.com/ManudotaORG/artist-mcp/commit/1b27af5fd3c31c28eefb80b55f5795a472eb3f87)), closes [#55](https://github.com/ManudotaORG/artist-mcp/issues/55)
+
 ## [1.3.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.2.0...artist-mcp-v1.3.0) (2026-08-16)
 
 
