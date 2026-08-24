@@ -39,7 +39,15 @@ const eslintConfig = defineConfig([
       // not, so a wrong-case import compiles locally and breaks the build in
       // CI. The TypeScript resolver from eslint-config-next resolves the
       // `@/*` tsconfig alias used across the codebase.
-      'import/no-unresolved': ['error', { caseSensitive: true }],
+      //
+      // The MCP SDK is exempt. It exposes its deep paths through a single
+      // `"./*"` wildcard in `exports`, which Node, TypeScript and Turbopack all
+      // resolve and this plugin's resolver does not. The exemption is by
+      // package rather than by rule, so every other import stays checked.
+      'import/no-unresolved': [
+        'error',
+        { caseSensitive: true, ignore: ['^@modelcontextprotocol/sdk/'] },
+      ],
     },
   },
   // ── Prettier integration ──────────────────────────────────────────────
