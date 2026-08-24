@@ -68,17 +68,38 @@ const retryAfterMs = (res: Response): number | undefined => {
   if (header === null) return undefined;
 
   const seconds = Number(header);
-  if (Number.isFinite(seconds) && seconds >= 0) {
-    return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS);
-  }
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
 
   const when = Date.parse(header);
   if (Number.isNaN(when)) return undefined;
-  return Math.min(Math.max(when - Date.now(), 0), MAX_RETRY_AFTER_MS);
+  return Math.max(when - Date.now(), 0);
+};
+
+/**
+ * Which throttle this is, because they are not the same thing and the
+ * difference is not ours to smooth over.
+ *
+ * Graph 20166 is per-user: this account has been read too quickly, which is
+ * something the caller caused and can ease off on. 10007 is the service saying
+ * it is busy, which has nothing to do with this account at all. Telling someone
+ * their account is being rate limited when OneNote is simply busy sends them
+ * looking for their own fault, and there is not one.
+ */
+const throttleKind = (detail: string): 'service' | 'account' =>
+  /"code"\s*:\s*"?10007/.test(detail) || /server is too busy/i.test(detail)
+    ? 'service'
+    : 'account';
+
+/** Rounded to something a person would say out loud. */
+const humanWait = (ms: number): string => {
+  const seconds = Math.ceil(ms / 1000);
+  if (seconds < 90) return `about ${seconds} seconds`;
+  return `about ${Math.ceil(seconds / 60)} minutes`;
 };
 
 export const getWithRetry = async (url: string, token: string, api: string): Promise<Response> => {
   let spentWaiting = 0;
+  let requestedWait: number | undefined;
 
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
@@ -88,13 +109,35 @@ export const getWithRetry = async (url: string, token: string, api: string): Pro
     const limit = throttled ? THROTTLE_DELAYS.length : DELAYS.length;
     const retryable = res.status >= 500 || throttled;
 
+    // What the provider asked for, uncapped. The cap belongs to how long we are
+    // willing to sleep, not to what we are willing to repeat back — a provider
+    // asking for five minutes should be quoted as five minutes, not as thirty
+    // seconds because that is all we would have waited.
+    const requested = throttled ? retryAfterMs(res) : undefined;
+    if (requested !== undefined) requestedWait = requested;
+
     // Decided before the attempt count, because a provider asking for thirty
     // seconds exhausts the budget on its first answer and there is nothing to
     // be gained by asking again to be told the same thing.
     const wait = throttled
-      ? Math.min(retryAfterMs(res) ?? jittered(THROTTLE_DELAYS[Math.min(attempt, THROTTLE_DELAYS.length - 1)]), MAX_RETRY_AFTER_MS)
+      ? Math.min(
+          requested ?? jittered(THROTTLE_DELAYS[Math.min(attempt, THROTTLE_DELAYS.length - 1)]),
+          MAX_RETRY_AFTER_MS,
+        )
       : DELAYS[Math.min(attempt, DELAYS.length - 1)];
     const affordable = !throttled || spentWaiting + wait <= THROTTLE_BUDGET_MS;
+
+    // Throttling is otherwise invisible: it is absorbed by the retry, or
+    // surfaced once as a failure with no record of how often it nearly
+    // happened. One line per event, on stderr — stdout is the protocol channel
+    // for a stdio server, and this is a diagnostic, not a result.
+    if (throttled) {
+      console.warn(
+        `[artist-mcp] ${api} 429 attempt=${attempt + 1} ` +
+          `retry_after=${requested === undefined ? 'unset' : `${Math.round(requested / 1000)}s`} ` +
+          `waited=${Math.round(spentWaiting / 1000)}s`,
+      );
+    }
 
     if (!retryable || attempt >= limit || !affordable) {
       // Both APIs explain their 4xx in the body. Without it every failure looks
@@ -118,11 +161,20 @@ export const getWithRetry = async (url: string, token: string, api: string): Pro
       // through, and conflating them sends people looking for a bug that is a
       // busy provider.
       if (throttled) {
-        throw new GraphError(
-          `${api} is rate limiting this account. Wait a moment and try again.` +
-            (detail ? ` ${detail}` : ''),
-          false,
-        );
+        const kind = throttleKind(detail);
+        const subject =
+          kind === 'service'
+            ? `${api} is busy and is refusing requests`
+            : `${api} is rate limiting this account`;
+        // The provider's own number when it gave one. "Wait a moment" is fine
+        // for a few seconds and misleading for five minutes, and only the
+        // provider knows which this is.
+        const advice =
+          requestedWait === undefined
+            ? 'Wait a moment and try again.'
+            : `Try again in ${humanWait(requestedWait)}.`;
+
+        throw new GraphError(`${subject}. ${advice}${detail ? ` ${detail}` : ''}`, false);
       }
 
       throw new GraphError(`${api} returned ${res.status}.${detail ? ` ${detail}` : ''}`, false);

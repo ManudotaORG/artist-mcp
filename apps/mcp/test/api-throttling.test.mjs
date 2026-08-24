@@ -145,3 +145,71 @@ test('a short Retry-After is still honoured within the budget', async () => {
   );
   assert.equal(calls, 2, 'a one-second wait fits the budget and should have been taken');
 });
+
+test('a busy service is not reported as this account being rate limited', async () => {
+  await withFetch(
+    async () =>
+      new Response('{"error":{"code":"10007","message":"The server is too busy"}}', {
+        status: 429,
+        headers: { 'retry-after': '0' },
+      }),
+    async () => {
+      await assert.rejects(
+        () => getWithRetry('https://example.test/x', 't', 'Microsoft Graph'),
+        (err) => {
+          // 10007 is the service, not the caller. Saying "your account is being
+          // rate limited" sends someone looking for a fault that is not theirs.
+          assert.match(err.message, /busy and is refusing requests/i);
+          assert.doesNotMatch(err.message, /rate limiting this account/i);
+          return true;
+        },
+      );
+    },
+  );
+});
+
+test('a per-user throttle still names the account', async () => {
+  await withFetch(
+    async () => throttle({ 'retry-after': '0' }),
+    async () => {
+      await assert.rejects(
+        () => getWithRetry('https://example.test/x', 't', 'Microsoft Graph'),
+        /rate limiting this account/i,
+      );
+    },
+  );
+});
+
+test('the provider’s own wait is quoted, not our willingness to wait', async () => {
+  await withFetch(
+    // Five minutes: far past both the sleep cap and the budget, and exactly the
+    // case where "wait a moment" would be a lie.
+    async () => throttle({ 'retry-after': '300' }),
+    async () => {
+      await assert.rejects(
+        () => getWithRetry('https://example.test/x', 't', 'Microsoft Graph'),
+        (err) => {
+          assert.match(err.message, /try again in about 5 minutes/i);
+          assert.doesNotMatch(err.message, /wait a moment/i);
+          return true;
+        },
+      );
+    },
+  );
+});
+
+test('without Retry-After it does not invent a number', async () => {
+  await withFetch(
+    async () => throttle(),
+    async () => {
+      await assert.rejects(
+        () => getWithRetry('https://example.test/x', 't', 'Gmail'),
+        (err) => {
+          assert.match(err.message, /wait a moment/i);
+          assert.doesNotMatch(err.message, /try again in about/i);
+          return true;
+        },
+      );
+    },
+  );
+});
