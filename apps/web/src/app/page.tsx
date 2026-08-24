@@ -1,11 +1,12 @@
 import { Button } from '@/components/ui/button';
 import { Typography } from '@/components/ui/Typography';
 import { getDeploymentMetadata } from '@/lib/deployment';
+import { getSiteUrl } from '@/lib/siteUrl';
 import { supabaseServer } from '@/lib/supabase/server';
-import { signOut } from './actions';
+import { disconnect, signOut } from './actions';
 
 type HomeProps = {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; connected?: string; disconnected?: string }>;
 };
 
 const roles = [
@@ -338,13 +339,112 @@ const PublicHome = ({ installChannel }: PublicHomeProps) => (
   </>
 );
 
+type Connection = { provider: string; updated_at: string };
+
 type DashboardProps = {
   email?: string;
   error?: string;
+  notice?: string;
   installChannel: InstallChannel;
+  connections: Connection[];
+  mcpUrl: string;
 };
 
-const Dashboard = ({ email, error, installChannel }: DashboardProps) => (
+const PROVIDER_LABEL: Record<string, string> = {
+  microsoft: 'MICROSOFT — ONENOTE',
+  google: 'GOOGLE — GMAIL AND CALENDAR',
+};
+
+/**
+ * What this account has connected, and what it means.
+ *
+ * Read with the signed-in user's own session rather than the service role: RLS
+ * already scopes connections to their owner, so the weaker credential is
+ * sufficient and cannot be pointed at anyone else. Only the provider and the
+ * date are read — the token column is ciphertext and there is no reason for
+ * this page to hold it even briefly.
+ */
+const Connections = ({ connections, mcpUrl }: { connections: Connection[]; mcpUrl: string }) => {
+  const connected = new Map(connections.map((c) => [c.provider, c]));
+
+  return (
+    <section className="border-t border-signal-cyan pt-5">
+      <Typography as="h2" variant="sectionTitle" color="yellow">
+        HOSTED CONNECTIONS
+      </Typography>
+
+      <Typography variant="small" className="mt-3">
+        FOR CLIENTS THAT CANNOT RUN A PROGRAM ON YOUR MACHINE. YOUR TOKENS ARE STORED ON OUR
+        INFRASTRUCTURE SO THIS WORKS WHILE YOUR MACHINE IS OFF. A MAINTAINER CAN TECHNICALLY READ
+        WHAT THEY REACH.
+      </Typography>
+
+      <div className="mt-4 grid gap-3">
+        {(['microsoft', 'google'] as const).map((provider) => {
+          const row = connected.get(provider);
+          return (
+            <div
+              key={provider}
+              className="flex flex-wrap items-center justify-between gap-3 border border-foreground p-3"
+            >
+              <div>
+                <Typography variant="small" color="cyan">
+                  {PROVIDER_LABEL[provider]}
+                </Typography>
+                <Typography variant="small">
+                  {row ? `CONNECTED ${row.updated_at.slice(0, 10)}` : 'NOT CONNECTED'}
+                </Typography>
+              </div>
+              {row ? (
+                <form action={disconnect}>
+                  <input type="hidden" name="provider" value={provider} />
+                  <Button type="submit" variant="ghost">
+                    DISCONNECT
+                  </Button>
+                </form>
+              ) : (
+                <a
+                  href={`/api/connect/${provider}`}
+                  className="border border-foreground px-3 py-2 font-mono text-sm hover:bg-signal-cyan hover:text-black"
+                >
+                  CONNECT
+                </a>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {connections.length > 0 ? (
+        <>
+          <Typography variant="small" className="mt-5">
+            CONNECTOR URL — ADD THIS AS A REMOTE MCP SERVER
+          </Typography>
+          <code className="mt-2 block border border-foreground p-3 font-mono text-sm break-all text-signal-cyan">
+            {mcpUrl}
+          </code>
+          <Typography variant="small" className="mt-2">
+            SIGN IN AGAIN WHEN THE CONNECTOR ASKS. IT NEVER SEES YOUR MICROSOFT OR GOOGLE PASSWORD.
+          </Typography>
+        </>
+      ) : null}
+
+      <Typography variant="small" className="mt-5">
+        DISCONNECTING DELETES THE TOKEN WE HOLD. IT DOES NOT REVOKE IT AT MICROSOFT OR GOOGLE — DO
+        THAT IN THEIR OWN SECURITY SETTINGS.
+      </Typography>
+    </section>
+  );
+};
+
+const Dashboard = ({
+  email,
+  error,
+  notice,
+  installChannel,
+  connections,
+  mcpUrl,
+}: DashboardProps) => (
   <main className="grid gap-8 py-10">
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div>
@@ -368,6 +468,8 @@ const Dashboard = ({ email, error, installChannel }: DashboardProps) => (
       </form>
     </div>
     {error ? <Typography color="red">ERROR: {error}</Typography> : null}
+    {notice ? <Typography color="green">{notice}</Typography> : null}
+    <Connections connections={connections} mcpUrl={mcpUrl} />
     {/*
       A "MICROSOFT CONNECTED" banner lived here, set by a provider callback this
       app no longer has. Connecting a hosted account is done with a maintainer
@@ -412,11 +514,24 @@ const Dashboard = ({ email, error, installChannel }: DashboardProps) => (
 );
 
 const Home = async ({ searchParams }: HomeProps) => {
-  const { error } = await searchParams;
+  const { error, connected, disconnected } = await searchParams;
   const supabase = await supabaseServer();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // Scoped by RLS to whoever is signed in, so the session's own credential is
+  // enough and cannot be aimed at another account. Only the provider and the
+  // date are selected; the token column is ciphertext this page has no use for.
+  const { data: connections } = user
+    ? await supabase.from('connections').select('provider, updated_at')
+    : { data: [] };
+
+  const notice = connected
+    ? `${connected.toUpperCase()} CONNECTED.`
+    : disconnected
+      ? `${disconnected.toUpperCase()} DISCONNECTED.`
+      : undefined;
   // Filtered by provider, and never with maybeSingle across the whole table:
   // a user may now hold a row per provider, and an unfiltered single-row read
   // both attributed whichever row existed to Microsoft and failed outright
@@ -428,7 +543,14 @@ const Home = async ({ searchParams }: HomeProps) => {
     <div className="mx-auto w-full max-w-[1440px] px-4 py-4 sm:px-6 lg:px-8">
       <ServiceHeader />
       {user ? (
-        <Dashboard email={user.email} error={error} installChannel={installChannel} />
+        <Dashboard
+          email={user.email}
+          error={error}
+          notice={notice}
+          installChannel={installChannel}
+          connections={connections ?? []}
+          mcpUrl={`${getSiteUrl()}/api/mcp`}
+        />
       ) : (
         <PublicHome installChannel={installChannel} />
       )}

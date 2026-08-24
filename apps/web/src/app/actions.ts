@@ -42,6 +42,30 @@ export const signOut = async () => {
 };
 
 /**
+ * Drop a hosted connection.
+ *
+ * Runs as the signed-in user through disconnect_provider, which is security
+ * invoker and scoped by auth.uid() — so this cannot reach anyone else's row
+ * even if the argument says otherwise. The key survives a single disconnect and
+ * dies with the last connection, which is the rule that migration settled.
+ *
+ * The stored refresh token is deleted here; it is not revoked at the provider.
+ * Nobody holds it afterwards, but only Microsoft's or Google's own account
+ * settings actually invalidate it, and saying so is more useful than implying
+ * this did.
+ */
+export const disconnect = async (formData: FormData) => {
+  const provider = String(formData.get('provider') ?? '');
+  if (provider !== 'microsoft' && provider !== 'google') {
+    redirect('/?error=Unknown+provider.');
+  }
+
+  const supabase = await supabaseServer();
+  const { error } = await supabase.rpc('disconnect_provider', { p_provider: provider });
+  redirect(error ? `/?error=${encodeURIComponent(error.message)}` : `/?disconnected=${provider}`);
+};
+
+/**
  * Key issuance lived here. It is gone: an installed copy holds its own provider
  * tokens now and authenticates directly, so there is no key for this app to
  * mint and nothing for the edge function to resolve. The mcp_keys table is left
