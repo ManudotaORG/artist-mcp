@@ -10,6 +10,11 @@
   "bin": {
     "artist-mcp": "dist/index.js"
   },
+  "exports": {
+    ".": "./dist/index.js",
+    "./server": "./dist/server.js",
+    "./dispatch": "./dist/dispatch.js"
+  },
   "files": [
     "dist",
     "agent-pack"

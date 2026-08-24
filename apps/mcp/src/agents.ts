@@ -14,7 +14,22 @@ import {
   type AgentRegistryEntry,
 } from './agent-registry.js';
 
-const packRoot = fileURLToPath(new URL('../agent-pack/', import.meta.url));
+/**
+ * Where the bundled playbooks live.
+ *
+ * Resolved when asked rather than at import, and never as
+ * `new URL(..., import.meta.url)`: a bundler reads that form as an asset
+ * reference, fails to resolve a directory, and the build dies before anything
+ * runs. `dirname` says the same thing in a way static analysis leaves alone.
+ *
+ * The override exists for bundled deployments, where this file no longer sits
+ * beside the pack — the chunk it ends up in is somewhere else entirely, so a
+ * path relative to it points at nothing. Unset, which is every install from
+ * npm, the behaviour is what it always was.
+ */
+const packRoot = (): string =>
+  process.env.ARTIST_MCP_PACK_ROOT ??
+  join(dirname(fileURLToPath(import.meta.url)), '..', 'agent-pack');
 
 /** One playbook's text, before provenance is attached. */
 type ReadWorkflow = AgentRegistryEntry & { content: string };
@@ -59,10 +74,10 @@ const exists = async (path: string): Promise<boolean> => {
   }
 };
 
-const assertSafePackPath = (file: string): string => resolveWithin(packRoot, file);
+const assertSafePackPath = (file: string): string => resolveWithin(packRoot(), file);
 
 const readBundledRegistry = async (): Promise<AgentRegistry> => {
-  const raw = await readFile(resolve(packRoot, 'registry.json'), 'utf8');
+  const raw = await readFile(resolve(packRoot(), 'registry.json'), 'utf8');
   return parseRegistry(JSON.parse(raw));
 };
 
@@ -133,10 +148,10 @@ const resolveRegistry = async (): Promise<Resolution> => {
       base = { registry, source: 'remote', origin: url.href };
     } catch {
       remoteUnreachable = true;
-      base = { registry: await readBundledRegistry(), source: 'bundled', origin: packRoot };
+      base = { registry: await readBundledRegistry(), source: 'bundled', origin: packRoot() };
     }
   } else {
-    base = { registry: await readBundledRegistry(), source: 'bundled', origin: packRoot };
+    base = { registry: await readBundledRegistry(), source: 'bundled', origin: packRoot() };
   }
 
   const byId = new Map<string, ResolvedEntry>(
