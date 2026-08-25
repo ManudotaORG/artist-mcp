@@ -4,6 +4,7 @@ import { DEFAULT_EDITABLE_DIRECTORY, describeSeed, seedEditablePack } from "./ag
 import { isStagingVersion, packageVersion } from "./client.js";
 import { configPath, ENTRY_NAME, readConfig, writeConfig } from "./config.js";
 import { connectedProviders } from "./dispatch.js";
+import { describeGrants, setGrants, type WriteCapability } from "./grants.js";
 
 const PACKAGE = "@manudota/artist-mcp";
 const LOCAL_ENTRY = fileURLToPath(new URL("./index.js", import.meta.url));
@@ -22,6 +23,12 @@ const packageSpec = (version: string = packageVersion): string =>
 
 type InitOptions = {
   local?: boolean;
+  /**
+   * Writes this install may perform. Recorded in the entry's args so that the
+   * grant is visible where a user will look, and so the server it spawns learns
+   * it the same way it learns the playbook directory.
+   */
+  grants?: readonly WriteCapability[];
   /**
    * Install the editable pack in this directory instead of running the shipped,
    * checksummed one.
@@ -58,20 +65,26 @@ const createServerEntry = ({
   local = false,
   version = packageVersion,
   agentsDir,
+  grants = [],
 }: {
   local?: boolean;
   version?: string;
   agentsDir?: string;
+  grants?: readonly WriteCapability[];
 } = {}): ServerEntry => {
   const agents = agentsDir ? ["--agents", resolve(agentsDir)] : [];
+  // Written even though the server would default to no writes without it,
+  // because the entry is where a user looks to find out what this install can
+  // do. An absent flag and a granted-then-forgotten one must not look alike.
+  const writes = grants.length > 0 ? ["--allow-writes", [...grants].join(",")] : [];
   return local
     ? {
         command: process.execPath,
-        args: [LOCAL_ENTRY, ...agents],
+        args: [LOCAL_ENTRY, ...agents, ...writes],
       }
     : {
         command: "npx",
-        args: ["-y", packageSpec(version), ...agents],
+        args: ["-y", packageSpec(version), ...agents, ...writes],
       };
 };
 
@@ -84,7 +97,11 @@ const createServerEntry = ({
  * failing inside Claude — so it says plainly which providers are connected and
  * names the command for the ones that are not.
  */
-export const runInit = async ({ local = false, editableDir }: InitOptions = {}): Promise<void> => {
+export const runInit = async ({
+  local = false,
+  editableDir,
+  grants = [],
+}: InitOptions = {}): Promise<void> => {
   // Seed before touching the config, so a directory that cannot be written fails
   // here, while the user is still looking at the terminal — rather than later, as
   // every workflow tool failing inside Claude Desktop.
@@ -97,7 +114,7 @@ export const runInit = async ({ local = false, editableDir }: InitOptions = {}):
   const config = await readConfig(path);
   const servers = (config.mcpServers ?? {}) as Record<string, unknown>;
 
-  servers[ENTRY_NAME] = createServerEntry({ local, agentsDir: seeded?.root });
+  servers[ENTRY_NAME] = createServerEntry({ local, agentsDir: seeded?.root, grants });
   config.mcpServers = servers;
 
   await writeConfig(path, config);
@@ -110,6 +127,21 @@ export const runInit = async ({ local = false, editableDir }: InitOptions = {}):
     console.log("Playbooks are the shipped, checksummed ones. Re-run with");
     console.log("`--editable` to install a copy you can edit.");
   }
+  // Said every time, granted or not. A capability nobody can see is one nobody
+  // accounts for, and the useful line is the one that appears when the answer
+  // is "none" — that is what tells a user their install is still read-only.
+  console.log("");
+  setGrants(grants);
+  console.log(describeGrants());
+  if (grants.length > 0) {
+    console.log(
+      "Reconnect Google so the grant is on the token: `artist-mcp connect google`. " +
+        "A refresh token carries the scopes it was granted with, so an existing " +
+        "connection cannot write until it is renewed.",
+    );
+  }
+
+  console.log("");
   if (local) {
     console.log(`Using local build: ${LOCAL_ENTRY}`);
   } else {

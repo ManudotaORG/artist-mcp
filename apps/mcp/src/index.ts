@@ -4,6 +4,7 @@ import { runInit, runUninstall } from './init.js';
 import { runServer } from './server.js';
 import { installAgentPack, runAgentsStatus, setLocalAgentRoot } from './agents.js';
 import { runConnect, runDisconnect, runStatus } from './connect.js';
+import { parseGrants, setGrants } from './grants.js';
 
 const argv = process.argv.slice(2);
 
@@ -26,6 +27,9 @@ const takeOption = (name: string): string | undefined => {
   return value;
 };
 
+/** The commands, so a flag missing its value cannot swallow one. */
+const COMMANDS = ['init', 'connect', 'disconnect', 'status', 'uninstall', 'agents'];
+
 // Parsed inside the error handler below: a bad flag is a user error like any
 // other, and it printed a stack trace when it threw at module scope.
 let mode: string | undefined;
@@ -35,6 +39,21 @@ try {
   // server reads back; `--editable` is the install-time flag a person types.
   const agentsDir = takeOption('--agents');
   const editableDir = takeOption('--editable');
+  // Parsed here, inside the error handler, so an unknown capability is a
+  // one-line user error rather than a stack trace. Refused by name: a typo that
+  // silently granted nothing would be diagnosed as a missing tool.
+  //
+  // `takeOption` takes the next token as the value, so `--allow-writes status`
+  // eats the command and reports the command as an unknown capability, which
+  // sends someone reading it to entirely the wrong place. A command name is
+  // never a capability, so it is handed back and the flag is left empty — which
+  // is itself refused, with the message that fits what happened.
+  let writes = takeOption('--allow-writes');
+  if (writes !== undefined && COMMANDS.includes(writes)) {
+    argv.unshift(writes);
+    writes = '';
+  }
+  const grants = parseGrants(writes);
   mode = argv[0];
 
   switch (mode) {
@@ -43,13 +62,18 @@ try {
       // only way the server learns where a user's playbooks live: there is no
       // cwd here worth trusting.
       setLocalAgentRoot(agentsDir || undefined);
+      // Decided once, before any tool is registered. An ungranted write tool is
+      // never built, rather than built and refusing.
+      setGrants(grants);
       await runServer();
       break;
     case 'init':
       if (argv[1] && argv[1] !== '--local') {
-        throw new Error('Usage: artist-mcp init [--local] [--editable [directory]]');
+        throw new Error(
+          'Usage: artist-mcp init [--local] [--editable [directory]] [--allow-writes <list>]',
+        );
       }
-      await runInit({ local: argv[1] === '--local', editableDir });
+      await runInit({ local: argv[1] === '--local', editableDir, grants });
       break;
     case 'connect':
       await runConnect(argv[1]);
@@ -89,6 +113,11 @@ try {
           '                       the same, but with every playbook copied\n' +
           '                       somewhere you can edit them, and add your own\n' +
           '                       (default ~/artist-mcp)\n' +
+          '  artist-mcp init --allow-writes calendar-create\n' +
+          '                       let this install add single calendar events,\n' +
+          '                       after showing you each one. Everything else,\n' +
+          '                       including all of OneNote, stays read-only.\n' +
+          '                       Reconnect Google afterwards to grant the scope\n' +
           '  artist-mcp connect [microsoft|google]\n' +
           '                       sign in to a provider in your browser\n' +
           '  artist-mcp disconnect [microsoft|google]\n' +

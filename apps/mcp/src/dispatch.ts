@@ -13,34 +13,75 @@
 
 import { GraphError } from './client.js';
 import { mapAttachment, readAttachment } from './attachments.js';
-import { listEvents, readEvent } from './calendar.js';
+import {
+  createEvent,
+  deleteEvent,
+  listCalendars,
+  listEvents,
+  previewDeleteEvent,
+  previewEvent,
+  readEvent,
+} from './calendar.js';
 import { listEmails, readEmail } from './mail.js';
 import { listNotes, mapNotes, readNote } from './notes.js';
 import { accessTokenFor } from './oauth.js';
 import { type ProviderName, loadTokens } from './tokens.js';
 
-export type Operation =
-  | 'list_notes'
-  | 'map_notes'
-  | 'read_note'
-  | 'list_emails'
-  | 'read_email'
-  | 'read_attachment'
-  | 'map_attachment'
-  | 'list_events'
-  | 'read_event';
+/**
+ * Every operation this server can carry out, with its provider and its effect.
+ *
+ * One table rather than a union beside a lookup, because the two would be two
+ * lists that have to agree, and the interesting failure is exactly the one
+ * where they quietly stop agreeing. `Operation` is derived from it.
+ *
+ * `effect` is not decoration. Until the first write shipped, the read-only
+ * boundary rested on OAuth scopes: a read-only token could not write whatever
+ * the code did. Google publishes no insert-only Calendar scope, so a token that
+ * may create an event may also update and delete one, and this table plus the
+ * grant check are what stand in place of that. See
+ * docs/decisions/0001-opt-in-calendar-writes.md.
+ *
+ * Adding a row is a boundary change, not a feature. `test/operation-boundary`
+ * fails on any edit to this table so that the change has to be deliberate.
+ */
+export const OPERATIONS = {
+  list_notes: { provider: 'microsoft', effect: 'read' },
+  map_notes: { provider: 'microsoft', effect: 'read' },
+  read_note: { provider: 'microsoft', effect: 'read' },
+  list_emails: { provider: 'google', effect: 'read' },
+  read_email: { provider: 'google', effect: 'read' },
+  read_attachment: { provider: 'google', effect: 'read' },
+  map_attachment: { provider: 'google', effect: 'read' },
+  list_events: { provider: 'google', effect: 'read' },
+  read_event: { provider: 'google', effect: 'read' },
+  list_calendars: { provider: 'google', effect: 'read' },
+  // Reads the day and renders what would be written. A read, despite the name:
+  // it changes nothing, and marking it a write would gate the very thing that
+  // has to happen before a write is allowed.
+  preview_calendar_event: { provider: 'google', effect: 'read' },
+  create_calendar_event: { provider: 'google', effect: 'write' },
+  // Reads the event so a deletion is confirmed against what is really there.
+  preview_calendar_delete: { provider: 'google', effect: 'read' },
+  delete_calendar_event: { provider: 'google', effect: 'write' },
+} as const satisfies Record<string, { provider: ProviderName; effect: 'read' | 'write' }>;
 
-const PROVIDER_FOR: Record<Operation, ProviderName> = {
-  list_notes: 'microsoft',
-  map_notes: 'microsoft',
-  read_note: 'microsoft',
-  list_emails: 'google',
-  read_email: 'google',
-  read_attachment: 'google',
-  map_attachment: 'google',
-  list_events: 'google',
-  read_event: 'google',
-};
+export type Operation = keyof typeof OPERATIONS;
+
+/** Kept as its own export: callers ask "which token" far more than "which effect". */
+const PROVIDER_FOR: Record<Operation, ProviderName> = Object.fromEntries(
+  Object.entries(OPERATIONS).map(([op, meta]) => [op, meta.provider]),
+) as Record<Operation, ProviderName>;
+
+/**
+ * The operations a grant is required for. Empty today; the guard test asserts
+ * that it is exactly the set of rows marked `write`, so it cannot fall behind
+ * the table.
+ */
+export const WRITE_OPERATIONS: Operation[] = (
+  Object.entries(OPERATIONS) as [Operation, { effect: string }][]
+)
+  .filter(([, meta]) => meta.effect === 'write')
+  .map(([op]) => op);
 
 /**
  * What this machine can currently do, without spending a network call to find
@@ -103,6 +144,18 @@ export const dispatchWith =
         )) as T;
       case 'read_event':
         return (await readEvent(token, params.event_id, params.calendar_id)) as T;
+      case 'preview_calendar_event':
+        return (await previewEvent(token, params)) as T;
+      case 'create_calendar_event':
+        return (await createEvent(token, params)) as T;
+      case 'preview_calendar_delete':
+        return (await previewDeleteEvent(token, params)) as T;
+      case 'delete_calendar_event':
+        return (await deleteEvent(token, params)) as T;
+      case 'list_calendars':
+        // No parameters by design: the whole value is knowing the full set, and
+        // a filtered list of what exists is the reach problem again.
+        return (await listCalendars(token)) as T;
       default:
         // Unreachable through the tool definitions, which name every operation.
         throw new GraphError(`Unknown operation ${String(op)}.`, false);

@@ -7,8 +7,14 @@
  * something plausible and wrong, so they moved across unchanged.
  */
 
-import { GraphError } from './client.js';
-import { calendarGet } from './api.js';
+import { DuplicateEventError, GraphError, ScopeError } from './client.js';
+import {
+  CALENDAR_LIST_NEED,
+  calendarDeleteEvent,
+  calendarGet,
+  calendarInsertEvent,
+} from './api.js';
+import { recordWrite } from './audit.js';
 
 /** The edge function returned HTTP statuses; here the message is the whole signal. */
 const failure = (message: string): GraphError => new GraphError(message, false);
@@ -213,3 +219,575 @@ export async function readEvent(token: string, rawEventId: unknown, rawCalendarI
   };
 }
 
+
+type CalendarListEntry = {
+  id?: string;
+  summary?: string;
+  primary?: boolean;
+  accessRole?: string;
+  timeZone?: string;
+  deleted?: boolean;
+};
+
+/**
+ * Which calendars this musician has.
+ *
+ * The point is not the list, it is what the list lets a later answer say. A
+ * search of `primary` that finds nothing cannot tell "this gig is not in the
+ * diary" from "this gig is on the calendar I did not look at", and the second
+ * is common: gigs land on a band or a venue calendar far more often than a
+ * musician expects. Absence is only evidence once the reach of the look is
+ * known — see `policy:evidence`, and
+ * docs/decisions/0001-opt-in-calendar-writes.md.
+ *
+ * `calendar.calendarlist.readonly` was added for this, so a connection made
+ * before it exists cannot answer. That is not a failure: `primary` is still
+ * readable and still worth reading. The result therefore says it is partial and
+ * why, rather than throwing, because a caller that cannot list calendars must
+ * still be able to say what it did and did not cover.
+ */
+export async function listCalendars(token: string) {
+  let items: CalendarListEntry[];
+  try {
+    const res = await calendarGet('/users/me/calendarList', token, CALENDAR_LIST_NEED);
+    items = ((await res.json()) as { items?: CalendarListEntry[] }).items ?? [];
+  } catch (err) {
+    // Only the gap this call can work around. A real fault still throws — the
+    // whole reason ScopeError is its own type is so that this catch cannot
+    // quietly swallow one.
+    if (err instanceof ScopeError && err.optional) {
+      return {
+        calendars: [],
+        complete: false,
+        // Phrased for the reader of an answer, not for a log. Whatever calls
+        // this has to be able to repeat it verbatim beside its own result.
+        limitation:
+          'Only the primary calendar could be searched: this Google connection ' +
+          'was made before artist-mcp could see your calendar list. Anything on ' +
+          'another calendar would not have been found. Run `artist-mcp connect ' +
+          'google` to widen it.',
+      };
+    }
+    throw err;
+  }
+
+  const calendars = items
+    // A deleted entry is a calendar the musician removed from their list. It is
+    // not somewhere a gig can be, and offering it would invite a look that
+    // cannot find anything.
+    .filter((c) => c.deleted !== true && typeof c.id === 'string')
+    .map((c) => ({
+      id: c.id as string,
+      summary: c.summary ?? '(no name)',
+      primary: c.primary === true,
+      // Kept because it decides whether a write could ever land here, and a
+      // reader is entitled to know a calendar is one they can only look at.
+      access_role: c.accessRole ?? null,
+      time_zone: c.timeZone ?? null,
+    }));
+
+  return { calendars, complete: true, limitation: null };
+}
+
+
+// ------------------------------------------------------- creating an event
+
+/**
+ * The fields that define an event, in a fixed order.
+ *
+ * Fixed because both the confirmation token and the idempotency id are hashes
+ * of this, and a shape that varied with key order would make the same event
+ * hash differently between two calls.
+ */
+export type EventDraft = {
+  calendar_id: string;
+  summary: string;
+  /** `YYYY-MM-DD` for an all-day event, or an RFC3339 datetime. */
+  start: string;
+  end: string;
+  /** IANA name. Required for a timed event, meaningless for an all-day one. */
+  time_zone: string | null;
+  location: string | null;
+  description: string | null;
+};
+
+const canonical = (d: EventDraft): string =>
+  [
+    d.calendar_id,
+    d.summary,
+    d.start,
+    d.end,
+    d.time_zone ?? '',
+    d.location ?? '',
+    d.description ?? '',
+  ].join(' ');
+
+/**
+ * Google accepts a client-set event id, which is what makes a retry safe: the
+ * second attempt collides with 409 rather than double-booking. Its ids are
+ * base32hex — digits and `a`-`v` — 5 to 1024 characters, unique per calendar.
+ */
+const base32hex = (bytes: Uint8Array): string => {
+  const alphabet = '0123456789abcdefghijklmnopqrstuv';
+  let bits = 0;
+  let value = 0;
+  let out = '';
+  for (const byte of bytes) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      out += alphabet[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  return out;
+};
+
+const digest = async (prefix: string, draft: EventDraft): Promise<string> => {
+  const data = new TextEncoder().encode(`${prefix} ${canonical(draft)}`);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return base32hex(new Uint8Array(hash));
+};
+
+/**
+ * The token a preview returns and a create must carry back.
+ *
+ * Derived from the payload, so it proves the create is for the values that were
+ * shown - not merely that a preview happened at some point. It cannot prove a
+ * human read them; nothing inside MCP can. See
+ * docs/decisions/0001-opt-in-calendar-writes.md.
+ */
+export const confirmationToken = (draft: EventDraft): Promise<string> =>
+  digest('confirm', draft);
+
+/**
+ * The event's id in Google, which is what stops a retry double-booking.
+ *
+ * Derived independently of the confirmation token, from a different prefix, on
+ * purpose: if the double-book guard rode on the token, dropping the token
+ * requirement later would silently drop double-booking protection with it.
+ */
+export const ARTIST_ID_PREFIX = 'artist';
+
+export const idempotencyId = async (draft: EventDraft): Promise<string> =>
+  // Prefixed so a human reading their calendar's raw data can tell where the
+  // event came from, and trimmed because Google caps ids at 1024 characters
+  // while 32 base32hex characters is already 160 bits.
+  //
+  // The prefix is load-bearing beyond legibility: it is what makes deleting
+  // safe to offer at all, since only an id carrying it may be removed.
+  `${ARTIST_ID_PREFIX}${(await digest('event', draft)).slice(0, 32)}`;
+
+/**
+ * Anything a page left unsettled, in the spellings the pack actually uses.
+ *
+ * Case-sensitive for the placeholder words, which is not fussiness: the pack
+ * writes `UNKNOWN` in capitals, and matching case-insensitively refused
+ * "Unknown Pleasures tribute night" — a real gig title, and a refusal a
+ * musician could do nothing about except rename their own event. A field that
+ * is *only* the word is caught in any case, since "unknown" alone is never a
+ * venue.
+ *
+ * The trade is deliberate. A lowercase "unknown" buried in a sentence gets
+ * through, and the playbook rule still governs the session that composed it;
+ * refusing every occurrence would block legitimate writes to prevent a case
+ * the preview already shows the musician.
+ */
+const PLACEHOLDERS = ['UNKNOWN', 'TBC', 'TBD', 'T.B.C', 'T.B.D'];
+const unsettled = (value: string): boolean => {
+  const trimmed = value.trim();
+  if (PLACEHOLDERS.some((word) => trimmed.toUpperCase() === word)) return true;
+  if (/\?\?+/.test(trimmed)) return true;
+  return PLACEHOLDERS.some((word) =>
+    new RegExp(`(^|[^A-Za-z])${word.replace(/\./g, '\\.')}([^A-Za-z]|$)`).test(trimmed),
+  );
+};
+
+/**
+ * Refuse to write a value the notebook has not settled.
+ *
+ * This is the rule that matters most in the decision record, and it lives here
+ * rather than only in a playbook because a playbook governs a session while
+ * this governs the write. Two pages disagreeing about a date is exactly what
+ * `policy:divergence` spends its length refusing to decide; a write would
+ * decide it silently, durably, and where other people can see it.
+ */
+export const refuseUnsettled = (draft: EventDraft): void => {
+  const fields: [string, string | null][] = [
+    ['title', draft.summary],
+    ['start', draft.start],
+    ['end', draft.end],
+    ['location', draft.location],
+    ['notes', draft.description],
+  ];
+  for (const [name, value] of fields) {
+    if (value && unsettled(value)) {
+      throw failure(
+        `The ${name} is not settled - it still reads "${value.trim()}". A calendar ` +
+          'event is durable and other people see it, so an unsettled value is not ' +
+          'written. Settle it on the page first, then ask again.',
+      );
+    }
+  }
+};
+
+
+/** Shape-check what a caller gave us, before any of it is hashed or written. */
+const draftFrom = (params: Record<string, unknown>): EventDraft => {
+  const text = (v: unknown, name: string, required: boolean): string | null => {
+    if (v === undefined || v === null || v === '') {
+      if (required) throw failure(`${name} is required to create an event.`);
+      return null;
+    }
+    if (typeof v !== 'string') throw failure(`${name} must be text.`);
+    if (v.length > 1024) throw failure(`${name} is too long.`);
+    return v.trim();
+  };
+
+  const calendarId = text(params.calendar_id, 'calendar_id', false) ?? 'primary';
+  if (!CALENDAR_ID.test(calendarId)) throw failure('calendar_id is malformed.');
+
+  const start = text(params.start, 'start', true) as string;
+  const end = text(params.end, 'end', true) as string;
+  const allDay = /^\d{4}-\d{2}-\d{2}$/.test(start);
+
+  if (allDay !== /^\d{4}-\d{2}-\d{2}$/.test(end)) {
+    throw failure(
+      'start and end must be the same kind: both dates for an all-day event, or ' +
+        'both date-times.',
+    );
+  }
+  if (!allDay) {
+    for (const [name, value] of [['start', start], ['end', end]] as const) {
+      if (Number.isNaN(new Date(value).getTime())) throw failure(`${name} is not a date-time.`);
+    }
+  }
+
+  // A timed event with no zone is the bug this file already warns about in the
+  // other direction: the calendar's zone need not be the reader's, and letting
+  // one be assumed here writes a gig an hour out and looks entirely correct.
+  const timeZone = text(params.time_zone, 'time_zone', false);
+  if (!allDay && !timeZone) {
+    throw failure(
+      'time_zone is required for a timed event, as an IANA name such as ' +
+        'Europe/Madrid. Without it the time is guesswork, and a gig written an ' +
+        'hour out looks exactly like a correct one.',
+    );
+  }
+
+  if (new Date(end).getTime() < new Date(start).getTime()) {
+    throw failure('The event ends before it starts.');
+  }
+
+  return {
+    calendar_id: calendarId,
+    summary: text(params.summary, 'summary', true) as string,
+    start,
+    end,
+    time_zone: allDay ? null : timeZone,
+    location: text(params.location, 'location', false),
+    description: text(params.description, 'description', false),
+  };
+};
+
+/** How an event reads to a person checking it against a page. */
+const renderDraft = (draft: EventDraft): string => {
+  const allDay = draft.time_zone === null;
+  const lines = [
+    `Title:    ${draft.summary}`,
+    allDay
+      ? `When:     ${draft.start} to ${draft.end} (all day)`
+      : `When:     ${draft.start} to ${draft.end} (${draft.time_zone})`,
+  ];
+  if (draft.location) lines.push(`Where:    ${draft.location}`);
+  if (draft.description) lines.push(`Notes:    ${draft.description}`);
+  lines.push(`Calendar: ${draft.calendar_id}`);
+  return lines.join('\n');
+};
+
+/**
+ * Show an event exactly as it would be written, and hand back the token that
+ * lets it be written.
+ *
+ * The day is enumerated alongside it, because a preview that shows only what
+ * would be added invites the question it cannot answer: whether it is already
+ * there. That listing is also the only honest form of "is this missing" this
+ * product has - see docs/decisions/0001-opt-in-calendar-writes.md.
+ */
+export async function previewEvent(token: string, params: Record<string, unknown>) {
+  const draft = draftFrom(params);
+  refuseUnsettled(draft);
+
+  const day = draft.start.slice(0, 10);
+  const { events } = await listEvents(
+    token,
+    draft.calendar_id,
+    undefined,
+    `${day}T00:00:00Z`,
+    `${day}T23:59:59Z`,
+  );
+
+  return {
+    preview: renderDraft(draft),
+    confirmation_token: await confirmationToken(draft),
+    existing_that_day: events,
+    calendar_searched: draft.calendar_id,
+  };
+}
+
+/**
+ * Say which kind of "already taken" this is.
+ *
+ * A cancelled event is one sitting in that calendar's bin, where Google keeps it
+ * for 30 days and where it goes on holding its id. Recreating the same event is
+ * therefore impossible until it is restored or the bin expires — which is a
+ * thing the musician can act on, unlike "already in the calendar".
+ */
+const describeDuplicate = async (
+  token: string,
+  calendarId: string,
+  eventId: string,
+): Promise<GraphError> => {
+  try {
+    const res = await calendarGet(
+      `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+      token,
+    );
+    const existing = (await res.json()) as CalendarEvent;
+    if (existing.status === 'cancelled') {
+      return failure(
+        'This exact event was created before and then deleted, and it is still ' +
+          "in that calendar's bin, which holds its id. Nothing was duplicated " +
+          'and nothing new was created. To bring it back, restore it from the ' +
+          "calendar's bin in Google Calendar — Google keeps it for 30 days. " +
+          'Creating it again here will keep failing until then.',
+      );
+    }
+  } catch {
+    // Fall through: not being able to look it up is not worth failing over,
+    // and the safe half of the answer is true either way.
+  }
+  return failure(
+    'That event is already in the calendar — this exact event was created ' +
+      'before, so nothing was duplicated.',
+  );
+};
+
+/**
+ * Create the event, if the token matches the payload.
+ *
+ * The comparison is the boundary: it makes creating an event that was never
+ * previewed inexpressible, and previewing one event and creating another
+ * inexpressible too. It does not prove a person read the preview, and no part
+ * of this protocol can.
+ */
+export async function createEvent(token: string, params: Record<string, unknown>) {
+  const draft = draftFrom(params);
+  refuseUnsettled(draft);
+
+  const supplied = typeof params.confirmation_token === 'string' ? params.confirmation_token : '';
+  const expected = await confirmationToken(draft);
+  if (supplied !== expected) {
+    throw failure(
+      supplied === ''
+        ? 'No confirmation_token. Call preview_calendar_event first and show the ' +
+            'musician what it returns; creating an event nobody has seen is not ' +
+            'something this tool can do.'
+        : 'The confirmation_token does not match this event. It belongs to a ' +
+            'different set of values, so something changed after the preview. ' +
+            'Preview again and show the musician the new version.',
+    );
+  }
+
+  const allDay = draft.time_zone === null;
+  const body = {
+    id: await idempotencyId(draft),
+    summary: draft.summary,
+    start: allDay ? { date: draft.start } : { dateTime: draft.start, timeZone: draft.time_zone },
+    end: allDay ? { date: draft.end } : { dateTime: draft.end, timeZone: draft.time_zone },
+    ...(draft.location ? { location: draft.location } : {}),
+    ...(draft.description ? { description: draft.description } : {}),
+  };
+
+  let res: Response;
+  try {
+    res = await calendarInsertEvent(draft.calendar_id, body, token);
+  } catch (err) {
+    // The id is taken. Whether that means "it is already there" or "it is in
+    // the bin" is the difference between a reassuring answer and one that sends
+    // someone hunting for an event they cannot see, so it is looked up rather
+    // than guessed. Confirmed against a real calendar: deleting an event and
+    // creating it again lands here, with the trashed event still holding the id.
+    if (err instanceof DuplicateEventError) {
+      throw await describeDuplicate(token, draft.calendar_id, body.id);
+    }
+    throw err;
+  }
+  const created = (await res.json()) as CalendarEvent;
+
+  // Here, not in the tool handler that used to hold it. A record kept one layer
+  // above the write is a record of calls to that layer, and anything reaching
+  // the write another way leaves no trace at all — which is exactly what
+  // happened the first time this was run against a real calendar. The audit has
+  // to sit where the event is created or it is not an audit.
+  await recordWrite({
+    operation: 'create_calendar_event',
+    summary: renderDraft(draft),
+    target: `${draft.calendar_id}/${created.id ?? 'unknown'}`,
+    source_page: typeof params.source_page === 'string' ? params.source_page : null,
+  });
+
+  return {
+    created: shapeEvent(created),
+    link: created.htmlLink ?? null,
+    calendar_id: draft.calendar_id,
+    written: renderDraft(draft),
+  };
+}
+
+
+// -------------------------------------------------------- removing an event
+
+/**
+ * Fetch the event as it stands, so a delete is confirmed against what is really
+ * there rather than against a description of it.
+ *
+ * This is the one place the confirmation is stricter than it is for a create:
+ * the payload being hashed came from Google, not from the caller.
+ */
+const fetchForDeletion = async (token: string, calendarId: string, eventId: string) => {
+  if (!EVENT_ID.test(eventId)) throw failure('event_id is malformed.');
+  if (!CALENDAR_ID.test(calendarId)) throw failure('calendar_id is malformed.');
+
+  // The rule the whole capability rests on. An id without the prefix belongs to
+  // an event somebody else made — typed in by hand, or shared onto the calendar
+  // — and this tool has no business removing it. Checked before the fetch, so a
+  // refusal does not depend on the event being readable.
+  if (!eventId.startsWith(ARTIST_ID_PREFIX)) {
+    throw failure(
+      'That event was not created by artist-mcp, so it cannot be deleted here. ' +
+        'Only events this tool created can be removed by it — anything else is ' +
+        "the musician's own, and belongs to them to change in Google Calendar.",
+    );
+  }
+
+  const res = await calendarGet(
+    `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    token,
+  );
+  return (await res.json()) as CalendarEvent;
+};
+
+/**
+ * An instant, written in the zone it belongs to.
+ *
+ * Google answers with the instant, often as UTC, while the event carries its own
+ * zone. Printing the two side by side reads as a local time and is wrong by the
+ * offset: a 20:00 gig in Madrid renders as "18:00:00Z (Europe/Madrid)", which a
+ * musician checking a deletion reads as six in the evening. The file already
+ * warns about this in the other direction, and it is worse here, because the
+ * whole point of the preview is that a person can check it.
+ */
+const inZone = (value: string | null, zone: string | null): string => {
+  if (value === null) return 'unknown';
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return value;
+  if (!zone) return `${at.toISOString().replace('.000Z', 'Z')} (UTC)`;
+  try {
+    const shown = new Intl.DateTimeFormat('en-GB', {
+      timeZone: zone,
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(at);
+    return `${shown} (${zone})`;
+  } catch {
+    // An unknown zone name is not a reason to render nothing; say the instant
+    // and admit the zone could not be applied.
+    return `${at.toISOString().replace('.000Z', 'Z')} (UTC; ${zone} not recognised)`;
+  }
+};
+
+/** How a deletion reads to someone deciding whether to allow it. */
+const renderExisting = (e: CalendarEvent, calendarId: string): string => {
+  const start = eventTime(e.start);
+  const end = eventTime(e.end);
+  const zone = start.time_zone ?? end.time_zone;
+  const lines = [
+    `Title:    ${e.summary ?? '(no title)'}`,
+    start.all_day
+      ? `When:     ${start.value} to ${end.value} (all day)`
+      : `When:     ${inZone(start.value, zone)} to ${inZone(end.value, zone)}`,
+  ];
+  if (e.location) lines.push(`Where:    ${e.location}`);
+  if (e.description) lines.push(`Notes:    ${e.description}`);
+  lines.push(`Calendar: ${calendarId}`);
+  return lines.join('\n');
+};
+
+/** A token over the event as Google returns it, not as anyone described it. */
+const deletionToken = async (e: CalendarEvent, calendarId: string): Promise<string> => {
+  const data = new TextEncoder().encode(
+    `delete ${calendarId} ${e.id ?? ''} ${e.summary ?? ''} ` +
+      `${eventTime(e.start).value ?? ''} ${eventTime(e.end).value ?? ''}`,
+  );
+  return base32hex(new Uint8Array(await crypto.subtle.digest('SHA-256', data)));
+};
+
+/**
+ * Show what would be removed, and hand back the token that permits removing it.
+ */
+export async function previewDeleteEvent(token: string, params: Record<string, unknown>) {
+  const calendarId =
+    typeof params.calendar_id === 'string' && params.calendar_id.trim()
+      ? params.calendar_id.trim()
+      : 'primary';
+  const eventId = typeof params.event_id === 'string' ? params.event_id.trim() : '';
+  const event = await fetchForDeletion(token, calendarId, eventId);
+
+  return {
+    preview: renderExisting(event, calendarId),
+    confirmation_token: await deletionToken(event, calendarId),
+    calendar_id: calendarId,
+  };
+}
+
+/**
+ * Remove an event this tool created.
+ *
+ * The audit records the whole event rather than a reference to it. A wrong
+ * create leaves something visible; a wrong delete leaves a gap, and nobody
+ * notices absence — so what is written down has to be enough to put it back by
+ * hand once Google's 30-day bin has expired.
+ */
+export async function deleteEvent(token: string, params: Record<string, unknown>) {
+  const calendarId =
+    typeof params.calendar_id === 'string' && params.calendar_id.trim()
+      ? params.calendar_id.trim()
+      : 'primary';
+  const eventId = typeof params.event_id === 'string' ? params.event_id.trim() : '';
+  const event = await fetchForDeletion(token, calendarId, eventId);
+
+  const supplied = typeof params.confirmation_token === 'string' ? params.confirmation_token : '';
+  const expected = await deletionToken(event, calendarId);
+  if (supplied !== expected) {
+    throw failure(
+      supplied === ''
+        ? 'No confirmation_token. Call preview_calendar_delete first and show the ' +
+            'musician what would be removed.'
+        : 'The confirmation_token does not match this event. It has changed since ' +
+            'the preview, so preview again and show the musician what is there now.',
+    );
+  }
+
+  const record = renderExisting(event, calendarId);
+  await calendarDeleteEvent(calendarId, eventId, token);
+
+  await recordWrite({
+    operation: 'delete_calendar_event',
+    summary: record,
+    target: `${calendarId}/${eventId}`,
+    source_page: typeof params.source_page === 'string' ? params.source_page : null,
+  });
+
+  return { deleted: record, calendar_id: calendarId, event_id: eventId };
+}

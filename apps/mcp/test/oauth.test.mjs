@@ -185,3 +185,50 @@ test('a provider that was never connected names the command that fixes it', asyn
     });
   });
 });
+
+
+/**
+ * The bug this prevents is silent and delayed. A refresh asking for more than
+ * the grant carries is rejected, so refreshing with whatever the current build
+ * would ask for breaks every connection made before a scope was added — an hour
+ * later, inside a session, far from the change that caused it. What the
+ * connection actually carries is the only safe thing to send.
+ */
+test('a refresh asks for the scope this connection has, not the one this build wants', async () => {
+  await withTempStore(async () => {
+    // Two scopes: a Google connection made before calendar.calendarlist.readonly
+    // was added to the product.
+    await saveProvider('google', {
+      refreshToken: 'original',
+      scope:
+        'https://www.googleapis.com/auth/gmail.readonly ' +
+        'https://www.googleapis.com/auth/calendar.events.readonly',
+      connectedAt: '2026-08-14T00:00:00.000Z',
+      clientSecret: 'secret',
+    });
+
+    const calls = stubToken(200, { access_token: 'access-one' });
+    await accessTokenFor('google');
+
+    const sent = calls[0].form.scope.split(' ');
+    assert.equal(sent.includes('https://www.googleapis.com/auth/calendar.calendarlist.readonly'), false);
+    assert.deepEqual(sent.sort(), [
+      'https://www.googleapis.com/auth/calendar.events.readonly',
+      'https://www.googleapis.com/auth/gmail.readonly',
+    ]);
+  });
+});
+
+test('a refresh never smuggles in a write scope the user did not grant', async () => {
+  await withTempStore(async () => {
+    await saveProvider('google', {
+      refreshToken: 'original',
+      scope: 'https://www.googleapis.com/auth/calendar.events.readonly',
+      connectedAt: '2026-08-14T00:00:00.000Z',
+      clientSecret: 'secret',
+    });
+    const calls = stubToken(200, { access_token: 'a' });
+    await accessTokenFor('google');
+    assert.doesNotMatch(calls[0].form.scope, /calendar\.events(\s|$)/);
+  });
+});
