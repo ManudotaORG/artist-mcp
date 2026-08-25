@@ -302,3 +302,52 @@ test('an unwritable audit does not turn a successful write into a failure', asyn
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+
+/**
+ * The audit used to live in the MCP tool handler, one layer above the write.
+ * That made it a record of calls to that layer rather than of writes: the first
+ * real run against a real calendar created an event and left no trace at all,
+ * because it reached createEvent directly. It belongs where the event is made.
+ */
+test('creating an event writes the audit line, not the tool that called it', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'artist-audit-'));
+  const previous = process.env.ARTIST_MCP_AUDIT;
+  process.env.ARTIST_MCP_AUDIT = join(dir, 'writes.log');
+  try {
+    const token = await confirmationToken(draft);
+    await withFetch(
+      async (url, init) =>
+        init?.method === 'POST'
+          ? new Response(JSON.stringify({ id: 'created-id' }), { status: 200 })
+          : emptyDay(),
+      () => createEvent('t', { ...params, confirmation_token: token, source_page: 'page-7' }),
+    );
+
+    const line = JSON.parse(await readFile(join(dir, 'writes.log'), 'utf8'));
+    assert.equal(line.operation, 'create_calendar_event');
+    assert.equal(line.target, 'primary/created-id');
+    assert.equal(line.source_page, 'page-7');
+    // What was written, as the musician would read it back — an id alone does
+    // not tell someone a week later what they are looking at.
+    assert.match(line.summary, /Quartet at St Mary/);
+  } finally {
+    if (previous === undefined) delete process.env.ARTIST_MCP_AUDIT;
+    else process.env.ARTIST_MCP_AUDIT = previous;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('a refused create leaves no audit line', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'artist-audit-'));
+  const previous = process.env.ARTIST_MCP_AUDIT;
+  process.env.ARTIST_MCP_AUDIT = join(dir, 'writes.log');
+  try {
+    await withFetch(emptyDay, () => createEvent('t', params).then(() => null, () => null));
+    await assert.rejects(() => readFile(join(dir, 'writes.log'), 'utf8'), /ENOENT/);
+  } finally {
+    if (previous === undefined) delete process.env.ARTIST_MCP_AUDIT;
+    else process.env.ARTIST_MCP_AUDIT = previous;
+    await rm(dir, { recursive: true, force: true });
+  }
+});

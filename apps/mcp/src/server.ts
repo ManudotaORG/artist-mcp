@@ -2,7 +2,6 @@ import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { recordWrite } from "./audit.js";
 import { WRITE_CAPABILITIES, grantedWrites, isGranted } from "./grants.js";
 import { listAgentWorkflows, loadAgentWorkflow, type ResolvedEntry } from "./agents.js";
 import { GraphError } from "./client.js";
@@ -1141,13 +1140,6 @@ const createServer = async (call: Dispatch): Promise<McpServer> => {
             calendar_id: string;
             written: string;
           }>("create_calendar_event", params);
-
-          await recordWrite({
-            operation: "create_calendar_event",
-            summary: written,
-            target: `${calendar_id}/${created.id}`,
-            source_page: typeof params.source_page === "string" ? params.source_page : null,
-          });
 
           return {
             content: [

@@ -9,6 +9,7 @@
 
 import { GraphError, ScopeError } from './client.js';
 import { CALENDAR_LIST_NEED, calendarGet, calendarInsertEvent } from './api.js';
+import { recordWrite } from './audit.js';
 
 /** The edge function returned HTTP statuses; here the message is the whole signal. */
 const failure = (message: string): GraphError => new GraphError(message, false);
@@ -562,6 +563,18 @@ export async function createEvent(token: string, params: Record<string, unknown>
 
   const res = await calendarInsertEvent(draft.calendar_id, body, token);
   const created = (await res.json()) as CalendarEvent;
+
+  // Here, not in the tool handler that used to hold it. A record kept one layer
+  // above the write is a record of calls to that layer, and anything reaching
+  // the write another way leaves no trace at all — which is exactly what
+  // happened the first time this was run against a real calendar. The audit has
+  // to sit where the event is created or it is not an audit.
+  await recordWrite({
+    operation: 'create_calendar_event',
+    summary: renderDraft(draft),
+    target: `${draft.calendar_id}/${created.id ?? 'unknown'}`,
+    source_page: typeof params.source_page === 'string' ? params.source_page : null,
+  });
 
   return {
     created: shapeEvent(created),
