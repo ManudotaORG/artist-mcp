@@ -34,6 +34,7 @@ const SANCTIONED = {
   map_attachment: 'read',
   list_events: 'read',
   read_event: 'read',
+  list_calendars: 'read',
 };
 
 test('the operation table is exactly what was sanctioned', () => {

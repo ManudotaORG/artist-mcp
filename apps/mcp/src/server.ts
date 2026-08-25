@@ -1008,6 +1008,69 @@ const createServer = async (call: Dispatch): Promise<McpServer> => {
   );
 
   server.tool(
+    "list_calendars",
+    "Call this before concluding that something is NOT in the calendar. A search of one calendar that finds nothing is not evidence of absence — it is evidence about one calendar. Gigs commonly sit on a band, venue or shared calendar rather than the primary one. " +
+      "Lists the Google calendars this musician has, with which one is primary " +
+      "and whether each is writable by them. Read-only: this never creates, " +
+      "changes or removes a calendar or an event. Takes no arguments, because " +
+      "the value is knowing the whole set. Use the ids it returns as " +
+      "calendar_id for list_events. If the result says it is partial, repeat " +
+      "that limitation in your answer rather than reporting a clean absence. " +
+      "Requires a Google connection.",
+    {},
+    async () => {
+      try {
+        const { calendars, complete, limitation } = await call<{
+          calendars: {
+            id: string;
+            summary: string;
+            primary: boolean;
+            access_role: string | null;
+            time_zone: string | null;
+          }[];
+          complete: boolean;
+          limitation: string | null;
+        }>("list_calendars");
+
+        // The degraded case is not an empty diary and must never read as one.
+        if (!complete) {
+          return { content: [{ type: "text", text: limitation ?? "" }] };
+        }
+        if (calendars.length === 0) {
+          return {
+            content: [{ type: "text", text: "This Google account has no calendars." }],
+          };
+        }
+
+        const lines = calendars.map((c) => {
+          const marks = [
+            c.primary ? "primary" : null,
+            // Said plainly: a reader deciding where a gig lives needs to know
+            // which of these they could only ever look at.
+            c.access_role === "reader" || c.access_role === "freeBusyReader" ? "read-only" : null,
+            c.time_zone,
+          ].filter(Boolean);
+          return `- ${c.summary}${marks.length ? ` (${marks.join(", ")})` : ""}\n  id: ${c.id}`;
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                `${calendars.length} calendar${calendars.length === 1 ? "" : "s"}:\n` +
+                lines.join("\n") +
+                "\n\nSearching only one of these cannot show that something is absent.",
+            },
+          ],
+        };
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  server.tool(
     "list_events",
     "Only call this when the musician has asked for this specific look, and wait for their yes. A connected account is not standing permission; a gap, a contradiction, or two pages disagreeing is not a reason to search. Offer, name the search, and stop. " +
       "List Google Calendar events in a time window, earliest first. Calendar is " +
@@ -1017,7 +1080,10 @@ const createServer = async (call: Dispatch): Promise<McpServer> => {
       "never itself the working unit. When a page and the calendar disagree, " +
       "report both and name each source; do not pick a winner. Recurring " +
       "occurrences are expanded and flagged, so 'every Tuesday' and 'this " +
-      "Tuesday' stay distinguishable. Requires a Google connection.",
+      "Tuesday' stay distinguishable. This searches ONE calendar, the primary " +
+      "one unless told otherwise, so finding nothing here does not show that " +
+      "nothing exists — call list_calendars and say which calendars you " +
+      "actually covered before reporting an absence. Requires a Google connection.",
     {
       query: z
         .string()

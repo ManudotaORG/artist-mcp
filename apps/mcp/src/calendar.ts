@@ -7,8 +7,8 @@
  * something plausible and wrong, so they moved across unchanged.
  */
 
-import { GraphError } from './client.js';
-import { calendarGet } from './api.js';
+import { GraphError, ScopeError } from './client.js';
+import { CALENDAR_LIST_NEED, calendarGet } from './api.js';
 
 /** The edge function returned HTTP statuses; here the message is the whole signal. */
 const failure = (message: string): GraphError => new GraphError(message, false);
@@ -213,3 +213,72 @@ export async function readEvent(token: string, rawEventId: unknown, rawCalendarI
   };
 }
 
+
+type CalendarListEntry = {
+  id?: string;
+  summary?: string;
+  primary?: boolean;
+  accessRole?: string;
+  timeZone?: string;
+  deleted?: boolean;
+};
+
+/**
+ * Which calendars this musician has.
+ *
+ * The point is not the list, it is what the list lets a later answer say. A
+ * search of `primary` that finds nothing cannot tell "this gig is not in the
+ * diary" from "this gig is on the calendar I did not look at", and the second
+ * is common: gigs land on a band or a venue calendar far more often than a
+ * musician expects. Absence is only evidence once the reach of the look is
+ * known — see `policy:evidence`, and
+ * docs/decisions/0001-opt-in-calendar-writes.md.
+ *
+ * `calendar.calendarlist.readonly` was added for this, so a connection made
+ * before it exists cannot answer. That is not a failure: `primary` is still
+ * readable and still worth reading. The result therefore says it is partial and
+ * why, rather than throwing, because a caller that cannot list calendars must
+ * still be able to say what it did and did not cover.
+ */
+export async function listCalendars(token: string) {
+  let items: CalendarListEntry[];
+  try {
+    const res = await calendarGet('/users/me/calendarList', token, CALENDAR_LIST_NEED);
+    items = ((await res.json()) as { items?: CalendarListEntry[] }).items ?? [];
+  } catch (err) {
+    // Only the gap this call can work around. A real fault still throws — the
+    // whole reason ScopeError is its own type is so that this catch cannot
+    // quietly swallow one.
+    if (err instanceof ScopeError && err.optional) {
+      return {
+        calendars: [],
+        complete: false,
+        // Phrased for the reader of an answer, not for a log. Whatever calls
+        // this has to be able to repeat it verbatim beside its own result.
+        limitation:
+          'Only the primary calendar could be searched: this Google connection ' +
+          'was made before artist-mcp could see your calendar list. Anything on ' +
+          'another calendar would not have been found. Run `artist-mcp connect ' +
+          'google` to widen it.',
+      };
+    }
+    throw err;
+  }
+
+  const calendars = items
+    // A deleted entry is a calendar the musician removed from their list. It is
+    // not somewhere a gig can be, and offering it would invite a look that
+    // cannot find anything.
+    .filter((c) => c.deleted !== true && typeof c.id === 'string')
+    .map((c) => ({
+      id: c.id as string,
+      summary: c.summary ?? '(no name)',
+      primary: c.primary === true,
+      // Kept because it decides whether a write could ever land here, and a
+      // reader is entitled to know a calendar is one they can only look at.
+      access_role: c.accessRole ?? null,
+      time_zone: c.timeZone ?? null,
+    }));
+
+  return { calendars, complete: true, limitation: null };
+}
