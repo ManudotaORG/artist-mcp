@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { WRITE_CAPABILITIES, grantedWrites, isGranted } from "./grants.js";
+import { WRITE_CAPABILITIES, isGranted, type WriteCapability } from "./grants.js";
 import { listAgentWorkflows, loadAgentWorkflow, type ResolvedEntry } from "./agents.js";
 import { GraphError } from "./client.js";
 import { call as localCall, type Operation } from "./dispatch.js";
@@ -247,6 +247,7 @@ const errorResult = (err: unknown) => {
 const renderWorkflowBriefing = async (
   entries: ResolvedEntry[],
   load: (id: string) => Promise<{ content: string }>,
+  writes: readonly WriteCapability[] = [],
 ): Promise<string> => {
 
   // A one-line summary is enough to pick a role to load, but not to
@@ -360,7 +361,6 @@ const renderWorkflowBriefing = async (
   // seven roles and six policies, so a session must be told plainly when it is
   // no longer true. The "none" line matters most: it is what keeps every
   // read-only install saying the same thing it always said.
-  const writes = grantedWrites();
   const capabilities =
     writes.length === 0
       ? [
@@ -400,8 +400,7 @@ const renderWorkflowBriefing = async (
  * Derived, never restated. An install with no grant says so too — that line is
  * the one that keeps a read-only install describing itself correctly.
  */
-const capabilityLine = (): string => {
-  const writes = grantedWrites();
+const capabilityLine = (writes: readonly WriteCapability[]): string => {
   if (writes.length === 0) {
     return (
       " This install can only read. It cannot create, change or delete " +
@@ -417,7 +416,10 @@ const capabilityLine = (): string => {
   );
 };
 
-const createServer = async (call: Dispatch): Promise<McpServer> => {
+const createServer = async (
+  call: Dispatch,
+  grants: readonly WriteCapability[] = [],
+): Promise<McpServer> => {
   // Nothing is checked here on purpose. The server starts whether or not a
   // provider is connected, and a tool that needs one says so when it is called:
   // refusing to start would leave Claude Desktop reporting a broken server
@@ -458,7 +460,7 @@ const createServer = async (call: Dispatch): Promise<McpServer> => {
     // This is not the third copy of the rules that drifted in AGENTS.md: it is
     // derived from the grant at startup, so it cannot say something the install
     // is not. The rules themselves are still only in the pack.
-    capabilityLine();
+    capabilityLine(grants);
 
   const server = new McpServer(
     { name: "artist-notes", version: serverVersion },
@@ -480,6 +482,7 @@ const createServer = async (call: Dispatch): Promise<McpServer> => {
         const text = await renderWorkflowBriefing(
           await listAgentWorkflows(),
           loadAgentWorkflow,
+          grants,
         );
 
         return { content: [{ type: "text", text }] };
@@ -1077,7 +1080,7 @@ const createServer = async (call: Dispatch): Promise<McpServer> => {
   // present and refusing: a tool that exists is a tool a model will try, and a
   // refusal in a tool result reads as an obstacle to route around rather than
   // as a boundary. See docs/decisions/0001-opt-in-calendar-writes.md.
-  if (isGranted("calendar-create")) {
+  if (isGranted(grants, "calendar-create")) {
     server.tool(
       "preview_calendar_event",
       "Call this before create_calendar_event — it is the only way to obtain the confirmation_token that one requires, and it is what puts the exact event in front of the musician. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. " +
@@ -1214,7 +1217,7 @@ const createServer = async (call: Dispatch): Promise<McpServer> => {
     );
   }
 
-  if (isGranted("calendar-delete")) {
+  if (isGranted(grants, "calendar-delete")) {
     server.tool(
       "preview_calendar_delete",
       "Call this before delete_calendar_event — it is the only way to obtain the confirmation_token that one requires. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. " +
@@ -1478,8 +1481,8 @@ const createServer = async (call: Dispatch): Promise<McpServer> => {
  * The stdio entry point, unchanged in behaviour: one process, one user, tokens
  * from this machine. It is now the only place that knows about stdio.
  */
-const runServer = async (): Promise<void> => {
-  const server = await createServer(localCall);
+const runServer = async (grants: readonly WriteCapability[] = []): Promise<void> => {
+  const server = await createServer(localCall, grants);
   await server.connect(new StdioServerTransport());
 };
 
