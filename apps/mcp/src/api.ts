@@ -7,7 +7,7 @@
  * from a specific failure, and a port is the wrong moment to second-guess them.
  */
 
-import { GraphError, ScopeError } from './client.js';
+import { DuplicateEventError, GraphError, ScopeError } from './client.js';
 
 export const GRAPH = 'https://graph.microsoft.com/v1.0';
 export const GMAIL = 'https://gmail.googleapis.com/gmail/v1';
@@ -284,13 +284,14 @@ export const calendarInsertEvent = async (
   }
 
   // Google answers a duplicate client-set id with 409. That is the retry guard
-  // working, and it is a success from the musician's point of view: the event
-  // they asked for is in the calendar. Said as such rather than as a failure.
+  // working — but what it means depends on whether the event is on the calendar
+  // or in its bin, and only the caller can find that out. Raised as its own
+  // type so the caller can say which.
   if (res.status === 409) {
-    throw new GraphError(
-      'That event is already in the calendar — this exact event was created ' +
-        'before, so nothing was duplicated.',
-      false,
+    throw new DuplicateEventError(
+      typeof body === 'object' && body !== null && 'id' in body
+        ? String((body as { id: unknown }).id)
+        : '',
     );
   }
 

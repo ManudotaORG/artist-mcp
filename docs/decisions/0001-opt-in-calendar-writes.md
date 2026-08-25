@@ -321,14 +321,18 @@ someone can see; a wrong delete leaves a gap, and nobody notices absence. So the
 audit line for a delete records **the whole event**, not a reference to it — 
 enough to put it back by hand if the bin has expired.
 
-### Known interaction, not yet resolved
+### The bin holds the id
 
-Deleting an event and then creating the same one again is expected to fail: the
-client-set id is taken by the trashed event, and Google refuses to reuse it.
-That is the idempotency guard and the bin working against each other. It is
-recorded here rather than fixed, because the honest answer — tell the musician
-the event is in the bin and to restore it there — needs the real behaviour
-confirmed first.
+Deleting an event and then creating the same one again fails: the client-set id
+is taken by the trashed event, and Google refuses to reuse it. Confirmed against
+a real calendar rather than assumed.
+
+The idempotency guard and the bin therefore work against each other, and the
+answer that matters is which of the two "already taken" cases this is. "Already
+in the calendar" is reassuring and, here, false — it sends someone looking for
+an event they cannot see. So a 409 is followed by reading the event: a status of
+`cancelled` means the bin, and the refusal says to restore it there and that
+Google keeps it for 30 days. That is something a musician can act on.
 
 ### What would reverse this
 

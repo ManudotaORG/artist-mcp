@@ -64,3 +64,19 @@ export class ScopeError extends GraphError {
     this.name = 'ScopeError';
   }
 }
+
+/**
+ * Google refusing a client-set event id that is already taken.
+ *
+ * Its own type because "taken" has two very different causes: the event is on
+ * the calendar, or it was deleted and is sitting in that calendar's bin holding
+ * its id. Only the caller can tell those apart, and telling someone an event is
+ * "already in the calendar" when it is in the bin sends them looking for
+ * something they cannot see.
+ */
+export class DuplicateEventError extends GraphError {
+  constructor(readonly eventId: string) {
+    super('That event id is already taken.', false);
+    this.name = 'DuplicateEventError';
+  }
+}

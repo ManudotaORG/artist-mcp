@@ -219,17 +219,49 @@ test('the event id is stable for a payload and differs from its token', async ()
   assert.notEqual(id, await idempotencyId({ ...draft, start: '2026-10-17T20:00:00' }));
 });
 
-test('a duplicate is reported as already there, not as a failure', async () => {
+test('a duplicate still on the calendar is reported as already there', async () => {
   const token = await confirmationToken(draft);
   const err = await withFetch(
     async (url, init) =>
       init?.method === 'POST'
         ? new Response('{"error":{"message":"duplicate"}}', { status: 409 })
-        : emptyDay(),
+        : new Response(JSON.stringify({ id: 'x', status: 'confirmed' }), { status: 200 }),
     () => createEvent('t', { ...params, confirmation_token: token }).then(() => null, (e) => e),
   );
   assert.match(err.message, /already in the calendar/);
   assert.doesNotMatch(err.message, /refused/);
+});
+
+/**
+ * Confirmed against a real calendar: delete an event, create the same one
+ * again, and Google refuses because the trashed event still holds the id.
+ * Reporting that as "already in the calendar" sends someone looking for an
+ * event they cannot see — it is in the bin, which is a thing they can act on.
+ */
+test('a duplicate sitting in the bin says so, and says how to get it back', async () => {
+  const token = await confirmationToken(draft);
+  const err = await withFetch(
+    async (url, init) =>
+      init?.method === 'POST'
+        ? new Response('{"error":{"message":"duplicate"}}', { status: 409 })
+        : new Response(JSON.stringify({ id: 'x', status: 'cancelled' }), { status: 200 }),
+    () => createEvent('t', { ...params, confirmation_token: token }).then(() => null, (e) => e),
+  );
+  assert.match(err.message, /bin/);
+  assert.match(err.message, /30 days/);
+  assert.doesNotMatch(err.message, /already in the calendar/);
+});
+
+test('a lookup that fails falls back to the answer that is true either way', async () => {
+  const token = await confirmationToken(draft);
+  const err = await withFetch(
+    async (url, init) =>
+      init?.method === 'POST'
+        ? new Response('{"error":{"message":"duplicate"}}', { status: 409 })
+        : new Response('nope', { status: 500 }),
+    () => createEvent('t', { ...params, confirmation_token: token }).then(() => null, (e) => e),
+  );
+  assert.match(err.message, /already in the calendar|nothing was duplicated/);
 });
 
 /**
@@ -467,7 +499,12 @@ test('the matching token deletes it, and records what it said', async () => {
     const line = JSON.parse(await readFile(join(dir, 'writes.log'), 'utf8'));
     assert.equal(line.operation, 'delete_calendar_event');
     assert.match(line.summary, /Quartet at St Mary/);
-    assert.match(line.summary, /2026-10-16T20:00:00/);
+    // Written in the event's own zone, not as the UTC instant Google answers
+    // with: an audit line is read by a person deciding whether to put the event
+    // back, and 18:00Z labelled Europe/Madrid is a 20:00 gig described wrongly.
+    assert.match(line.summary, /20:00/);
+    assert.match(line.summary, /Europe\/Madrid/);
+    assert.doesNotMatch(line.summary, /18:00/);
   } finally {
     if (previous === undefined) delete process.env.ARTIST_MCP_AUDIT;
     else process.env.ARTIST_MCP_AUDIT = previous;
@@ -506,4 +543,32 @@ test('a refused delete leaves no audit line', async () => {
     else process.env.ARTIST_MCP_AUDIT = previous;
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+
+/**
+ * The confirmation surface has to be readable by a person, or confirming it
+ * means nothing. Found against a real calendar: Google answers with the instant
+ * in UTC while the event carries its own zone, and printing both together read
+ * as a local time two hours earlier than the gig.
+ */
+test('a deletion preview shows the time in the event zone, not the UTC instant', async () => {
+  const { preview } = await withFetch(serving(ARTIST_EVENT), () =>
+    previewDeleteEvent('t', { event_id: ARTIST_EVENT.id }),
+  );
+  assert.match(preview, /20:00/);
+  assert.match(preview, /Europe\/Madrid/);
+  assert.doesNotMatch(preview, /18:00/);
+});
+
+test('an event with no zone is labelled UTC rather than silently localised', async () => {
+  const noZone = {
+    ...ARTIST_EVENT,
+    start: { dateTime: '2026-10-16T20:00:00Z' },
+    end: { dateTime: '2026-10-16T22:00:00Z' },
+  };
+  const { preview } = await withFetch(serving(noZone), () =>
+    previewDeleteEvent('t', { event_id: noZone.id }),
+  );
+  assert.match(preview, /UTC/);
 });

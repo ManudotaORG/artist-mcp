@@ -7,7 +7,7 @@
  * something plausible and wrong, so they moved across unchanged.
  */
 
-import { GraphError, ScopeError } from './client.js';
+import { DuplicateEventError, GraphError, ScopeError } from './client.js';
 import {
   CALENDAR_LIST_NEED,
   calendarDeleteEvent,
@@ -536,6 +536,44 @@ export async function previewEvent(token: string, params: Record<string, unknown
 }
 
 /**
+ * Say which kind of "already taken" this is.
+ *
+ * A cancelled event is one sitting in that calendar's bin, where Google keeps it
+ * for 30 days and where it goes on holding its id. Recreating the same event is
+ * therefore impossible until it is restored or the bin expires — which is a
+ * thing the musician can act on, unlike "already in the calendar".
+ */
+const describeDuplicate = async (
+  token: string,
+  calendarId: string,
+  eventId: string,
+): Promise<GraphError> => {
+  try {
+    const res = await calendarGet(
+      `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+      token,
+    );
+    const existing = (await res.json()) as CalendarEvent;
+    if (existing.status === 'cancelled') {
+      return failure(
+        'This exact event was created before and then deleted, and it is still ' +
+          "in that calendar's bin, which holds its id. Nothing was duplicated " +
+          'and nothing new was created. To bring it back, restore it from the ' +
+          "calendar's bin in Google Calendar — Google keeps it for 30 days. " +
+          'Creating it again here will keep failing until then.',
+      );
+    }
+  } catch {
+    // Fall through: not being able to look it up is not worth failing over,
+    // and the safe half of the answer is true either way.
+  }
+  return failure(
+    'That event is already in the calendar — this exact event was created ' +
+      'before, so nothing was duplicated.',
+  );
+};
+
+/**
  * Create the event, if the token matches the payload.
  *
  * The comparison is the boundary: it makes creating an event that was never
@@ -571,7 +609,20 @@ export async function createEvent(token: string, params: Record<string, unknown>
     ...(draft.description ? { description: draft.description } : {}),
   };
 
-  const res = await calendarInsertEvent(draft.calendar_id, body, token);
+  let res: Response;
+  try {
+    res = await calendarInsertEvent(draft.calendar_id, body, token);
+  } catch (err) {
+    // The id is taken. Whether that means "it is already there" or "it is in
+    // the bin" is the difference between a reassuring answer and one that sends
+    // someone hunting for an event they cannot see, so it is looked up rather
+    // than guessed. Confirmed against a real calendar: deleting an event and
+    // creating it again lands here, with the trashed event still holding the id.
+    if (err instanceof DuplicateEventError) {
+      throw await describeDuplicate(token, draft.calendar_id, body.id);
+    }
+    throw err;
+  }
   const created = (await res.json()) as CalendarEvent;
 
   // Here, not in the tool handler that used to hold it. A record kept one layer
@@ -627,15 +678,45 @@ const fetchForDeletion = async (token: string, calendarId: string, eventId: stri
   return (await res.json()) as CalendarEvent;
 };
 
+/**
+ * An instant, written in the zone it belongs to.
+ *
+ * Google answers with the instant, often as UTC, while the event carries its own
+ * zone. Printing the two side by side reads as a local time and is wrong by the
+ * offset: a 20:00 gig in Madrid renders as "18:00:00Z (Europe/Madrid)", which a
+ * musician checking a deletion reads as six in the evening. The file already
+ * warns about this in the other direction, and it is worse here, because the
+ * whole point of the preview is that a person can check it.
+ */
+const inZone = (value: string | null, zone: string | null): string => {
+  if (value === null) return 'unknown';
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return value;
+  if (!zone) return `${at.toISOString().replace('.000Z', 'Z')} (UTC)`;
+  try {
+    const shown = new Intl.DateTimeFormat('en-GB', {
+      timeZone: zone,
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(at);
+    return `${shown} (${zone})`;
+  } catch {
+    // An unknown zone name is not a reason to render nothing; say the instant
+    // and admit the zone could not be applied.
+    return `${at.toISOString().replace('.000Z', 'Z')} (UTC; ${zone} not recognised)`;
+  }
+};
+
 /** How a deletion reads to someone deciding whether to allow it. */
 const renderExisting = (e: CalendarEvent, calendarId: string): string => {
   const start = eventTime(e.start);
   const end = eventTime(e.end);
+  const zone = start.time_zone ?? end.time_zone;
   const lines = [
     `Title:    ${e.summary ?? '(no title)'}`,
     start.all_day
       ? `When:     ${start.value} to ${end.value} (all day)`
-      : `When:     ${start.value} to ${end.value}${start.time_zone ? ` (${start.time_zone})` : ''}`,
+      : `When:     ${inZone(start.value, zone)} to ${inZone(end.value, zone)}`,
   ];
   if (e.location) lines.push(`Where:    ${e.location}`);
   if (e.description) lines.push(`Notes:    ${e.description}`);

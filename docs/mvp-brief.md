@@ -346,14 +346,20 @@ Decisions and their cost: [decisions/0001-opt-in-calendar-writes.md](decisions/0
       anyone described it, and the audit records the whole event, because nobody
       notices an absence. No new scope and no reconnect — Google has one scope
       for insert and delete
-- [ ] **Verified against a real calendar.** Not done. Every test is a `fetch`
+- [x] **Verified against a real calendar.** Not done. Every test is a `fetch`
       stub, so Google's actual behaviour for a client-set id, a 409 on a
       duplicate, and the 403 shape when a token lacks the write scope were all
       assumptions. Creating is now verified against a real calendar: the
       client-set id is accepted, the duplicate 409 is reported as already there,
-      and the zone survives the round trip. **Deleting is not yet verified**, and
-      one interaction is expected to bite — deleting an event and creating the
-      same one again should fail, because the trashed event still holds the id
+      and the zone survives the round trip. Deleting is verified too: a real
+      event the musician made was refused by the prefix check, a stale token was
+      refused, the delete removed only what it showed, and recreating the same
+      event afterwards fails because the trashed event still holds the id — now
+      reported as "it is in the bin, restore it there" rather than as "already in
+      the calendar", which was false and unactionable. Four bugs came out of
+      running it for real: the audit sat above the write, the suite polluted the
+      real audit log, the deletion preview showed a UTC instant labelled with the
+      event's zone, and the duplicate message was wrong after a delete
 - [ ] Verified end to end in Claude Desktop with the grant, against the
       disputed-date pair, confirming a write is refused while a page is in that
       state
