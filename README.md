@@ -10,7 +10,11 @@ Attachments on an evidence email (PDF, image, Word) can be mapped and read the
 same way. Either connection stands alone: connect OneNote, Google, or both, and
 disconnecting one leaves the other working.
 
-Everything is read-only. No writes to any source, no sending, no sync.
+Everything is read-only unless you ask for otherwise at install time. Nothing
+is ever written to OneNote, no message is ever sent, and nothing is synced. One
+opt-in exists: `artist-mcp init --allow-writes calendar-create` lets it add a
+single Google Calendar event, after showing you the exact event and waiting for
+your yes. Without that flag the tool to do it is not there at all.
 
 The project has three parts:
 

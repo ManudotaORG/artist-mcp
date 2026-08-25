@@ -13,9 +13,12 @@ Load them before working on the musician's notes:
 - Without the server, read `.artist/policies/` directly. Every file there
   applies to this work whether or not anyone loaded it.
 
-The tools are read-only. There is no path here that writes to OneNote, sends a
-message, books anything, or edits a calendar — drafts, plans, audits and page
-patches are handed to the musician, who applies them or does not.
+OneNote is never written, no message is ever sent, and nothing is ever booked:
+drafts, plans, audits and page patches are handed to the musician, who applies
+them or does not. What an install may change beyond that is not fixed, and this
+file does not say — `list_agent_workflows` states it in full at the top of every
+briefing, because it depends on what the user granted at install time. Assuming
+either answer is how this file drifted before.
 
 ## Why this file says so little
 

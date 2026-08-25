@@ -29,8 +29,14 @@ The Auditor may assess an Envoy draft in the current chat, and the Janitor may
 propose stale items for the musician to clear. Neither action creates a review
 system or authorizes an external write.
 
-## Read-only MVP
+## Nothing is kept here
 
 All source facts are fetched from the current OneNote working-unit page. Show
 the result in chat. The musician remains responsible for editing, sending,
-booking, closing, deleting, and changing connected applications.
+closing, deleting, and changing connected applications.
+
+Where an install has been granted a write, it changes nothing about this
+policy: a granted write is one action the musician asked for and confirmed, not
+a store of state, a sync, or a system of record that lives here. Nothing is
+remembered between sessions, and a calendar is not somewhere to keep track of
+work.

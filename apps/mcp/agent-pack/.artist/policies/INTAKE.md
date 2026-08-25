@@ -213,4 +213,8 @@ doing first and why. Once that item is agreed, intake is over.
 - A gap belongs in the inventory, not closed. `policy:evidence` covers how far a
   search may go, `policy:divergence` covers contradictions between pages, and
   `policy:answering` covers what to state and how firmly.
-- Never write, send, book, or edit anything. The musician pastes.
+- Never write, send, book, or edit anything during intake. Surveying and
+  classifying a notebook is not the moment to change one, and an inventory is
+  the deliverable. The musician pastes. This holds even where an install has
+  been granted a write elsewhere: a gap found during intake is recorded as a
+  gap, not closed on the spot.

@@ -9,14 +9,23 @@ starting work.** It is the source of truth for scope and for what is actually
 done — a ticked box means done *and verified*, and blocked items say why.
 Update it as you go rather than at the end.
 
-Scope is deliberately narrow. The read-only workflow layer is defined in
+Scope is deliberately narrow. The workflow layer is defined in
 `apps/mcp/agent-pack`: one OneNote page is one working unit, Markdown roles and
-project types are loaded at runtime, and every result stays in chat. If you find
-yourself adding writes, sends, or synchronization, stop.
+project types are loaded at runtime, and every result stays in chat.
 
-Sources are read-only and deliberately few. OneNote holds the working unit;
-Gmail and Google Calendar are **supporting evidence only** — they corroborate
-or fill gaps in a page and are never themselves a working unit. That asymmetry
+**If you find yourself adding writes, sends, or synchronization, stop.** That
+rule stands, with exactly one exception, and the exception is not a precedent:
+an install granted `--allow-writes calendar-create` may create a single Google
+Calendar event, previewed and confirmed. Read
+[docs/decisions/0001-opt-in-calendar-writes.md](docs/decisions/0001-opt-in-calendar-writes.md)
+before touching that path — it says what was decided, what it cost, and what
+would reverse it. OneNote writes, message sending and synchronization remain
+out, and the reasoning for each is there rather than restated here.
+
+Sources are read-only apart from that one grant, and deliberately few. OneNote
+holds the working unit; Gmail and Google Calendar are **supporting evidence
+only** — they corroborate or fill gaps in a page and are never themselves a
+working unit. That asymmetry
 is the whole reason further sources did not dissolve the one-page-one-unit rule
 that every role and playbook depends on. Each new source means re-deciding it,
 not repeating it: Google Tasks was considered and left out, because a task list
@@ -77,8 +86,14 @@ docs/           the brief
   writing code there.
 - **`apps/mcp` must not import from other workspace packages** — it ships to npm
   standalone.
-- **Workflow Markdown is executable policy.** Preserve the read-only boundary,
-  regenerate `agent-pack/registry.json`, and verify checksums when it changes.
+- **Workflow Markdown is executable policy.** Regenerate
+  `agent-pack/registry.json` and verify checksums when it changes. The pack
+  describes *what a tool requires*, not what a session must remember to do, so
+  that it stays true whether or not an install was granted a write.
+- **The operation table in `dispatch.ts` is security code.** Since Google
+  publishes no insert-only Calendar scope, the scopes no longer separate
+  creating an event from deleting one — that table and the grant check do.
+  `test/operation-boundary` fails on any edit to it, deliberately.
 - **A rule in a role is not in force.** Roles arrive in the briefing as a
   one-line summary; only project types and the policies in `alwaysInFull` load
   in full. Three bugs came from rules sitting where no session could see them.
