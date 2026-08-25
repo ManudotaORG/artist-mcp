@@ -229,7 +229,7 @@ const selectNotebook = async (
   return { pages, scope };
 };
 
-const serverVersion = '1.5.0'; // x-release-please-version
+const serverVersion = '1.5.1'; // x-release-please-version
 
 const errorResult = (err: unknown) => {
   const message =
@@ -1096,7 +1096,13 @@ const createServer = async (call: Dispatch): Promise<McpServer> => {
         start: z
           .string()
           .describe("YYYY-MM-DD for an all-day event, or an RFC3339 date-time such as 2026-10-16T20:00:00"),
-        end: z.string().describe("The same kind as start: both dates, or both date-times"),
+        end: z
+          .string()
+          .describe(
+            "The same kind as start: both dates, or both date-times. For an all-day " +
+              "event Google reads this as EXCLUSIVE, so a gig on 2028-09-11 is " +
+              "start 2028-09-11, end 2028-09-12",
+          ),
         time_zone: z
           .string()
           .optional()
@@ -1172,7 +1178,12 @@ const createServer = async (call: Dispatch): Promise<McpServer> => {
         source_page: z
           .string()
           .optional()
-          .describe("The OneNote page this came from, recorded locally so the write can be traced back"),
+          .describe(
+            "The page id from list_notes or read_note, so the write can be traced back " +
+              "weeks later. The id, not the title: a notebook can hold two pages with " +
+              "the same or nearly the same name, which is exactly when tracing matters. " +
+              "Add the title after it if you like",
+          ),
       },
       async (params) => {
         try {
@@ -1260,7 +1271,10 @@ const createServer = async (call: Dispatch): Promise<McpServer> => {
         source_page: z
           .string()
           .optional()
-          .describe("The OneNote page this relates to, recorded locally"),
+          .describe(
+            "The page id from list_notes or read_note, not the title — a title does not " +
+              "identify a page in a notebook holding near-duplicates",
+          ),
       },
       async (params) => {
         try {
