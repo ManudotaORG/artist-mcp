@@ -10,6 +10,7 @@ import {
   setGrants,
 } from '../dist/grants.js';
 import { createServerEntry } from '../dist/init.js';
+import { createServer } from '../dist/server.js';
 import { renderWorkflowBriefing } from '../dist/server.js';
 
 /**
@@ -120,4 +121,43 @@ test('a granted install names the write and carries the disputed-value rule', as
   assert.match(text, /disputed or UNKNOWN value may never be written/);
   // OneNote must stay named as read-only even once a write exists.
   assert.match(text, /including all of OneNote/);
+});
+
+
+/**
+ * The registration gate. An ungranted write tool is absent, not present and
+ * refusing: a tool that exists is a tool a model will try, and a refusal in a
+ * tool result reads as an obstacle to route around rather than as a boundary.
+ */
+const toolNames = async (grants) => {
+  setGrants(grants);
+  try {
+    const server = await createServer(async () => ({}));
+    // The SDK keeps registered tools on the server instance; read whichever
+    // shape this version exposes rather than reaching into a private field
+    // blindly.
+    const registered = server._registeredTools ?? {};
+    return Object.keys(registered);
+  } finally {
+    setGrants([]);
+  }
+};
+
+test('an ungranted install has no write tool at all', async () => {
+  const names = await toolNames([]);
+  assert.ok(names.length > 0, 'no tools registered at all — the probe is wrong, not the gate');
+  assert.equal(names.includes('create_calendar_event'), false);
+  assert.equal(names.includes('preview_calendar_event'), false);
+  // The reads are unaffected: this is a gate, not a kill switch.
+  assert.ok(names.includes('list_events'));
+  assert.ok(names.includes('list_notes'));
+});
+
+test('a granted install has the preview and the create, and nothing more', async () => {
+  const granted = await toolNames(['calendar-create']);
+  const plain = await toolNames([]);
+  assert.deepEqual(
+    granted.filter((name) => !plain.includes(name)).sort(),
+    ['create_calendar_event', 'preview_calendar_event'],
+  );
 });

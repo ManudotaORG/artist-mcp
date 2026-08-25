@@ -2,7 +2,8 @@ import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { WRITE_CAPABILITIES, grantedWrites } from "./grants.js";
+import { recordWrite } from "./audit.js";
+import { WRITE_CAPABILITIES, grantedWrites, isGranted } from "./grants.js";
 import { listAgentWorkflows, loadAgentWorkflow, type ResolvedEntry } from "./agents.js";
 import { GraphError } from "./client.js";
 import { call as localCall, type Operation } from "./dispatch.js";
@@ -1036,6 +1037,137 @@ const createServer = async (call: Dispatch): Promise<McpServer> => {
       }
     },
   );
+
+  // Registered only when the user granted it at install time. Absent, not
+  // present and refusing: a tool that exists is a tool a model will try, and a
+  // refusal in a tool result reads as an obstacle to route around rather than
+  // as a boundary. See docs/decisions/0001-opt-in-calendar-writes.md.
+  if (isGranted("calendar-create")) {
+    server.tool(
+      "preview_calendar_event",
+      "Call this before create_calendar_event — it is the only way to obtain the confirmation_token that one requires, and it is what puts the exact event in front of the musician. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. " +
+        "Renders a Google Calendar event exactly as it would be written, and " +
+        "lists what is already on that day in that calendar, so an event that " +
+        "is already there is visible before a second one is added. Changes " +
+        "nothing. It searches ONE calendar — call list_calendars first if you " +
+        "have not established which calendar this gig would live on. A value " +
+        "the notebook has not settled (UNKNOWN, TBC, a disputed date) is " +
+        "refused here rather than written.",
+      {
+        summary: z.string().describe("The event title, as the page words it"),
+        start: z
+          .string()
+          .describe("YYYY-MM-DD for an all-day event, or an RFC3339 date-time such as 2026-10-16T20:00:00"),
+        end: z.string().describe("The same kind as start: both dates, or both date-times"),
+        time_zone: z
+          .string()
+          .optional()
+          .describe("IANA name such as Europe/Madrid. Required for a timed event."),
+        location: z.string().optional().describe("Where, as the page words it"),
+        description: z.string().optional().describe("Notes to carry onto the event"),
+        calendar_id: z
+          .string()
+          .optional()
+          .describe("Which calendar, from list_calendars. Defaults to the primary one."),
+      },
+      async (params) => {
+        try {
+          const { preview, confirmation_token, existing_that_day, calendar_searched } =
+            await call<{
+              preview: string;
+              confirmation_token: string;
+              existing_that_day: EventSummary[];
+              calendar_searched: string;
+            }>("preview_calendar_event", params);
+
+          // The day comes first. A preview that leads with what would be added
+          // invites exactly the question it is here to answer.
+          const already =
+            existing_that_day.length === 0
+              ? `Nothing else is on that day in ${calendar_searched}. That is one ` +
+                "calendar only — it does not show the day is free elsewhere."
+              : `Already on that day in ${calendar_searched}:\n` +
+                existing_that_day.map((e) => `- ${e.summary} — ${when(e)}`).join("\n");
+
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `${already}\n\nThis would be created:\n\n${preview}\n\n` +
+                  "Show this to the musician and wait for their yes. If they " +
+                  "agree, call create_calendar_event with the SAME values and " +
+                  `confirmation_token: ${confirmation_token}`,
+              },
+            ],
+          };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+
+    server.tool(
+      "create_calendar_event",
+      "Only call this after preview_calendar_event AND after the musician has said yes to what the preview showed. Never call it to find out whether it would work. " +
+        "Creates ONE event in Google Calendar. It cannot update, move or delete " +
+        "anything, and there is no bulk form — 'add all the gigs' is not " +
+        "something this can do. Requires the confirmation_token from a preview " +
+        "of these exact values; change any field and the token stops matching, " +
+        "which means preview again and show the musician the new version. " +
+        "Creating the same event twice is refused by Google rather than " +
+        "duplicated. OneNote is never written by anything.",
+      {
+        summary: z.string().describe("Exactly what the preview showed"),
+        start: z.string().describe("Exactly what the preview showed"),
+        end: z.string().describe("Exactly what the preview showed"),
+        time_zone: z.string().optional().describe("Exactly what the preview showed"),
+        location: z.string().optional().describe("Exactly what the preview showed"),
+        description: z.string().optional().describe("Exactly what the preview showed"),
+        calendar_id: z.string().optional().describe("Exactly what the preview showed"),
+        confirmation_token: z
+          .string()
+          .describe("The token preview_calendar_event returned for these exact values"),
+        source_page: z
+          .string()
+          .optional()
+          .describe("The OneNote page this came from, recorded locally so the write can be traced back"),
+      },
+      async (params) => {
+        try {
+          const { created, link, calendar_id, written } = await call<{
+            created: EventSummary;
+            link: string | null;
+            calendar_id: string;
+            written: string;
+          }>("create_calendar_event", params);
+
+          await recordWrite({
+            operation: "create_calendar_event",
+            summary: written,
+            target: `${calendar_id}/${created.id}`,
+            source_page: typeof params.source_page === "string" ? params.source_page : null,
+          });
+
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `Created in ${calendar_id}:\n\n${written}\n` +
+                  (link ? `\n${link}\n` : "") +
+                  "\nTell the musician it is in the calendar and that they can " +
+                  "delete it there if it is wrong. The page in OneNote was not " +
+                  "changed — nothing here writes to OneNote.",
+              },
+            ],
+          };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+  }
 
   server.tool(
     "list_calendars",

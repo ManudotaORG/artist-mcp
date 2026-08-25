@@ -140,6 +140,89 @@ such a calendar exists in order to say so. It is read-only, it is the narrowest
 scope that closes the hole, and the reconnect it forces is one this issue
 already requires.
 
+## How a write is confirmed
+
+Nothing inside MCP can prove a human read something. A tool result goes to the
+model, not to the person, so a preview tool and a create tool can be called in
+one breath with nobody in between. This is a limit of the protocol, not of the
+design, and pretending otherwise is how a guarantee becomes a slogan.
+
+So the defence is the one that got Calendar chosen over OneNote in the first
+place: a wrong event is **detectable and reversible**, not prevented. What the
+mechanism must deliver is that the exact event reaches the transcript before it
+is written, that what is written is what was shown, and that a record survives.
+
+**Two tools, with the second bound to the first.** `preview_calendar_event`
+renders the event in plain language and returns a token derived from the exact
+payload. `create_calendar_event` takes **the full event payload and that
+token**, and the server recomputes the token from the payload and refuses any
+mismatch. The create cannot happen for values that were never previewed, and
+previewing one event and creating another is not expressible.
+
+Carrying the whole payload on the create call, rather than the token alone, is
+deliberate on three counts:
+
+- Stateless. Nothing is held between calls, so there is no session store to
+  expire, leak, or lose across a restart.
+- Legible. A client that prompts before running a tool shows the arguments; a
+  token-only call shows a meaningless hash, which is the moment a human most
+  needs to see a date.
+- Self-verifying. The token proves the payload was previewed *as these exact
+  values*, not that some preview happened at some point.
+
+### What this is not
+
+Not a consent proof, and not a client behaviour. Claude Desktop's own approval
+prompt is a real second layer for the users who have it, and it is worth having
+— but it is not what this rests on. It offers "always allow", which is exactly
+the case where a bad event would slip through silently; it renders raw RFC3339
+and IANA names, which is not something a musician can check a gig against; and
+the package is published to npm, where other clients need not prompt at all. A
+boundary built on it could not be tested in this repository.
+
+A `confirmed: true` argument the model supplies was considered and rejected
+outright. The model sets it, so it constrains nobody, and it is a
+refusal-shaped obstacle in a tool result — the exact thing this record says a
+model reads as something to route around.
+
+Out-of-band confirmation — the preview writes a pending event, the musician
+runs `artist-mcp confirm` in a terminal — is the only option with a genuine
+human gate, and it was not chosen. It breaks the musician out of the
+conversation to complete the thing they just asked for in the conversation. It
+is the fallback if an unwanted event ever reaches a calendar other people watch.
+A code typed back into chat is not a substitute: it would be in the transcript,
+where the model can read it.
+
+### Degrading later
+
+If preview-then-create proves more friction than it is worth, the intended
+retreat is to stop requiring the token: one comparison deleted, one field made
+optional, one sentence in the tool description, one line in the pack.
+`preview_calendar_event` stays either way — as a read-only tool it earns its
+place by rendering the event and naming which calendars were covered.
+
+That retreat is only cheap because the create tool takes the payload. It is the
+whole reason for that shape, and it is why two couplings are avoided:
+
+- **The idempotency id is derived from the payload independently of the
+  confirmation token**, from a different prefix. Were the double-book guard to
+  ride on the token, dropping the token requirement would silently drop
+  double-booking protection with it.
+- **The mechanism is not a user-facing setting.** A per-install switch means two
+  installs behave differently, the pack can no longer state one truth about what
+  happens before a write, and every support conversation opens by establishing
+  which mode someone is in. It is a decision changed in a release — reversible
+  for the maintainer, not configurable for the user.
+
+The direction matters too. Removing friction people have accepted is easy;
+adding it to something they have got used to living without is not. That
+asymmetry argues for starting here even if the destination turns out to be
+simpler.
+
+Pack wording therefore describes **what the tool requires**, not what a session
+must always remember to do, so that it stays true under either mode.
+
+
 ## The scope layer stops being a guarantee
 
 Stated plainly because the previous version of this boundary leaned on it.

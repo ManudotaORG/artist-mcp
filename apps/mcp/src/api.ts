@@ -236,6 +236,67 @@ export const calendarGet = (path: string, token: string, need?: ScopeNeed): Prom
  * for still reads events perfectly, so its absence degrades the answer — "only
  * `primary` was searched" — rather than failing it.
  */
+/**
+ * The one write this package can perform.
+ *
+ * Deliberately not a general `post`. Every read helper above is a thin wrapper
+ * because reads are interchangeable; this is not, and a `calendarPost(path)`
+ * that any caller could aim anywhere would put the boundary back in the callers
+ * where nothing checks it. The path is a literal built here, the method is
+ * fixed, and creating an event is the only thing it can express.
+ *
+ * `test/operation-boundary` asserts that no other write-shaped helper exists.
+ * Adding one is a boundary change, not a feature — see
+ * docs/decisions/0001-opt-in-calendar-writes.md.
+ */
+export const calendarInsertEvent = async (
+  calendarId: string,
+  body: unknown,
+  token: string,
+): Promise<Response> => {
+  const url = `${CALENDAR}/calendars/${encodeURIComponent(calendarId)}/events`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  // Not retried, at all. Every read helper retries a 5xx because a repeated
+  // read is free; a repeated create can double-book, and a 5xx does not say
+  // whether the event was made. The client-set id makes a retry safe in
+  // principle — Google answers the second attempt with 409 — but deciding to
+  // retry belongs to the caller that knows the id was set, not to a helper.
+  if (res.ok) return res;
+
+  const detail = (await res.text().catch(() => '')).slice(0, 300);
+
+  if (res.status === 403 && /insufficient|ACCESS_TOKEN_SCOPE/i.test(detail)) {
+    throw new ScopeError(
+      'This Google connection cannot create calendar events. Reconnect with ' +
+        '`artist-mcp connect google` — a refresh token carries the scopes it ' +
+        'was granted with, so an existing connection cannot write until renewed.',
+      'create calendar events',
+      false,
+    );
+  }
+
+  // Google answers a duplicate client-set id with 409. That is the retry guard
+  // working, and it is a success from the musician's point of view: the event
+  // they asked for is in the calendar. Said as such rather than as a failure.
+  if (res.status === 409) {
+    throw new GraphError(
+      'That event is already in the calendar — this exact event was created ' +
+        'before, so nothing was duplicated.',
+      false,
+    );
+  }
+
+  throw new GraphError(`Google Calendar refused to create the event (${res.status}). ${detail}`, false);
+};
+
 export const CALENDAR_LIST_NEED: ScopeNeed = {
   capability: 'see which calendars you have',
   optional: true,

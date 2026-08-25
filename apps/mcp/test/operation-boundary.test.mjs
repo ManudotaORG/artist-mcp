@@ -35,6 +35,8 @@ const SANCTIONED = {
   list_events: 'read',
   read_event: 'read',
   list_calendars: 'read',
+  preview_calendar_event: 'read',
+  create_calendar_event: 'write',
 };
 
 test('the operation table is exactly what was sanctioned', () => {
@@ -70,15 +72,34 @@ test('every operation names a provider, so no call can pick a token by accident'
  * Asserted against the source rather than the exports because a helper that
  * is not exported is still a write path for the file it lives in.
  */
-test('the HTTP layer offers no way to send anything but a GET', async () => {
+test('the HTTP layer sends exactly one non-GET, and it is the sanctioned one', async () => {
   const api = await readFile(resolve(srcRoot, 'api.ts'), 'utf8');
   const methods = [...api.matchAll(/method\s*:\s*['"`](\w+)['"`]/g)].map((m) => m[1].toUpperCase());
   const nonGet = methods.filter((m) => m !== 'GET');
+  // One POST: calendarInsertEvent. Not "no writes" any more, but still a
+  // counted set — a second one has to be argued for here before it can ship.
   assert.deepEqual(
     nonGet,
-    [],
-    `api.ts can send ${nonGet.join(', ')}. A write helper is a boundary change.`,
+    ['POST'],
+    `api.ts sends ${nonGet.join(', ') || 'nothing but GET'}. Any change here is a boundary change.`,
   );
+});
+
+/**
+ * The narrower claim that the count above cannot make: PATCH, PUT and DELETE
+ * are not merely absent, they are the ones that would make an event editable or
+ * removable. Google grants all of them with the same scope as create, so this
+ * assertion is the boundary — nothing at the provider stops them.
+ */
+test('nothing can update or delete anything', async () => {
+  const api = await readFile(resolve(srcRoot, 'api.ts'), 'utf8');
+  for (const method of ['PATCH', 'PUT', 'DELETE']) {
+    assert.doesNotMatch(
+      api,
+      new RegExp(`method\\s*:\\s*['"\`]${method}`, 'i'),
+      `api.ts can send ${method}. calendar.events grants it; only this repository refuses it.`,
+    );
+  }
 });
 
 /**
@@ -91,10 +112,17 @@ test('the HTTP layer offers no way to send anything but a GET', async () => {
 test('no module outside the sanctioned list exports a write-shaped helper', async () => {
   const suspicious = /export\s+(?:const|function|async function)\s+(\w*(?:Post|Put|Patch|Delete|Insert|Create|Send|Write)\w*)/g;
   const files = ['api.ts', 'calendar.ts', 'mail.ts', 'notes.ts', 'attachments.ts'];
+  // The sanctioned write path, named in full. Anything else matching the shape
+  // is a boundary change and fails here.
+  const SANCTIONED = ['api.ts:calendarInsertEvent', 'calendar.ts:createEvent'];
   const found = [];
   for (const file of files) {
     const text = await readFile(resolve(srcRoot, file), 'utf8');
     for (const m of text.matchAll(suspicious)) found.push(`${file}:${m[1]}`);
   }
-  assert.deepEqual(found, [], `Write-shaped exports found: ${found.join(', ')}`);
+  assert.deepEqual(
+    found.filter((name) => !SANCTIONED.includes(name)),
+    [],
+    `Unsanctioned write-shaped exports: ${found.join(', ')}`,
+  );
 });

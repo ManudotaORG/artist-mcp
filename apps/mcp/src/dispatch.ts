@@ -13,7 +13,7 @@
 
 import { GraphError } from './client.js';
 import { mapAttachment, readAttachment } from './attachments.js';
-import { listCalendars, listEvents, readEvent } from './calendar.js';
+import { createEvent, listCalendars, listEvents, previewEvent, readEvent } from './calendar.js';
 import { listEmails, readEmail } from './mail.js';
 import { listNotes, mapNotes, readNote } from './notes.js';
 import { accessTokenFor } from './oauth.js';
@@ -47,6 +47,11 @@ export const OPERATIONS = {
   list_events: { provider: 'google', effect: 'read' },
   read_event: { provider: 'google', effect: 'read' },
   list_calendars: { provider: 'google', effect: 'read' },
+  // Reads the day and renders what would be written. A read, despite the name:
+  // it changes nothing, and marking it a write would gate the very thing that
+  // has to happen before a write is allowed.
+  preview_calendar_event: { provider: 'google', effect: 'read' },
+  create_calendar_event: { provider: 'google', effect: 'write' },
 } as const satisfies Record<string, { provider: ProviderName; effect: 'read' | 'write' }>;
 
 export type Operation = keyof typeof OPERATIONS;
@@ -128,6 +133,10 @@ export const dispatchWith =
         )) as T;
       case 'read_event':
         return (await readEvent(token, params.event_id, params.calendar_id)) as T;
+      case 'preview_calendar_event':
+        return (await previewEvent(token, params)) as T;
+      case 'create_calendar_event':
+        return (await createEvent(token, params)) as T;
       case 'list_calendars':
         // No parameters by design: the whole value is knowing the full set, and
         // a filtered list of what exists is the reach problem again.

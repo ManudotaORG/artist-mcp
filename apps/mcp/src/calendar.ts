@@ -8,7 +8,7 @@
  */
 
 import { GraphError, ScopeError } from './client.js';
-import { CALENDAR_LIST_NEED, calendarGet } from './api.js';
+import { CALENDAR_LIST_NEED, calendarGet, calendarInsertEvent } from './api.js';
 
 /** The edge function returned HTTP statuses; here the message is the whole signal. */
 const failure = (message: string): GraphError => new GraphError(message, false);
@@ -281,4 +281,292 @@ export async function listCalendars(token: string) {
     }));
 
   return { calendars, complete: true, limitation: null };
+}
+
+
+// ------------------------------------------------------- creating an event
+
+/**
+ * The fields that define an event, in a fixed order.
+ *
+ * Fixed because both the confirmation token and the idempotency id are hashes
+ * of this, and a shape that varied with key order would make the same event
+ * hash differently between two calls.
+ */
+export type EventDraft = {
+  calendar_id: string;
+  summary: string;
+  /** `YYYY-MM-DD` for an all-day event, or an RFC3339 datetime. */
+  start: string;
+  end: string;
+  /** IANA name. Required for a timed event, meaningless for an all-day one. */
+  time_zone: string | null;
+  location: string | null;
+  description: string | null;
+};
+
+const canonical = (d: EventDraft): string =>
+  [
+    d.calendar_id,
+    d.summary,
+    d.start,
+    d.end,
+    d.time_zone ?? '',
+    d.location ?? '',
+    d.description ?? '',
+  ].join(' ');
+
+/**
+ * Google accepts a client-set event id, which is what makes a retry safe: the
+ * second attempt collides with 409 rather than double-booking. Its ids are
+ * base32hex — digits and `a`-`v` — 5 to 1024 characters, unique per calendar.
+ */
+const base32hex = (bytes: Uint8Array): string => {
+  const alphabet = '0123456789abcdefghijklmnopqrstuv';
+  let bits = 0;
+  let value = 0;
+  let out = '';
+  for (const byte of bytes) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      out += alphabet[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  return out;
+};
+
+const digest = async (prefix: string, draft: EventDraft): Promise<string> => {
+  const data = new TextEncoder().encode(`${prefix} ${canonical(draft)}`);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return base32hex(new Uint8Array(hash));
+};
+
+/**
+ * The token a preview returns and a create must carry back.
+ *
+ * Derived from the payload, so it proves the create is for the values that were
+ * shown - not merely that a preview happened at some point. It cannot prove a
+ * human read them; nothing inside MCP can. See
+ * docs/decisions/0001-opt-in-calendar-writes.md.
+ */
+export const confirmationToken = (draft: EventDraft): Promise<string> =>
+  digest('confirm', draft);
+
+/**
+ * The event's id in Google, which is what stops a retry double-booking.
+ *
+ * Derived independently of the confirmation token, from a different prefix, on
+ * purpose: if the double-book guard rode on the token, dropping the token
+ * requirement later would silently drop double-booking protection with it.
+ */
+export const idempotencyId = async (draft: EventDraft): Promise<string> =>
+  // Prefixed so a human reading their calendar's raw data can tell where the
+  // event came from, and trimmed because Google caps ids at 1024 characters
+  // while 32 base32hex characters is already 160 bits.
+  `artist${(await digest('event', draft)).slice(0, 32)}`;
+
+/**
+ * Anything a page left unsettled, in the spellings the pack actually uses.
+ *
+ * Case-sensitive for the placeholder words, which is not fussiness: the pack
+ * writes `UNKNOWN` in capitals, and matching case-insensitively refused
+ * "Unknown Pleasures tribute night" — a real gig title, and a refusal a
+ * musician could do nothing about except rename their own event. A field that
+ * is *only* the word is caught in any case, since "unknown" alone is never a
+ * venue.
+ *
+ * The trade is deliberate. A lowercase "unknown" buried in a sentence gets
+ * through, and the playbook rule still governs the session that composed it;
+ * refusing every occurrence would block legitimate writes to prevent a case
+ * the preview already shows the musician.
+ */
+const PLACEHOLDERS = ['UNKNOWN', 'TBC', 'TBD', 'T.B.C', 'T.B.D'];
+const unsettled = (value: string): boolean => {
+  const trimmed = value.trim();
+  if (PLACEHOLDERS.some((word) => trimmed.toUpperCase() === word)) return true;
+  if (/\?\?+/.test(trimmed)) return true;
+  return PLACEHOLDERS.some((word) =>
+    new RegExp(`(^|[^A-Za-z])${word.replace(/\./g, '\\.')}([^A-Za-z]|$)`).test(trimmed),
+  );
+};
+
+/**
+ * Refuse to write a value the notebook has not settled.
+ *
+ * This is the rule that matters most in the decision record, and it lives here
+ * rather than only in a playbook because a playbook governs a session while
+ * this governs the write. Two pages disagreeing about a date is exactly what
+ * `policy:divergence` spends its length refusing to decide; a write would
+ * decide it silently, durably, and where other people can see it.
+ */
+export const refuseUnsettled = (draft: EventDraft): void => {
+  const fields: [string, string | null][] = [
+    ['title', draft.summary],
+    ['start', draft.start],
+    ['end', draft.end],
+    ['location', draft.location],
+    ['notes', draft.description],
+  ];
+  for (const [name, value] of fields) {
+    if (value && unsettled(value)) {
+      throw failure(
+        `The ${name} is not settled - it still reads "${value.trim()}". A calendar ` +
+          'event is durable and other people see it, so an unsettled value is not ' +
+          'written. Settle it on the page first, then ask again.',
+      );
+    }
+  }
+};
+
+
+/** Shape-check what a caller gave us, before any of it is hashed or written. */
+const draftFrom = (params: Record<string, unknown>): EventDraft => {
+  const text = (v: unknown, name: string, required: boolean): string | null => {
+    if (v === undefined || v === null || v === '') {
+      if (required) throw failure(`${name} is required to create an event.`);
+      return null;
+    }
+    if (typeof v !== 'string') throw failure(`${name} must be text.`);
+    if (v.length > 1024) throw failure(`${name} is too long.`);
+    return v.trim();
+  };
+
+  const calendarId = text(params.calendar_id, 'calendar_id', false) ?? 'primary';
+  if (!CALENDAR_ID.test(calendarId)) throw failure('calendar_id is malformed.');
+
+  const start = text(params.start, 'start', true) as string;
+  const end = text(params.end, 'end', true) as string;
+  const allDay = /^\d{4}-\d{2}-\d{2}$/.test(start);
+
+  if (allDay !== /^\d{4}-\d{2}-\d{2}$/.test(end)) {
+    throw failure(
+      'start and end must be the same kind: both dates for an all-day event, or ' +
+        'both date-times.',
+    );
+  }
+  if (!allDay) {
+    for (const [name, value] of [['start', start], ['end', end]] as const) {
+      if (Number.isNaN(new Date(value).getTime())) throw failure(`${name} is not a date-time.`);
+    }
+  }
+
+  // A timed event with no zone is the bug this file already warns about in the
+  // other direction: the calendar's zone need not be the reader's, and letting
+  // one be assumed here writes a gig an hour out and looks entirely correct.
+  const timeZone = text(params.time_zone, 'time_zone', false);
+  if (!allDay && !timeZone) {
+    throw failure(
+      'time_zone is required for a timed event, as an IANA name such as ' +
+        'Europe/Madrid. Without it the time is guesswork, and a gig written an ' +
+        'hour out looks exactly like a correct one.',
+    );
+  }
+
+  if (new Date(end).getTime() < new Date(start).getTime()) {
+    throw failure('The event ends before it starts.');
+  }
+
+  return {
+    calendar_id: calendarId,
+    summary: text(params.summary, 'summary', true) as string,
+    start,
+    end,
+    time_zone: allDay ? null : timeZone,
+    location: text(params.location, 'location', false),
+    description: text(params.description, 'description', false),
+  };
+};
+
+/** How an event reads to a person checking it against a page. */
+const renderDraft = (draft: EventDraft): string => {
+  const allDay = draft.time_zone === null;
+  const lines = [
+    `Title:    ${draft.summary}`,
+    allDay
+      ? `When:     ${draft.start} to ${draft.end} (all day)`
+      : `When:     ${draft.start} to ${draft.end} (${draft.time_zone})`,
+  ];
+  if (draft.location) lines.push(`Where:    ${draft.location}`);
+  if (draft.description) lines.push(`Notes:    ${draft.description}`);
+  lines.push(`Calendar: ${draft.calendar_id}`);
+  return lines.join('\n');
+};
+
+/**
+ * Show an event exactly as it would be written, and hand back the token that
+ * lets it be written.
+ *
+ * The day is enumerated alongside it, because a preview that shows only what
+ * would be added invites the question it cannot answer: whether it is already
+ * there. That listing is also the only honest form of "is this missing" this
+ * product has - see docs/decisions/0001-opt-in-calendar-writes.md.
+ */
+export async function previewEvent(token: string, params: Record<string, unknown>) {
+  const draft = draftFrom(params);
+  refuseUnsettled(draft);
+
+  const day = draft.start.slice(0, 10);
+  const { events } = await listEvents(
+    token,
+    draft.calendar_id,
+    undefined,
+    `${day}T00:00:00Z`,
+    `${day}T23:59:59Z`,
+  );
+
+  return {
+    preview: renderDraft(draft),
+    confirmation_token: await confirmationToken(draft),
+    existing_that_day: events,
+    calendar_searched: draft.calendar_id,
+  };
+}
+
+/**
+ * Create the event, if the token matches the payload.
+ *
+ * The comparison is the boundary: it makes creating an event that was never
+ * previewed inexpressible, and previewing one event and creating another
+ * inexpressible too. It does not prove a person read the preview, and no part
+ * of this protocol can.
+ */
+export async function createEvent(token: string, params: Record<string, unknown>) {
+  const draft = draftFrom(params);
+  refuseUnsettled(draft);
+
+  const supplied = typeof params.confirmation_token === 'string' ? params.confirmation_token : '';
+  const expected = await confirmationToken(draft);
+  if (supplied !== expected) {
+    throw failure(
+      supplied === ''
+        ? 'No confirmation_token. Call preview_calendar_event first and show the ' +
+            'musician what it returns; creating an event nobody has seen is not ' +
+            'something this tool can do.'
+        : 'The confirmation_token does not match this event. It belongs to a ' +
+            'different set of values, so something changed after the preview. ' +
+            'Preview again and show the musician the new version.',
+    );
+  }
+
+  const allDay = draft.time_zone === null;
+  const body = {
+    id: await idempotencyId(draft),
+    summary: draft.summary,
+    start: allDay ? { date: draft.start } : { dateTime: draft.start, timeZone: draft.time_zone },
+    end: allDay ? { date: draft.end } : { dateTime: draft.end, timeZone: draft.time_zone },
+    ...(draft.location ? { location: draft.location } : {}),
+    ...(draft.description ? { description: draft.description } : {}),
+  };
+
+  const res = await calendarInsertEvent(draft.calendar_id, body, token);
+  const created = (await res.json()) as CalendarEvent;
+
+  return {
+    created: shapeEvent(created),
+    link: created.htmlLink ?? null,
+    calendar_id: draft.calendar_id,
+    written: renderDraft(draft),
+  };
 }
