@@ -14,6 +14,7 @@
 import { access } from 'node:fs/promises';
 import { resolveRegistry, setLocalAgentRoot } from './agents.js';
 import { ENTRY_NAME, configPath, readConfig } from './config.js';
+import { parseGrants, type WriteCapability } from './grants.js';
 import { connect } from './oauth.js';
 import { PROVIDERS } from './oauth.js';
 import { type ProviderName, clearProvider, loadTokens, readProvider } from './tokens.js';
@@ -34,11 +35,22 @@ const PURPOSE: Record<ProviderName, string> = {
 
 export const runConnect = async (input?: string): Promise<void> => {
   const provider = parseProvider(input);
+  const grants = provider === 'google' ? await installedGrants() : [];
 
-  await connect(provider);
+  await connect(provider, grants);
 
   console.log(`\n${PROVIDERS[provider].label} connected — ${PURPOSE[provider]}.`);
-  console.log('Read-only. Nothing is ever written back to your account.');
+  if (grants.length === 0) {
+    console.log('Read-only. Nothing is ever written back to your account.');
+  } else {
+    // Named, because the consent screen the user just approved was wider than
+    // the one every other install sees, and they should be able to tell why.
+    console.log(
+      `This install was granted ${grants.join(', ')}, so consent included ` +
+        'creating calendar events. Nothing else is ever written back: not ' +
+        'OneNote, not mail, and no event is changed or deleted.',
+    );
+  }
 
   if (provider === 'microsoft' && (await readProvider('google')) === undefined) {
     console.log('\nTo add Gmail and Calendar as evidence: artist-mcp connect google');
@@ -77,6 +89,39 @@ export const runDisconnect = async (input?: string): Promise<void> => {
  * of it. Reporting what argv happens to say would tell every user their install
  * is read-only, including the ones it is not.
  */
+const recordedGrants = (args: unknown): WriteCapability[] => {
+  if (!Array.isArray(args)) return [];
+  const at = args.indexOf('--allow-writes');
+  const value = at === -1 ? undefined : args[at + 1];
+  if (typeof value !== 'string') return [];
+  try {
+    return parseGrants(value);
+  } catch {
+    // A malformed entry is reported by `status`, and `init` refuses to write
+    // one. Connecting is not the moment to fail on it: asking for the read
+    // scopes still leaves a working connection, where throwing leaves none.
+    return [];
+  }
+};
+
+/**
+ * What this install was granted, read from the Claude Desktop entry.
+ *
+ * The same reasoning as `status`: the grant belongs to the install, and
+ * `artist-mcp connect google` typed in a terminal carries none of it. Reading
+ * argv here would ask every user for the read-only scopes and quietly leave a
+ * granted install unable to write.
+ */
+const installedGrants = async (): Promise<WriteCapability[]> => {
+  try {
+    const config = await readConfig(configPath());
+    const servers = (config.mcpServers ?? {}) as Record<string, { args?: unknown }>;
+    return recordedGrants(servers[ENTRY_NAME]?.args);
+  } catch {
+    return [];
+  }
+};
+
 const recordedWrites = (args: unknown): string => {
   if (!Array.isArray(args)) return 'none — this install can only read';
   const at = args.indexOf('--allow-writes');
