@@ -99,6 +99,11 @@ consent moment worth keeping and the only cost the list has over a boolean.
 
 ## Where the grant lives, and what secures it
 
+> **This section is about the published package only.** The hosted server holds
+> many users' decryptable tokens, so the reasoning below does not transfer to
+> it; see [0002](0002-hosted-writes.md).
+
+
 In the `args` array of the Claude Desktop configuration file. **The security
 boundary is therefore filesystem permissions on that file**, and this is chosen
 rather than inherited: the OAuth tokens for every connected provider already sit

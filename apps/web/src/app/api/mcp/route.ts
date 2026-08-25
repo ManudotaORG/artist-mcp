@@ -19,6 +19,8 @@ import { getSiteUrl } from '@/lib/siteUrl';
 import { createServer } from '@manudota/artist-mcp/server';
 import { hostedTokens } from '@/lib/hosted-tokens';
 import { userForRequest } from '@/lib/mcp-auth';
+import { writeGrantsFor } from '@/lib/write-grants';
+import { hostedAudit } from '@/lib/write-audit';
 import { dispatchWith } from '@manudota/artist-mcp/dispatch';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 
@@ -65,7 +67,13 @@ const handle = async (request: Request): Promise<Response> => {
   // the server: not its name, not its version, not which tools it has.
   if (userId === null) return unauthorized();
 
-  const server = await createServer(dispatchWith(hostedTokens(userId)));
+  // Read per request and passed in. A grant held between requests would let one
+  // user's capability reach another's session, which is why createServer takes
+  // it rather than reading process state.
+  const server = await createServer(
+    dispatchWith(hostedTokens(userId), hostedAudit(userId)),
+    await writeGrantsFor(userId),
+  );
 
   const transport = new WebStandardStreamableHTTPServerTransport({
     // Undefined disables session management. Not an oversight — see above.

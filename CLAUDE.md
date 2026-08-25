@@ -79,15 +79,15 @@ docs/           the brief
   `apps/web/src/app/api/mcp/route.ts`, which builds the same `createServer` the
   published package uses. Keep it compiling if you touch shared shapes, but it
   is not where a hosted feature goes.
-- **Write grants are process state, so hosted has none.** `setGrants` in
-  `apps/mcp/src/grants.ts` is module-level, which is right for one stdio process
-  serving one user and unsafe in the multi-user hosted route — setting it per
-  request would let one user's grant reach another's session. Hosted therefore
-  registers no write tool at all, which is the safe default rather than a
-  decision anyone made. Giving hosted users writes means passing grants into
-  `createServer` first, and arguing the hosted case on its own terms: the local
-  one rests on filesystem permissions on the user's own machine, which does not
-  transfer to a service holding many people's tokens.
+- **Write grants are a parameter, never state.** `createServer(call, grants)`
+  takes them, because one stdio process serves one user while the hosted route
+  serves many from one process — a grant held in a module and set per request
+  would let one user's capability reach another's session, and would pass every
+  test that runs one user at a time. Hosted still registers no write tool: it
+  passes none. Giving hosted users writes means deciding the hosted case on its
+  own terms, since the local justification rests on filesystem permissions on
+  the user's own machine and does not transfer to a service holding many
+  people's decryptable tokens. See #98.
 - **`/me/onenote/pages` dies on accounts with many sections.** Graph answers the
   whole request with 400 and error `20266`, so listing goes from working to
   broken with no partial result. Enumerate `/me/onenote/sections` and fetch

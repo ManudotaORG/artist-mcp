@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.2](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.5.1...artist-mcp-v1.5.2) (2026-08-25)
+
+
+### Bug Fixes
+
+* **mcp:** refuse an empty date range, and ask the audit for a page id ([a581704](https://github.com/ManudotaORG/artist-mcp/commit/a5817044210a6301ca965421b64d88b72e4bad2e)), closes [#85](https://github.com/ManudotaORG/artist-mcp/issues/85)
+* **mcp:** write to the config a packaged Claude install actually reads ([570d863](https://github.com/ManudotaORG/artist-mcp/commit/570d8634dbc14880824c60db8d17ab10f7b5d27d))
+
 ## [1.5.1](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.5.0...artist-mcp-v1.5.1) (2026-08-25)
 
 

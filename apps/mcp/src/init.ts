@@ -5,7 +5,7 @@ import { isStagingVersion, packageVersion } from "./client.js";
 import { sep } from "node:path";
 import { configPath, ENTRY_NAME, readConfig, writeConfig } from "./config.js";
 import { connectedProviders } from "./dispatch.js";
-import { describeGrants, setGrants, type WriteCapability } from "./grants.js";
+import { describeGrants, type WriteCapability } from "./grants.js";
 
 const PACKAGE = "@manudota/artist-mcp";
 const LOCAL_ENTRY = fileURLToPath(new URL("./index.js", import.meta.url));
@@ -138,8 +138,7 @@ export const runInit = async ({
   // accounts for, and the useful line is the one that appears when the answer
   // is "none" — that is what tells a user their install is still read-only.
   console.log("");
-  setGrants(grants);
-  console.log(describeGrants());
+  console.log(describeGrants(grants));
   if (grants.length > 0) {
     console.log(
       "Reconnect Google so the grant is on the token: `artist-mcp connect google`. " +

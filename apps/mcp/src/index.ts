@@ -4,7 +4,7 @@ import { runInit, runUninstall } from './init.js';
 import { runServer } from './server.js';
 import { installAgentPack, runAgentsStatus, setLocalAgentRoot } from './agents.js';
 import { runConnect, runDisconnect, runStatus } from './connect.js';
-import { isWriteCapability, parseGrants, setGrants } from './grants.js';
+import { isWriteCapability, parseGrants } from './grants.js';
 
 const argv = process.argv.slice(2);
 
@@ -72,10 +72,9 @@ try {
       // only way the server learns where a user's playbooks live: there is no
       // cwd here worth trusting.
       setLocalAgentRoot(agentsDir || undefined);
-      // Decided once, before any tool is registered. An ungranted write tool is
-      // never built, rather than built and refusing.
-      setGrants(grants);
-      await runServer();
+      // Handed in, not stashed. An ungranted write tool is never built, rather
+      // than built and refusing.
+      await runServer(grants);
       break;
     case 'init':
       if (argv[1] && argv[1] !== '--local') {

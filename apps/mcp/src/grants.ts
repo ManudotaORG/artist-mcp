@@ -84,29 +84,23 @@ export const parseGrants = (raw: string | undefined): WriteCapability[] => {
 };
 
 /**
- * What this process may do, decided once at startup.
+ * Whether a write tool may be registered, given what this caller was granted.
  *
- * Module state for the same reason the playbook root is: the server is spawned
- * by Claude Desktop with whatever `init` wrote, and nothing downstream should
- * be re-deriving the answer or able to widen it later.
- */
-let granted: readonly WriteCapability[] = [];
-
-export const setGrants = (capabilities: readonly WriteCapability[]): void => {
-  granted = [...capabilities];
-};
-
-export const grantedWrites = (): readonly WriteCapability[] => granted;
-
-/**
- * Whether a write tool may be registered at all.
+ * A parameter, not module state. One stdio process serves one user and could
+ * safely hold it in a variable; the hosted route serves many users from one
+ * process, where a grant set per request would let one user's capability reach
+ * another's session. That failure would pass every test here, because every
+ * test runs one user at a time — so the shape has to prevent it rather than the
+ * discipline. See docs/decisions/0001-opt-in-calendar-writes.md.
  *
- * Registration, not refusal at call time. A tool that exists is a tool a model
+ * Registration, not refusal at call time: a tool that exists is a tool a model
  * will try, and a refusal inside a tool result reads as an obstacle to route
- * around rather than as a boundary — so an ungranted write tool is absent, not
- * present and saying no.
+ * around rather than as a boundary.
  */
-export const isGranted = (capability: WriteCapability): boolean => granted.includes(capability);
+export const isGranted = (
+  grants: readonly WriteCapability[],
+  capability: WriteCapability,
+): boolean => grants.includes(capability);
 
 /**
  * How the grant is described wherever it is reported: `init`, `agents status`,
@@ -114,10 +108,10 @@ export const isGranted = (capability: WriteCapability): boolean => granted.inclu
  * for, which is the handshake bug again — a correct thing that never reached
  * the client.
  */
-export const describeGrants = (): string => {
-  if (granted.length === 0) {
+export const describeGrants = (grants: readonly WriteCapability[]): string => {
+  if (grants.length === 0) {
     return 'Writes: none. This install can only read.';
   }
-  const lines = granted.map((name) => `  - ${name}: ${WRITE_CAPABILITIES[name]}`);
+  const lines = grants.map((name) => `  - ${name}: ${WRITE_CAPABILITIES[name]}`);
   return `Writes granted to this install:\n${lines.join('\n')}`;
 };
