@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_EDITABLE_DIRECTORY, describeSeed, seedEditablePack } from "./agents.js";
 import { isStagingVersion, packageVersion } from "./client.js";
+import { sep } from "node:path";
 import { configPath, ENTRY_NAME, readConfig, writeConfig } from "./config.js";
 import { connectedProviders } from "./dispatch.js";
 import { describeGrants, setGrants, type WriteCapability } from "./grants.js";
@@ -120,6 +121,12 @@ export const runInit = async ({
   await writeConfig(path, config);
 
   console.log(`\nWrote "${ENTRY_NAME}" to ${path}`);
+  if (path.includes(`${sep}Packages${sep}`)) {
+    // Worth naming. A packaged Windows install virtualises %APPDATA%, so the
+    // obvious path is a different file that Claude Desktop never opens — and
+    // writing there fails invisibly: every check passes and no tool appears.
+    console.log("           (packaged Claude install — this is the config it reads)");
+  }
   if (seeded) {
     console.log("");
     describeSeed(seeded);

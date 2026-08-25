@@ -2,6 +2,7 @@
 
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
+import { existsSync, readdirSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
@@ -13,6 +14,58 @@ export const ENTRY_NAME = "artist-notes";
  * that read this file except against the developer's own Claude Desktop config,
  * which a test suite has no business touching.
  */
+/**
+ * Where Claude Desktop keeps its config on Windows, which is not one place.
+ *
+ * A packaged install — the one that appears under `AppData\Local\Packages` —
+ * has a **virtualised** `%APPDATA%`. Desktop reads
+ * `…\Packages\Claude_<id>\LocalCache\Roaming\Claude\`, while this process
+ * is an ordinary Node program whose `%APPDATA%` is the real `Roaming` folder.
+ * Writing to the obvious path therefore produced two config files that were
+ * each internally consistent and never the same one: `init` and `status` agreed
+ * with each other about a grant that Claude Desktop had never seen.
+ *
+ * Found the hard way, and the symptom is maddening — every check passes and the
+ * tools do not appear — so the packaged location wins when it exists rather
+ * than being offered as a fallback.
+ */
+export const windowsConfigPath = (home: string): string => {
+  const roaming = process.env.APPDATA ?? join(home, "AppData", "Roaming");
+  const plain = join(roaming, "Claude", "claude_desktop_config.json");
+
+  const packagesRoot =
+    process.env.LOCALAPPDATA ?? join(home, "AppData", "Local");
+  try {
+    const packages = readdirSync(join(packagesRoot, "Packages"))
+      .filter((name) => /^Claude_/i.test(name))
+      .map((name) =>
+        join(
+          packagesRoot,
+          "Packages",
+          name,
+          "LocalCache",
+          "Roaming",
+          "Claude",
+          "claude_desktop_config.json",
+        ),
+      );
+
+    // An existing packaged config is the one Desktop reads. If more than one
+    // package directory exists, prefer one that already holds a config over an
+    // empty shell left by an uninstall.
+    const written = packages.find((candidate) => existsSync(candidate));
+    if (written) return written;
+
+    // A packaged install with no config yet: still the right place to write,
+    // since the plain path would be ignored.
+    if (packages.length > 0 && !existsSync(plain)) return packages[0];
+  } catch {
+    // No Packages directory at all — an ordinary install. Fall through.
+  }
+
+  return plain;
+};
+
 export const configPath = (): string => {
   const override = process.env.ARTIST_MCP_CONFIG;
   if (override) return override;
@@ -22,11 +75,7 @@ export const configPath = (): string => {
     case "darwin":
       return join(home, "Library", "Application Support", "Claude", "claude_desktop_config.json");
     case "win32":
-      return join(
-        process.env.APPDATA ?? join(home, "AppData", "Roaming"),
-        "Claude",
-        "claude_desktop_config.json",
-      );
+      return windowsConfigPath(home);
     default:
       // Claude Desktop ships on macOS and Windows only; this keeps the error
       // legible rather than writing a config nothing will ever read.
