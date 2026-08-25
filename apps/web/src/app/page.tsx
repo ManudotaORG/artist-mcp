@@ -3,10 +3,16 @@ import { Typography } from '@/components/ui/Typography';
 import { getDeploymentMetadata } from '@/lib/deployment';
 import { getSiteUrl } from '@/lib/siteUrl';
 import { supabaseServer } from '@/lib/supabase/server';
-import { disconnect, signOut } from './actions';
+import { disconnect, setCalendarWrites, signOut } from './actions';
+import { writeGrantsFor } from '@/lib/write-grants';
 
 type HomeProps = {
-  searchParams: Promise<{ error?: string; connected?: string; disconnected?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    connected?: string;
+    disconnected?: string;
+    writes?: string;
+  }>;
 };
 
 const roles = [
@@ -348,6 +354,7 @@ type DashboardProps = {
   installChannel: InstallChannel;
   connections: Connection[];
   mcpUrl: string;
+  calendarWrites: boolean;
 };
 
 const PROVIDER_LABEL: Record<string, string> = {
@@ -364,7 +371,56 @@ const PROVIDER_LABEL: Record<string, string> = {
  * date are read — the token column is ciphertext and there is no reason for
  * this page to hold it even briefly.
  */
-const Connections = ({ connections, mcpUrl }: { connections: Connection[]; mcpUrl: string }) => {
+/**
+ * The one write this hosted account may be given.
+ *
+ * Off by default and shown as off: a reader who has never thought about this
+ * should be able to see that nothing can change their calendar without doing
+ * anything. The reconnect is stated rather than implied, because a grant that
+ * silently does nothing until an unrelated step is worse than no grant.
+ */
+const CalendarWrites = ({
+  granted,
+  googleConnected,
+}: {
+  granted: boolean;
+  googleConnected: boolean;
+}) => (
+  <div className="mt-3 border border-foreground p-3">
+    <Typography variant="small" color="cyan">
+      CALENDAR ENTRIES
+    </Typography>
+    <Typography variant="small" className="mt-2">
+      {granted
+        ? 'ALLOWED — IT CAN ADD A CALENDAR EVENT, AND REMOVE ONE IT ADDED ITSELF. EVERY WRITE IS SHOWN TO YOU FIRST AND WAITS FOR YOUR YES. IT CANNOT TOUCH AN EVENT YOU MADE, CANNOT CHANGE AN EVENT, AND NEVER WRITES TO ONENOTE.'
+        : 'NOT ALLOWED — READ ONLY. NOTHING CAN CHANGE YOUR CALENDAR.'}
+    </Typography>
+
+    {granted && googleConnected ? (
+      <Typography variant="small" color="yellow" className="mt-2">
+        RECONNECT GOOGLE FOR THIS TO TAKE EFFECT. A CONNECTION CARRIES THE PERMISSIONS IT WAS MADE
+        WITH, SO AN EXISTING ONE CANNOT WRITE UNTIL IT IS RENEWED.
+      </Typography>
+    ) : null}
+
+    <form action={setCalendarWrites} className="mt-3">
+      <input type="hidden" name="enabled" value={granted ? 'false' : 'true'} />
+      <Button type="submit" variant="ghost">
+        {granted ? 'WITHDRAW' : 'ALLOW CALENDAR ENTRIES'}
+      </Button>
+    </form>
+  </div>
+);
+
+const Connections = ({
+  connections,
+  mcpUrl,
+  calendarWrites,
+}: {
+  connections: Connection[];
+  mcpUrl: string;
+  calendarWrites: boolean;
+}) => {
   const connected = new Map(connections.map((c) => [c.provider, c]));
 
   return (
@@ -415,6 +471,8 @@ const Connections = ({ connections, mcpUrl }: { connections: Connection[]; mcpUr
         })}
       </div>
 
+      <CalendarWrites granted={calendarWrites} googleConnected={connected.has('google')} />
+
       {connections.length > 0 ? (
         <>
           <Typography variant="small" className="mt-5">
@@ -444,6 +502,7 @@ const Dashboard = ({
   installChannel,
   connections,
   mcpUrl,
+  calendarWrites,
 }: DashboardProps) => (
   <main className="grid gap-8 py-10">
     <div className="flex flex-wrap items-end justify-between gap-4">
@@ -469,7 +528,7 @@ const Dashboard = ({
     </div>
     {error ? <Typography color="red">ERROR: {error}</Typography> : null}
     {notice ? <Typography color="green">{notice}</Typography> : null}
-    <Connections connections={connections} mcpUrl={mcpUrl} />
+    <Connections connections={connections} mcpUrl={mcpUrl} calendarWrites={calendarWrites} />
     {/*
       A "MICROSOFT CONNECTED" banner lived here, set by a provider callback this
       app no longer has. Connecting a hosted account is done with a maintainer
@@ -514,7 +573,7 @@ const Dashboard = ({
 );
 
 const Home = async ({ searchParams }: HomeProps) => {
-  const { error, connected, disconnected } = await searchParams;
+  const { error, connected, disconnected, writes } = await searchParams;
   const supabase = await supabaseServer();
   const {
     data: { user },
@@ -527,11 +586,21 @@ const Home = async ({ searchParams }: HomeProps) => {
     ? await supabase.from('connections').select('provider, updated_at')
     : { data: [] };
 
+  // The grant is read with the service role, because the function that reads it
+  // is revoked from `authenticated` on purpose: what an account may do must not
+  // be readable with the key the browser holds. The user id comes from the
+  // session, so this can only ever describe the caller.
+  const calendarWrites = user ? (await writeGrantsFor(user.id)).length > 0 : false;
+
   const notice = connected
     ? `${connected.toUpperCase()} CONNECTED.`
     : disconnected
       ? `${disconnected.toUpperCase()} DISCONNECTED.`
-      : undefined;
+      : writes === 'granted'
+        ? 'CALENDAR ENTRIES ALLOWED. RECONNECT GOOGLE FOR IT TO TAKE EFFECT.'
+        : writes === 'withdrawn'
+          ? 'CALENDAR ENTRIES WITHDRAWN. NOTHING CAN CHANGE YOUR CALENDAR.'
+          : undefined;
   // Filtered by provider, and never with maybeSingle across the whole table:
   // a user may now hold a row per provider, and an unfiltered single-row read
   // both attributed whichever row existed to Microsoft and failed outright
@@ -550,6 +619,7 @@ const Home = async ({ searchParams }: HomeProps) => {
           installChannel={installChannel}
           connections={connections ?? []}
           mcpUrl={`${getSiteUrl()}/api/mcp`}
+          calendarWrites={calendarWrites}
         />
       ) : (
         <PublicHome installChannel={installChannel} />

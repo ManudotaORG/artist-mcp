@@ -308,3 +308,37 @@ test('a failed audit does not fail the write', () => {
   assert.match(sink, /catch/);
   assert.doesNotMatch(sink.slice(sink.indexOf('catch')), /throw/);
 });
+
+
+/**
+ * Granting is done with the service role, because `set_write_grants` is revoked
+ * from `authenticated` on purpose: what an account is allowed to do must not be
+ * settable with the key the browser holds. The user id comes from the session,
+ * so the action can only ever change the caller's own row.
+ */
+test('granting a write uses the service role and the session user', () => {
+  const actions = webSource('app/actions.ts');
+  const fn = actions.slice(actions.indexOf('export const setCalendarWrites'));
+  assert.match(fn, /SUPABASE_SERVICE_ROLE_KEY/, 'the grant is set with the browser key');
+  assert.match(fn, /p_user_id: user\.id/, 'the grant is set for someone other than the caller');
+  assert.match(fn, /auth\.getUser\(\)/);
+});
+
+test('withdrawing sends an empty set rather than deleting nothing', () => {
+  const actions = webSource('app/actions.ts');
+  const fn = actions.slice(actions.indexOf('export const setCalendarWrites'));
+  assert.match(fn, /wanted \? \['calendar-create', 'calendar-delete'\] : \[\]/);
+});
+
+/**
+ * A grant that silently does nothing until an unrelated step is worse than no
+ * grant. A token carries the scopes it was granted with, so allowing writes on
+ * an existing connection changes nothing until it is renewed — and the page has
+ * to say so where the choice is made, not in documentation.
+ */
+test('the connect screen states that a grant needs a reconnect', () => {
+  const page = webSource('app/page.tsx');
+  assert.match(page, /RECONNECT GOOGLE FOR THIS TO TAKE EFFECT/);
+  // And the off state says plainly that nothing can change the calendar.
+  assert.match(page, /NOT ALLOWED — READ ONLY/);
+});
