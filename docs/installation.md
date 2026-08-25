@@ -193,7 +193,14 @@ The reconnect is not optional. A refresh token carries the scopes it was
 granted with, so an existing Google connection cannot write until it is renewed
 — the grant alone changes nothing.
 
-This adds two tools and nothing else. `preview_calendar_event` shows the exact
+`--allow-writes calendar-create,calendar-delete` also lets it remove an event
+it created itself, identified by the `artist` prefix on the event id. An event
+you made, or one shared onto your calendar, is refused — this is an undo for its
+own mistakes, not calendar management. Google keeps a deleted event in that
+calendar's bin for 30 days. Delete needs no extra consent beyond create, because
+Google has one scope for both.
+
+Creating adds two tools and nothing else. `preview_calendar_event` shows the exact
 event and what is already on that day; `create_calendar_event` writes it, and
 only accepts the confirmation token the preview returned for those exact values.
 Change any field after the preview and the token stops matching, so the event
@@ -201,8 +208,9 @@ has to be shown again.
 
 What it deliberately cannot do:
 
-- Update, move, delete or respond to an event. Google grants all of those with
-  the same scope as creating one; the tools to do them do not exist here.
+- Update, move or respond to an event. Google grants all of those with the same
+  scope as creating one; the tools to do them do not exist here.
+- Delete an event it did not create, even with `calendar-delete` granted.
 - Add more than one event per call. There is no "add all the gigs".
 - Write a value the notebook has not settled. `UNKNOWN`, `TBC` and a disputed
   date are refused, with a message saying which field and why.

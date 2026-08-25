@@ -297,6 +297,53 @@ export const calendarInsertEvent = async (
   throw new GraphError(`Google Calendar refused to create the event (${res.status}). ${detail}`, false);
 };
 
+/**
+ * Remove one event, by id, from one calendar.
+ *
+ * As narrow as the insert helper and for the same reason: not a general
+ * `calendarDelete(path)` that any caller could aim at anything. Whether this id
+ * may be deleted at all is decided in `calendar.ts`, where the rule lives that
+ * only an event this tool created can be removed.
+ */
+export const calendarDeleteEvent = async (
+  calendarId: string,
+  eventId: string,
+  token: string,
+): Promise<void> => {
+  const url =
+    `${CALENDAR}/calendars/${encodeURIComponent(calendarId)}` +
+    `/events/${encodeURIComponent(eventId)}`;
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: { authorization: `Bearer ${token}` },
+  });
+
+  // 204 is success and 410 means it was already gone, which is the same outcome
+  // from the musician's side: the event is not in the calendar. Reporting the
+  // second as a failure invites a second attempt at something already done.
+  if (res.ok || res.status === 410) return;
+
+  const detail = (await res.text().catch(() => '')).slice(0, 300);
+
+  if (res.status === 403 && /insufficient|ACCESS_TOKEN_SCOPE/i.test(detail)) {
+    throw new ScopeError(
+      'This Google connection cannot delete calendar events. Reconnect with ' +
+        '`artist-mcp connect google` to grant it.',
+      'delete calendar events',
+      false,
+    );
+  }
+
+  if (res.status === 404) {
+    throw new GraphError(
+      'That event is not on that calendar. Nothing was deleted.',
+      false,
+    );
+  }
+
+  throw new GraphError(`Google Calendar refused to delete the event (${res.status}). ${detail}`, false);
+};
+
 export const CALENDAR_LIST_NEED: ScopeNeed = {
   capability: 'see which calendars you have',
   optional: true,

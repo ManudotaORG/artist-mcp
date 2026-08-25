@@ -1161,6 +1161,91 @@ const createServer = async (call: Dispatch): Promise<McpServer> => {
     );
   }
 
+  if (isGranted("calendar-delete")) {
+    server.tool(
+      "preview_calendar_delete",
+      "Call this before delete_calendar_event — it is the only way to obtain the confirmation_token that one requires. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. " +
+        "Shows the event that would be removed, read fresh from Google rather " +
+        "than from anything you were told about it. Changes nothing. Only an " +
+        "event artist-mcp created can be previewed here; anything the musician " +
+        "made themselves, or that was shared onto their calendar, is refused.",
+      {
+        event_id: z.string().describe("The id of the event, as returned when it was created"),
+        calendar_id: z
+          .string()
+          .optional()
+          .describe("Which calendar it is on. Defaults to the primary one."),
+      },
+      async (params) => {
+        try {
+          const { preview, confirmation_token } = await call<{
+            preview: string;
+            confirmation_token: string;
+          }>("preview_calendar_delete", params);
+
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `This would be deleted:\n\n${preview}\n\n` +
+                  "Show this to the musician and wait for their yes. If they " +
+                  "agree, call delete_calendar_event with the same event_id and " +
+                  `confirmation_token: ${confirmation_token}`,
+              },
+            ],
+          };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+
+    server.tool(
+      "delete_calendar_event",
+      "Only call this after preview_calendar_delete AND after the musician has said yes to what the preview showed. " +
+        "Deletes ONE event that artist-mcp itself created. It cannot delete an " +
+        "event the musician made, or one shared onto their calendar — those are " +
+        "theirs, and are refused. It cannot change an event, only remove it, and " +
+        "there is no bulk form. Google keeps a deleted event in that calendar's " +
+        "bin for 30 days, so tell the musician they can restore it there.",
+      {
+        event_id: z.string().describe("Exactly what the preview showed"),
+        calendar_id: z.string().optional().describe("Exactly what the preview showed"),
+        confirmation_token: z
+          .string()
+          .describe("The token preview_calendar_delete returned for this event"),
+        source_page: z
+          .string()
+          .optional()
+          .describe("The OneNote page this relates to, recorded locally"),
+      },
+      async (params) => {
+        try {
+          const { deleted, calendar_id } = await call<{
+            deleted: string;
+            calendar_id: string;
+          }>("delete_calendar_event", params);
+
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `Deleted from ${calendar_id}:\n\n${deleted}\n\n` +
+                  "Google keeps it in that calendar's bin for 30 days, so the " +
+                  "musician can restore it there if this was wrong. What it " +
+                  "said is recorded locally either way.",
+              },
+            ],
+          };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+  }
+
   server.tool(
     "list_calendars",
     "Call this before concluding that something is NOT in the calendar. A search of one calendar that finds nothing is not evidence of absence — it is evidence about one calendar. Gigs commonly sit on a band, venue or shared calendar rather than the primary one. " +

@@ -7,7 +7,9 @@ import test from 'node:test';
 import {
   confirmationToken,
   createEvent,
+  deleteEvent,
   idempotencyId,
+  previewDeleteEvent,
   previewEvent,
   refuseUnsettled,
 } from '../dist/calendar.js';
@@ -359,6 +361,145 @@ test('a refused create leaves no audit line', async () => {
   process.env.ARTIST_MCP_AUDIT = join(dir, 'writes.log');
   try {
     await withFetch(emptyDay, () => createEvent('t', params).then(() => null, () => null));
+    await assert.rejects(() => readFile(join(dir, 'writes.log'), 'utf8'), /ENOENT/);
+  } finally {
+    if (previous === undefined) delete process.env.ARTIST_MCP_AUDIT;
+    else process.env.ARTIST_MCP_AUDIT = previous;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+// ------------------------------------------------------------------ deleting
+
+const ARTIST_EVENT = {
+  id: 'artistabc123',
+  summary: 'Quartet at St Mary',
+  start: { dateTime: '2026-10-16T20:00:00+02:00', timeZone: 'Europe/Madrid' },
+  end: { dateTime: '2026-10-16T22:00:00+02:00', timeZone: 'Europe/Madrid' },
+};
+
+const serving = (event) => async (url, init) => {
+  if (init?.method === 'DELETE') return new Response(null, { status: 204 });
+  return new Response(JSON.stringify(event), { status: 200 });
+};
+
+/**
+ * The rule the whole capability rests on. Without it this is a tool that can
+ * remove any event on the calendar, including the gigs the musician typed in
+ * themselves and anything a venue shared with them.
+ */
+test('an event this tool did not create cannot be deleted', async () => {
+  for (const id of ['abc123', 'ARTISTabc', 'someoneelse_1', '']) {
+    await assert.rejects(
+      () => withFetch(serving(ARTIST_EVENT), () => previewDeleteEvent('t', { event_id: id })),
+      /not created by artist-mcp|malformed/,
+      `${id || '(empty)'} was not refused`,
+    );
+  }
+});
+
+test('the refusal happens before the event is even fetched', async () => {
+  let fetched = 0;
+  await withFetch(
+    async (...args) => {
+      fetched += 1;
+      return serving(ARTIST_EVENT)(...args);
+    },
+    () => previewDeleteEvent('t', { event_id: 'notours123' }).then(() => null, () => null),
+  );
+  // A refusal that depended on reading the event would fail differently for an
+  // event that cannot be read, which is not a distinction worth having here.
+  assert.equal(fetched, 0);
+});
+
+test('a delete with no token is refused', async () => {
+  await assert.rejects(
+    () => withFetch(serving(ARTIST_EVENT), () => deleteEvent('t', { event_id: ARTIST_EVENT.id })),
+    /preview_calendar_delete first/,
+  );
+});
+
+/**
+ * The token is over the event as Google returns it, so an event that changed
+ * between preview and delete stops matching — stricter than create, where the
+ * payload comes from the caller.
+ */
+test('an event that changed since the preview stops matching', async () => {
+  const { confirmation_token } = await withFetch(serving(ARTIST_EVENT), () =>
+    previewDeleteEvent('t', { event_id: ARTIST_EVENT.id }),
+  );
+  const moved = { ...ARTIST_EVENT, start: { dateTime: '2026-10-20T20:00:00+02:00' } };
+  await assert.rejects(
+    () =>
+      withFetch(serving(moved), () =>
+        deleteEvent('t', { event_id: ARTIST_EVENT.id, confirmation_token }),
+      ),
+    /does not match this event/,
+  );
+});
+
+test('the matching token deletes it, and records what it said', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'artist-audit-'));
+  const previous = process.env.ARTIST_MCP_AUDIT;
+  process.env.ARTIST_MCP_AUDIT = join(dir, 'writes.log');
+  try {
+    const { confirmation_token } = await withFetch(serving(ARTIST_EVENT), () =>
+      previewDeleteEvent('t', { event_id: ARTIST_EVENT.id }),
+    );
+
+    let deleted;
+    await withFetch(
+      async (url, init) => {
+        if (init?.method === 'DELETE') {
+          deleted = String(url);
+          return new Response(null, { status: 204 });
+        }
+        return new Response(JSON.stringify(ARTIST_EVENT), { status: 200 });
+      },
+      () => deleteEvent('t', { event_id: ARTIST_EVENT.id, confirmation_token }),
+    );
+
+    assert.match(deleted, /\/events\/artistabc123$/);
+
+    // The whole event, not a reference to it: nobody notices an absence, so the
+    // record has to be enough to put it back by hand.
+    const line = JSON.parse(await readFile(join(dir, 'writes.log'), 'utf8'));
+    assert.equal(line.operation, 'delete_calendar_event');
+    assert.match(line.summary, /Quartet at St Mary/);
+    assert.match(line.summary, /2026-10-16T20:00:00/);
+  } finally {
+    if (previous === undefined) delete process.env.ARTIST_MCP_AUDIT;
+    else process.env.ARTIST_MCP_AUDIT = previous;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * Already gone is the same outcome as just removed, from the musician's side.
+ * Reporting it as a failure invites a second attempt at something already done.
+ */
+test('an event already gone is not reported as a failure', async () => {
+  const { confirmation_token } = await withFetch(serving(ARTIST_EVENT), () =>
+    previewDeleteEvent('t', { event_id: ARTIST_EVENT.id }),
+  );
+  await withFetch(
+    async (url, init) =>
+      init?.method === 'DELETE'
+        ? new Response(null, { status: 410 })
+        : new Response(JSON.stringify(ARTIST_EVENT), { status: 200 }),
+    () => deleteEvent('t', { event_id: ARTIST_EVENT.id, confirmation_token }),
+  );
+});
+
+test('a refused delete leaves no audit line', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'artist-audit-'));
+  const previous = process.env.ARTIST_MCP_AUDIT;
+  process.env.ARTIST_MCP_AUDIT = join(dir, 'writes.log');
+  try {
+    await withFetch(serving(ARTIST_EVENT), () =>
+      deleteEvent('t', { event_id: ARTIST_EVENT.id }).then(() => null, () => null),
+    );
     await assert.rejects(() => readFile(join(dir, 'writes.log'), 'utf8'), /ENOENT/);
   } finally {
     if (previous === undefined) delete process.env.ARTIST_MCP_AUDIT;

@@ -30,7 +30,7 @@ test('no flag means no writes', () => {
  */
 test('an unknown capability is refused, and the message names it', () => {
   assert.throws(() => parseGrants('calender-create'), /Unknown write capability: calender-create/);
-  assert.throws(() => parseGrants('calendar-create,calendar-delete'), /calendar-delete/);
+  assert.throws(() => parseGrants('calendar-create,calendar-update'), /calendar-update/);
   // And it says what the legal values are, so the fix does not need the docs.
   assert.throws(() => parseGrants('nope'), /Available: calendar-create/);
 });
@@ -160,4 +160,25 @@ test('a granted install has the preview and the create, and nothing more', async
     granted.filter((name) => !plain.includes(name)).sort(),
     ['create_calendar_event', 'preview_calendar_event'],
   );
+});
+
+
+test('the delete tools are gated on their own capability, not on any grant', async () => {
+  const createOnly = await toolNames(['calendar-create']);
+  assert.equal(createOnly.includes('delete_calendar_event'), false);
+  assert.equal(createOnly.includes('preview_calendar_delete'), false);
+
+  const both = await toolNames(['calendar-create', 'calendar-delete']);
+  assert.ok(both.includes('delete_calendar_event'));
+  assert.ok(both.includes('preview_calendar_delete'));
+});
+
+/**
+ * Granting delete alone is legal and self-consistent: it removes events this
+ * tool made on an install that no longer creates them.
+ */
+test('delete can be granted without create', async () => {
+  const names = await toolNames(['calendar-delete']);
+  assert.ok(names.includes('delete_calendar_event'));
+  assert.equal(names.includes('create_calendar_event'), false);
 });

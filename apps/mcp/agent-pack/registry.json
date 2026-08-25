@@ -119,7 +119,7 @@
       "name": "Orchestrator",
       "description": "Turn the user's request and live OneNote evidence into one useful next action.",
       "file": ".artist/roles/ORCHESTRATOR.md",
-      "sha256": "2845ff5532a900cc8e0e316735dc0801e325fb038c5d37458ba61b09105925d8"
+      "sha256": "c7496baa5d5e86cdc905ed37b3a72265bb6e982d7084091ed8fe024fddf50c2b"
     },
     {
       "id": "role:project-manager",

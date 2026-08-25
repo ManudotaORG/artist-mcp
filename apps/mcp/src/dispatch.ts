@@ -13,7 +13,15 @@
 
 import { GraphError } from './client.js';
 import { mapAttachment, readAttachment } from './attachments.js';
-import { createEvent, listCalendars, listEvents, previewEvent, readEvent } from './calendar.js';
+import {
+  createEvent,
+  deleteEvent,
+  listCalendars,
+  listEvents,
+  previewDeleteEvent,
+  previewEvent,
+  readEvent,
+} from './calendar.js';
 import { listEmails, readEmail } from './mail.js';
 import { listNotes, mapNotes, readNote } from './notes.js';
 import { accessTokenFor } from './oauth.js';
@@ -52,6 +60,9 @@ export const OPERATIONS = {
   // has to happen before a write is allowed.
   preview_calendar_event: { provider: 'google', effect: 'read' },
   create_calendar_event: { provider: 'google', effect: 'write' },
+  // Reads the event so a deletion is confirmed against what is really there.
+  preview_calendar_delete: { provider: 'google', effect: 'read' },
+  delete_calendar_event: { provider: 'google', effect: 'write' },
 } as const satisfies Record<string, { provider: ProviderName; effect: 'read' | 'write' }>;
 
 export type Operation = keyof typeof OPERATIONS;
@@ -137,6 +148,10 @@ export const dispatchWith =
         return (await previewEvent(token, params)) as T;
       case 'create_calendar_event':
         return (await createEvent(token, params)) as T;
+      case 'preview_calendar_delete':
+        return (await previewDeleteEvent(token, params)) as T;
+      case 'delete_calendar_event':
+        return (await deleteEvent(token, params)) as T;
       case 'list_calendars':
         // No parameters by design: the whole value is knowing the full set, and
         // a filtered list of what exists is the reach problem again.

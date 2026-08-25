@@ -11,10 +11,12 @@ same way. Either connection stands alone: connect OneNote, Google, or both, and
 disconnecting one leaves the other working.
 
 Everything is read-only unless you ask for otherwise at install time. Nothing
-is ever written to OneNote, no message is ever sent, and nothing is synced. One
-opt-in exists: `artist-mcp init --allow-writes calendar-create` lets it add a
+is ever written to OneNote, no message is ever sent, and nothing is synced. Two
+opt-ins exist: `artist-mcp init --allow-writes calendar-create` lets it add a
 single Google Calendar event, after showing you the exact event and waiting for
-your yes. Without that flag the tool to do it is not there at all.
+your yes, and `calendar-delete` lets it remove an event **it created itself** —
+never one you made, or one shared onto your calendar. Without the flag the tools
+are not there at all.
 
 The project has three parts:
 

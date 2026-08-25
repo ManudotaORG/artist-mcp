@@ -30,6 +30,9 @@
  */
 export const WRITE_CAPABILITIES = {
   'calendar-create': 'add a single event to a Google Calendar, after showing it to you first',
+  'calendar-delete':
+    'remove an event that artist-mcp itself created, after showing it to you first. ' +
+    'It cannot touch an event you made or one someone shared with you.',
 } as const;
 
 export type WriteCapability = keyof typeof WRITE_CAPABILITIES;

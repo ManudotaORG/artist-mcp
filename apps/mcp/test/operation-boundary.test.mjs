@@ -37,6 +37,8 @@ const SANCTIONED = {
   list_calendars: 'read',
   preview_calendar_event: 'read',
   create_calendar_event: 'write',
+  preview_calendar_delete: 'read',
+  delete_calendar_event: 'write',
 };
 
 test('the operation table is exactly what was sanctioned', () => {
@@ -80,26 +82,40 @@ test('the HTTP layer sends exactly one non-GET, and it is the sanctioned one', a
   // counted set — a second one has to be argued for here before it can ship.
   assert.deepEqual(
     nonGet,
-    ['POST'],
+    ['POST', 'DELETE'],
     `api.ts sends ${nonGet.join(', ') || 'nothing but GET'}. Any change here is a boundary change.`,
   );
 });
 
 /**
- * The narrower claim that the count above cannot make: PATCH, PUT and DELETE
- * are not merely absent, they are the ones that would make an event editable or
- * removable. Google grants all of them with the same scope as create, so this
- * assertion is the boundary — nothing at the provider stops them.
+ * Deleting is now possible, and narrowly: only an event this tool created, by
+ * the `artist` id prefix. Updating still is not, and that is the assertion —
+ * Google grants PATCH and PUT with the same scope, so nothing at the provider
+ * stops them and only this repository does.
+ *
+ * An event this tool did not create must stay unreachable. If that check is
+ * ever removed, the capability should go back to not existing at all; see
+ * docs/decisions/0001-opt-in-calendar-writes.md.
  */
-test('nothing can update or delete anything', async () => {
+test('nothing can update an event', async () => {
   const api = await readFile(resolve(srcRoot, 'api.ts'), 'utf8');
-  for (const method of ['PATCH', 'PUT', 'DELETE']) {
+  for (const method of ['PATCH', 'PUT']) {
     assert.doesNotMatch(
       api,
       new RegExp(`method\\s*:\\s*['"\`]${method}`, 'i'),
       `api.ts can send ${method}. calendar.events grants it; only this repository refuses it.`,
     );
   }
+});
+
+test('only an event this tool created can be deleted', async () => {
+  const calendar = await readFile(resolve(srcRoot, 'calendar.ts'), 'utf8');
+  assert.match(
+    calendar,
+    /startsWith\(ARTIST_ID_PREFIX\)/,
+    'The prefix check is what makes deleting safe to offer. Without it this is ' +
+      'a tool that can remove any event on the calendar.',
+  );
 });
 
 /**
@@ -110,11 +126,23 @@ test('nothing can update or delete anything', async () => {
  * is the realistic one.
  */
 test('no module outside the sanctioned list exports a write-shaped helper', async () => {
-  const suspicious = /export\s+(?:const|function|async function)\s+(\w*(?:Post|Put|Patch|Delete|Insert|Create|Send|Write)\w*)/g;
+  // Case-insensitive, which it was not: `deleteEvent` and `createEvent` slipped
+  // straight past a pattern looking for a capital D, so the guard was blind to
+  // the two functions that actually write. Found when adding delete.
+  const suspicious =
+    /export\s+(?:const|function|async function)\s+(\w*(?:post|put|patch|delete|insert|create|send|write)\w*)/gi;
   const files = ['api.ts', 'calendar.ts', 'mail.ts', 'notes.ts', 'attachments.ts'];
   // The sanctioned write path, named in full. Anything else matching the shape
   // is a boundary change and fails here.
-  const SANCTIONED = ['api.ts:calendarInsertEvent', 'calendar.ts:createEvent'];
+  const SANCTIONED = [
+    'api.ts:calendarInsertEvent',
+    'api.ts:calendarDeleteEvent',
+    'calendar.ts:createEvent',
+    'calendar.ts:deleteEvent',
+    // A read: it fetches the event so a deletion is confirmed against what is
+    // really there. Named here because the pattern cannot tell it apart.
+    'calendar.ts:previewDeleteEvent',
+  ];
   const found = [];
   for (const file of files) {
     const text = await readFile(resolve(srcRoot, file), 'utf8');

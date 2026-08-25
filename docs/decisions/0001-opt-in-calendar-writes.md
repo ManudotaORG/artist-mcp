@@ -287,6 +287,55 @@ unreplaced version is the `AGENTS.md` drift again.
 Because a description outranks a playbook at the moment of a call, each write
 gate lives in the tool's own description as well as in the pack.
 
+## Deleting: only what this tool created
+
+Added after the first real-calendar run, and narrower than it sounds.
+
+`create_calendar_event` sets the event id itself, prefixed `artist`. That prefix
+is the whole basis of this: **an event whose id does not begin with it cannot be
+deleted**, so the capability is "undo what this tool did", not "manage this
+calendar". A gig the musician typed in by hand is unreachable, and so is
+everything shared onto their calendar by anyone else.
+
+Two facts make this materially safer than it first reads:
+
+- Google keeps deleted events in a per-calendar bin for **30 days**, restorable
+  by anyone with edit access. Deleting is therefore closer to creating than to
+  an `onenote-patch-content` against a `data-id`, which is what the whole
+  recoverable-goes-first argument turned on.
+- No new scope, and no reconnect. `calendar.events` already authorises
+  `events.delete` — that is exactly the property this record complains about
+  under "the scope layer stops being a guarantee". Here it means the expensive
+  half of adding a write does not recur.
+
+### What is different from create
+
+The confirmation inverts. A create token binds to a payload the model composed;
+a delete token binds to an event that **already exists**, so the preview fetches
+the event and renders what would be removed. The server controls that payload
+rather than trusting a description of it, which is stricter than create, not
+looser.
+
+The failure mode is also harder to notice. A wrong create leaves an extra event
+someone can see; a wrong delete leaves a gap, and nobody notices absence. So the
+audit line for a delete records **the whole event**, not a reference to it — 
+enough to put it back by hand if the bin has expired.
+
+### Known interaction, not yet resolved
+
+Deleting an event and then creating the same one again is expected to fail: the
+client-set id is taken by the trashed event, and Google refuses to reuse it.
+That is the idempotency guard and the bin working against each other. It is
+recorded here rather than fixed, because the honest answer — tell the musician
+the event is in the bin and to restore it there — needs the real behaviour
+confirmed first.
+
+### What would reverse this
+
+An event deleted that this tool did not create. That would mean the prefix check
+failed or was removed, and the capability should go back to not existing.
+
+
 ## Consequences
 
 - **Every existing Google connection must reconnect.** A refresh token carries

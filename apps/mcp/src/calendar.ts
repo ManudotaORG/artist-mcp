@@ -8,7 +8,12 @@
  */
 
 import { GraphError, ScopeError } from './client.js';
-import { CALENDAR_LIST_NEED, calendarGet, calendarInsertEvent } from './api.js';
+import {
+  CALENDAR_LIST_NEED,
+  calendarDeleteEvent,
+  calendarGet,
+  calendarInsertEvent,
+} from './api.js';
 import { recordWrite } from './audit.js';
 
 /** The edge function returned HTTP statuses; here the message is the whole signal. */
@@ -362,11 +367,16 @@ export const confirmationToken = (draft: EventDraft): Promise<string> =>
  * purpose: if the double-book guard rode on the token, dropping the token
  * requirement later would silently drop double-booking protection with it.
  */
+export const ARTIST_ID_PREFIX = 'artist';
+
 export const idempotencyId = async (draft: EventDraft): Promise<string> =>
   // Prefixed so a human reading their calendar's raw data can tell where the
   // event came from, and trimmed because Google caps ids at 1024 characters
   // while 32 base32hex characters is already 160 bits.
-  `artist${(await digest('event', draft)).slice(0, 32)}`;
+  //
+  // The prefix is load-bearing beyond legibility: it is what makes deleting
+  // safe to offer at all, since only an id carrying it may be removed.
+  `${ARTIST_ID_PREFIX}${(await digest('event', draft)).slice(0, 32)}`;
 
 /**
  * Anything a page left unsettled, in the spellings the pack actually uses.
@@ -582,4 +592,121 @@ export async function createEvent(token: string, params: Record<string, unknown>
     calendar_id: draft.calendar_id,
     written: renderDraft(draft),
   };
+}
+
+
+// -------------------------------------------------------- removing an event
+
+/**
+ * Fetch the event as it stands, so a delete is confirmed against what is really
+ * there rather than against a description of it.
+ *
+ * This is the one place the confirmation is stricter than it is for a create:
+ * the payload being hashed came from Google, not from the caller.
+ */
+const fetchForDeletion = async (token: string, calendarId: string, eventId: string) => {
+  if (!EVENT_ID.test(eventId)) throw failure('event_id is malformed.');
+  if (!CALENDAR_ID.test(calendarId)) throw failure('calendar_id is malformed.');
+
+  // The rule the whole capability rests on. An id without the prefix belongs to
+  // an event somebody else made — typed in by hand, or shared onto the calendar
+  // — and this tool has no business removing it. Checked before the fetch, so a
+  // refusal does not depend on the event being readable.
+  if (!eventId.startsWith(ARTIST_ID_PREFIX)) {
+    throw failure(
+      'That event was not created by artist-mcp, so it cannot be deleted here. ' +
+        'Only events this tool created can be removed by it — anything else is ' +
+        "the musician's own, and belongs to them to change in Google Calendar.",
+    );
+  }
+
+  const res = await calendarGet(
+    `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    token,
+  );
+  return (await res.json()) as CalendarEvent;
+};
+
+/** How a deletion reads to someone deciding whether to allow it. */
+const renderExisting = (e: CalendarEvent, calendarId: string): string => {
+  const start = eventTime(e.start);
+  const end = eventTime(e.end);
+  const lines = [
+    `Title:    ${e.summary ?? '(no title)'}`,
+    start.all_day
+      ? `When:     ${start.value} to ${end.value} (all day)`
+      : `When:     ${start.value} to ${end.value}${start.time_zone ? ` (${start.time_zone})` : ''}`,
+  ];
+  if (e.location) lines.push(`Where:    ${e.location}`);
+  if (e.description) lines.push(`Notes:    ${e.description}`);
+  lines.push(`Calendar: ${calendarId}`);
+  return lines.join('\n');
+};
+
+/** A token over the event as Google returns it, not as anyone described it. */
+const deletionToken = async (e: CalendarEvent, calendarId: string): Promise<string> => {
+  const data = new TextEncoder().encode(
+    `delete ${calendarId} ${e.id ?? ''} ${e.summary ?? ''} ` +
+      `${eventTime(e.start).value ?? ''} ${eventTime(e.end).value ?? ''}`,
+  );
+  return base32hex(new Uint8Array(await crypto.subtle.digest('SHA-256', data)));
+};
+
+/**
+ * Show what would be removed, and hand back the token that permits removing it.
+ */
+export async function previewDeleteEvent(token: string, params: Record<string, unknown>) {
+  const calendarId =
+    typeof params.calendar_id === 'string' && params.calendar_id.trim()
+      ? params.calendar_id.trim()
+      : 'primary';
+  const eventId = typeof params.event_id === 'string' ? params.event_id.trim() : '';
+  const event = await fetchForDeletion(token, calendarId, eventId);
+
+  return {
+    preview: renderExisting(event, calendarId),
+    confirmation_token: await deletionToken(event, calendarId),
+    calendar_id: calendarId,
+  };
+}
+
+/**
+ * Remove an event this tool created.
+ *
+ * The audit records the whole event rather than a reference to it. A wrong
+ * create leaves something visible; a wrong delete leaves a gap, and nobody
+ * notices absence — so what is written down has to be enough to put it back by
+ * hand once Google's 30-day bin has expired.
+ */
+export async function deleteEvent(token: string, params: Record<string, unknown>) {
+  const calendarId =
+    typeof params.calendar_id === 'string' && params.calendar_id.trim()
+      ? params.calendar_id.trim()
+      : 'primary';
+  const eventId = typeof params.event_id === 'string' ? params.event_id.trim() : '';
+  const event = await fetchForDeletion(token, calendarId, eventId);
+
+  const supplied = typeof params.confirmation_token === 'string' ? params.confirmation_token : '';
+  const expected = await deletionToken(event, calendarId);
+  if (supplied !== expected) {
+    throw failure(
+      supplied === ''
+        ? 'No confirmation_token. Call preview_calendar_delete first and show the ' +
+            'musician what would be removed.'
+        : 'The confirmation_token does not match this event. It has changed since ' +
+            'the preview, so preview again and show the musician what is there now.',
+    );
+  }
+
+  const record = renderExisting(event, calendarId);
+  await calendarDeleteEvent(calendarId, eventId, token);
+
+  await recordWrite({
+    operation: 'delete_calendar_event',
+    summary: record,
+    target: `${calendarId}/${eventId}`,
+    source_page: typeof params.source_page === 'string' ? params.source_page : null,
+  });
+
+  return { deleted: record, calendar_id: calendarId, event_id: eventId };
 }

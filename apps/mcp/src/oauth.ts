@@ -144,6 +144,11 @@ const fetchGoogleClientSecret = async (): Promise<string> => {
  */
 export const WRITE_SCOPES: Readonly<Record<WriteCapability, readonly string[]>> = {
   'calendar-create': ['https://www.googleapis.com/auth/calendar.events'],
+  // The same scope, because Google has only one: events.insert and
+  // events.delete accept the identical four. Granting delete after create
+  // therefore needs no new consent screen at all, which is the one convenience
+  // that follows from the scopes being this coarse.
+  'calendar-delete': ['https://www.googleapis.com/auth/calendar.events'],
 };
 
 /**

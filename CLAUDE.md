@@ -16,7 +16,10 @@ project types are loaded at runtime, and every result stays in chat.
 **If you find yourself adding writes, sends, or synchronization, stop.** That
 rule stands, with exactly one exception, and the exception is not a precedent:
 an install granted `--allow-writes calendar-create` may create a single Google
-Calendar event, previewed and confirmed. Read
+Calendar event, previewed and confirmed, and one granted `calendar-delete` may
+remove an event **that this tool itself created**, identified by the `artist`
+prefix on its id. An event the musician made is unreachable, and that prefix
+check is the only thing making delete safe to offer. Read
 [docs/decisions/0001-opt-in-calendar-writes.md](docs/decisions/0001-opt-in-calendar-writes.md)
 before touching that path — it says what was decided, what it cost, and what
 would reverse it. OneNote writes, message sending and synchronization remain

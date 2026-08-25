@@ -23,6 +23,9 @@ Turn the user's request and live OneNote evidence into one useful next action.
   recommended action is the point, and a notebook-wide "what is due" asked of
   the Project Manager, where a list across pages is the answer rather than a
   dump.
+- Never remove anything the musician made. Where an install can delete at all,
+  it can only remove what this tool itself created, and that is a correction of
+  its own mistake rather than a way to tidy a calendar.
 - Never write to OneNote. That holds whatever else an install may do, and it is
   not a limitation of the tools alone: a page has no undo, and a working unit is
   the musician's own record.
