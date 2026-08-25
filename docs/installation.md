@@ -193,6 +193,12 @@ The reconnect is not optional. A refresh token carries the scopes it was
 granted with, so an existing Google connection cannot write until it is renewed
 — the grant alone changes nothing.
 
+Separate several capabilities with a comma or a space — `--allow-writes
+calendar-create calendar-delete` works too. On Windows the comma does not
+survive: Claude Desktop spawns `npx`, which is a `.cmd` script there, and
+cmd.exe rewrites the comma, so both forms are accepted rather than one being
+insisted on.
+
 `--allow-writes calendar-create,calendar-delete` also lets it remove an event
 it created itself, identified by the `artist` prefix on the event id. An event
 you made, or one shared onto your calendar, is refused — this is an undo for its

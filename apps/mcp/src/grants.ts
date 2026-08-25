@@ -37,6 +37,10 @@ export const WRITE_CAPABILITIES = {
 
 export type WriteCapability = keyof typeof WRITE_CAPABILITIES;
 
+/** Whether a bare token names a capability, for untangling mangled arguments. */
+export const isWriteCapability = (value: unknown): value is WriteCapability =>
+  typeof value === 'string' && Object.keys(WRITE_CAPABILITIES).includes(value);
+
 const KNOWN = Object.keys(WRITE_CAPABILITIES) as WriteCapability[];
 
 /**
@@ -50,8 +54,14 @@ const KNOWN = Object.keys(WRITE_CAPABILITIES) as WriteCapability[];
 export const parseGrants = (raw: string | undefined): WriteCapability[] => {
   if (raw === undefined) return [];
 
+  // Commas or whitespace, because a comma does not survive Windows. Claude
+  // Desktop spawns `npx`, which is a .cmd batch script there, and cmd.exe
+  // treats a comma as an argument separator — `calendar-create,calendar-delete`
+  // arrived as the single string `calendar-create calendar-delete` and was
+  // refused as one unknown capability. A separator that the platform's own
+  // shell rewrites is the wrong separator to insist on.
   const named = raw
-    .split(',')
+    .split(/[\s,]+/)
     .map((part) => part.trim())
     .filter((part) => part !== '');
 
