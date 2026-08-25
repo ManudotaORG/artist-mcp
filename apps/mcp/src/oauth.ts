@@ -144,12 +144,21 @@ export const PROVIDERS: Readonly<Record<ProviderName, ProviderConfig>> = {
     label: 'Google',
     authorize: 'https://accounts.google.com/o/oauth2/v2/auth',
     token: 'https://oauth2.googleapis.com/token',
-    // Kept in step with the SCOPES list in the web app's Google route. Events
-    // rather than the whole calendar: events are the evidence, and the broader
-    // scope would also hand over metadata and sharing ACLs nothing reads.
+    // Kept in step with GOOGLE_SCOPES in supabase/functions/graph/index.ts —
+    // asserted by test/google-scopes, because the two have to agree and a
+    // refresh asking for more than the grant carries is rejected.
+    //
+    // Events rather than the whole calendar: events are the evidence, and the
+    // broader scope would also hand over metadata and sharing ACLs nothing
+    // reads. calendarlist.readonly is the exception, and it is read-only: it
+    // names which calendars exist, without which "the day as it stands" quietly
+    // means "the day on primary" for anyone keeping gigs on a second calendar,
+    // and we could not detect that one exists in order to say so. See
+    // docs/decisions/0001-opt-in-calendar-writes.md.
     scope: [
       'https://www.googleapis.com/auth/gmail.readonly',
       'https://www.googleapis.com/auth/calendar.events.readonly',
+      'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
     ].join(' '),
     clientId: env(
       'ARTIST_MCP_GOOGLE_CLIENT_ID',

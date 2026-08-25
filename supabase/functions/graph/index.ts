@@ -47,6 +47,10 @@ const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/calendar.events.readonly",
+  // Read-only, and the one scope here that is not about events themselves. It
+  // names which calendars exist; without it a search of "primary" that finds
+  // nothing cannot say whether it looked in the right place.
+  "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
 ].join(" ");
 
 /**
