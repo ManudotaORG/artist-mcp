@@ -27,6 +27,10 @@ const CUSTODY_FUNCTIONS = [
   'resolve_mcp_key',
   'redeem_oauth_code',
   'resolve_oauth_token',
+  // What an account is allowed to do must not be readable or settable with the
+  // publishable key, for the same reason its tokens are not.
+  'write_grants_for',
+  'set_write_grants',
 ];
 
 const allMigrations = [
@@ -34,6 +38,7 @@ const allMigrations = [
   '20260810010000_revoke_public_execute.sql',
   '20260824120000_hosted_token_custody.sql',
   '20260824130000_revoke_hosted_functions_from_roles.sql',
+  '20260826090000_write_grants.sql',
   '20260824140000_resolve_mcp_key.sql',
   '20260824150000_oauth_server.sql',
 ]
@@ -154,4 +159,35 @@ test('the hosted refresh does not ask for a scope', () => {
       'grant carries is rejected, so this breaks connections made before the ' +
       'current scope list — in a session, not in CI.',
   );
+});
+
+
+/**
+ * A table in this schema without RLS is a public PostgREST endpoint. This one
+ * holds what each account is allowed to do, so a missing policy would let
+ * anyone with the publishable key read — or worse, grant — a write capability.
+ */
+test('write_grants is not exposed through PostgREST', () => {
+  const grants = read('20260826090000_write_grants.sql');
+  assert.match(
+    grants,
+    /alter table public\.write_grants\s+enable row level security/,
+    'write_grants is served by PostgREST without RLS',
+  );
+  assert.doesNotMatch(
+    grants,
+    /create policy/,
+    'A policy on write_grants makes it reachable by a role other than the ' +
+      'service role. Reads go through write_grants_for.',
+  );
+});
+
+/**
+ * Replacing rather than merging is what makes a grant withdrawable. A merge
+ * would need a second function to remove one, and a capability nobody can take
+ * back is not opt-in.
+ */
+test('setting grants replaces the set, so a capability can be withdrawn', () => {
+  const grants = read('20260826090000_write_grants.sql');
+  assert.match(grants, /delete from public\.write_grants/);
 });
