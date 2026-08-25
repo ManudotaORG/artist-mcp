@@ -1,6 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { createClient } from '@supabase/supabase-js';
 import { getSiteUrl } from '@/lib/siteUrl';
 import { supabaseServer } from '@/lib/supabase/server';
 
@@ -71,3 +72,44 @@ export const disconnect = async (formData: FormData) => {
  * mint and nothing for the edge function to resolve. The mcp_keys table is left
  * in place and dormant — see docs/operations.md for why it was not dropped.
  */
+
+/**
+ * Turn calendar writes on or off for this account.
+ *
+ * One switch rather than a capability each. The local install names them
+ * individually because someone typing a flag can be precise; a person deciding
+ * on a web page is answering "may it manage my calendar entries", and splitting
+ * that into two questions makes the answer harder without making it better.
+ * Splitting it later is additive.
+ *
+ * The service role, not the signed-in session: `set_write_grants` is revoked
+ * from `authenticated` on purpose, because what an account is allowed to do
+ * must not be settable with the key the browser holds. The user id comes from
+ * the session, so this can only ever change the caller's own row.
+ */
+export const setCalendarWrites = async (formData: FormData) => {
+  const wanted = String(formData.get('enabled') ?? '') === 'true';
+
+  const supabase = await supabaseServer();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect('/sign-in');
+
+  const admin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+
+  const { error } = await admin.rpc('set_write_grants', {
+    p_user_id: user.id,
+    p_capabilities: wanted ? ['calendar-create', 'calendar-delete'] : [],
+  });
+
+  if (error) redirect(`/?error=${encodeURIComponent(error.message)}`);
+  // Granting changes nothing until the connection is renewed: a refresh token
+  // carries the scopes it was granted with. Withdrawing takes effect at once,
+  // because the tools stop being registered whatever the token can do.
+  redirect(wanted ? '/?writes=granted' : '/?writes=withdrawn');
+};

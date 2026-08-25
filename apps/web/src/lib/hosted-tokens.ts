@@ -155,7 +155,15 @@ export const hostedTokens =
         {
           grant_type: 'refresh_token',
           refresh_token: refreshToken as string,
-          scope: config.scope,
+          // No scope. A refresh token carries the scopes it was granted with,
+          // and asking for more is rejected — so sending what this build would
+          // ask for breaks every connection made before a scope was added to
+          // the product, an hour later, inside a session. Omitting it returns
+          // exactly what was granted, which is the only correct answer here:
+          // unlike the package, hosted stores no scope to send back.
+          //
+          // The package hit the same bug and fixed it by sending the stored
+          // scope. Both are right; the shapes differ because the storage does.
           // The package's config carries its own client id; hosted connections
           // belong to the web registration.
           client_id: client.clientId,

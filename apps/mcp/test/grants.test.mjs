@@ -5,10 +5,8 @@ import {
   WRITE_CAPABILITIES,
   isWriteCapability,
   describeGrants,
-  grantedWrites,
   isGranted,
   parseGrants,
-  setGrants,
 } from '../dist/grants.js';
 import { createServerEntry } from '../dist/init.js';
 import { createServer } from '../dist/server.js';
@@ -106,16 +104,27 @@ test('the local build records the grant the same way', () => {
   assert.equal(entry.args[entry.args.indexOf('--allow-writes') + 1], 'calendar-create');
 });
 
-test('grants are readable back, and default to none', () => {
-  setGrants([]);
-  assert.deepEqual(grantedWrites(), []);
-  assert.equal(isGranted('calendar-create'), false);
-  assert.match(describeGrants(), /Writes: none/);
+test('a grant set answers for itself, and an empty one says so', () => {
+  assert.equal(isGranted([], 'calendar-create'), false);
+  assert.match(describeGrants([]), /Writes: none/);
 
-  setGrants(['calendar-create']);
-  assert.equal(isGranted('calendar-create'), true);
-  assert.match(describeGrants(), /calendar-create/);
-  setGrants([]);
+  assert.equal(isGranted(['calendar-create'], 'calendar-create'), true);
+  assert.equal(isGranted(['calendar-create'], 'calendar-delete'), false);
+  assert.match(describeGrants(['calendar-create']), /calendar-create/);
+});
+
+/**
+ * The property that matters once one process serves more than one user: two
+ * grant sets cannot see each other. Module state could not offer this, and the
+ * hosted route is where it would have failed — in production, under
+ * concurrency, in a way no test here would reproduce.
+ */
+test('two grant sets are independent', () => {
+  const a = ['calendar-create'];
+  const b = [];
+  assert.equal(isGranted(a, 'calendar-create'), true);
+  assert.equal(isGranted(b, 'calendar-create'), false);
+  assert.equal(isGranted(a, 'calendar-create'), true);
 });
 
 /**
@@ -123,17 +132,12 @@ test('grants are readable back, and default to none', () => {
  * again, where a correct thing never reached the client. The briefing is the
  * one surface a session actually reads.
  */
-const briefingWith = async (grants) => {
-  setGrants(grants);
-  try {
-    return await renderWorkflowBriefing(
-      [{ id: 'policy:intake', name: 'Intake', description: 'x', source: 'bundled', origin: '/', file: 'a.md' }],
-      async () => ({ content: '# Intake\n\nrules' }),
-    );
-  } finally {
-    setGrants([]);
-  }
-};
+const briefingWith = (grants) =>
+  renderWorkflowBriefing(
+    [{ id: 'policy:intake', name: 'Intake', description: 'x', source: 'bundled', origin: '/', file: 'a.md' }],
+    async () => ({ content: '# Intake\n\nrules' }),
+    grants,
+  );
 
 test('a read-only install says so in the briefing, unprompted', async () => {
   const text = await briefingWith([]);
@@ -158,17 +162,11 @@ test('a granted install names the write and carries the disputed-value rule', as
  * tool result reads as an obstacle to route around rather than as a boundary.
  */
 const toolNames = async (grants) => {
-  setGrants(grants);
-  try {
-    const server = await createServer(async () => ({}));
-    // The SDK keeps registered tools on the server instance; read whichever
-    // shape this version exposes rather than reaching into a private field
-    // blindly.
-    const registered = server._registeredTools ?? {};
-    return Object.keys(registered);
-  } finally {
-    setGrants([]);
-  }
+  const server = await createServer(async () => ({}), grants);
+  // The SDK keeps registered tools on the server instance; read whichever
+  // shape this version exposes rather than reaching into a private field
+  // blindly.
+  return Object.keys(server._registeredTools ?? {});
 };
 
 test('an ungranted install has no write tool at all', async () => {
@@ -217,4 +215,35 @@ test('a capability token is recognised, and nothing else is', () => {
   assert.equal(isWriteCapability('calendar-delete'), true);
   assert.equal(isWriteCapability('status'), false);
   assert.equal(isWriteCapability(undefined), false);
+});
+
+
+/**
+ * The hosted failure this shape exists to prevent.
+ *
+ * One process serves many users there. With the grant in module state, serving
+ * a granted user and an ungranted one concurrently could hand the second the
+ * first's tools — and it would pass every other test in this suite, because
+ * they all run one user at a time. Built concurrently on purpose.
+ */
+test('servers built at the same time do not see each other\'s grants', async () => {
+  const [none, both, createOnly] = await Promise.all([
+    toolNames([]),
+    toolNames(['calendar-create', 'calendar-delete']),
+    toolNames(['calendar-create']),
+  ]);
+
+  assert.equal(none.some((n) => n.includes('create_calendar') || n.includes('delete_calendar')), false);
+  assert.equal(both.includes('create_calendar_event'), true);
+  assert.equal(both.includes('delete_calendar_event'), true);
+  assert.equal(createOnly.includes('create_calendar_event'), true);
+  assert.equal(createOnly.includes('delete_calendar_event'), false);
+});
+
+test('the briefings rendered together each describe their own grant', async () => {
+  const [plain, granted] = await Promise.all([briefingWith([]), briefingWith(['calendar-create'])]);
+  assert.match(plain, /can only read/);
+  assert.doesNotMatch(plain, /calendar-create/);
+  assert.match(granted, /calendar-create/);
+  assert.doesNotMatch(granted, /can only read/);
 });

@@ -12,6 +12,7 @@
  */
 
 import { GraphError } from './client.js';
+import { recordWrite, type RecordWrite } from './audit.js';
 import { mapAttachment, readAttachment } from './attachments.js';
 import {
   createEvent,
@@ -107,7 +108,7 @@ export const connectedProviders = async (): Promise<ProviderName[]> => {
 export type ResolveToken = (provider: ProviderName) => Promise<string>;
 
 export const dispatchWith =
-  (resolve: ResolveToken) =>
+  (resolve: ResolveToken, record: RecordWrite = recordWrite) =>
   async <T>(op: Operation, params: Record<string, unknown> = {}): Promise<T> => {
     const token = await resolve(PROVIDER_FOR[op]);
 
@@ -147,11 +148,11 @@ export const dispatchWith =
       case 'preview_calendar_event':
         return (await previewEvent(token, params)) as T;
       case 'create_calendar_event':
-        return (await createEvent(token, params)) as T;
+        return (await createEvent(token, params, record)) as T;
       case 'preview_calendar_delete':
         return (await previewDeleteEvent(token, params)) as T;
       case 'delete_calendar_event':
-        return (await deleteEvent(token, params)) as T;
+        return (await deleteEvent(token, params, record)) as T;
       case 'list_calendars':
         // No parameters by design: the whole value is knowing the full set, and
         // a filtered list of what exists is the reach problem again.

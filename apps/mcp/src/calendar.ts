@@ -14,7 +14,7 @@ import {
   calendarGet,
   calendarInsertEvent,
 } from './api.js';
-import { recordWrite } from './audit.js';
+import { recordWrite, type RecordWrite } from './audit.js';
 
 /** The edge function returned HTTP statuses; here the message is the whole signal. */
 const failure = (message: string): GraphError => new GraphError(message, false);
@@ -598,7 +598,11 @@ const describeDuplicate = async (
  * inexpressible too. It does not prove a person read the preview, and no part
  * of this protocol can.
  */
-export async function createEvent(token: string, params: Record<string, unknown>) {
+export async function createEvent(
+  token: string,
+  params: Record<string, unknown>,
+  record: RecordWrite = recordWrite,
+) {
   const draft = draftFrom(params);
   refuseUnsettled(draft);
 
@@ -647,7 +651,7 @@ export async function createEvent(token: string, params: Record<string, unknown>
   // the write another way leaves no trace at all — which is exactly what
   // happened the first time this was run against a real calendar. The audit has
   // to sit where the event is created or it is not an audit.
-  await recordWrite({
+  await record({
     operation: 'create_calendar_event',
     summary: renderDraft(draft),
     target: `${draft.calendar_id}/${created.id ?? 'unknown'}`,
@@ -776,7 +780,11 @@ export async function previewDeleteEvent(token: string, params: Record<string, u
  * notices absence — so what is written down has to be enough to put it back by
  * hand once Google's 30-day bin has expired.
  */
-export async function deleteEvent(token: string, params: Record<string, unknown>) {
+export async function deleteEvent(
+  token: string,
+  params: Record<string, unknown>,
+  record: RecordWrite = recordWrite,
+) {
   const calendarId =
     typeof params.calendar_id === 'string' && params.calendar_id.trim()
       ? params.calendar_id.trim()
@@ -796,15 +804,15 @@ export async function deleteEvent(token: string, params: Record<string, unknown>
     );
   }
 
-  const record = renderExisting(event, calendarId);
+  const written = renderExisting(event, calendarId);
   await calendarDeleteEvent(calendarId, eventId, token);
 
-  await recordWrite({
+  await record({
     operation: 'delete_calendar_event',
-    summary: record,
+    summary: written,
     target: `${calendarId}/${eventId}`,
     source_page: typeof params.source_page === 'string' ? params.source_page : null,
   });
 
-  return { deleted: record, calendar_id: calendarId, event_id: eventId };
+  return { deleted: written, calendar_id: calendarId, event_id: eventId };
 }
