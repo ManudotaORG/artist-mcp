@@ -394,6 +394,29 @@ const renderWorkflowBriefing = async (
   ].join("\n");
 };
 
+/**
+ * One sentence naming what this install may change, for the handshake.
+ *
+ * Derived, never restated. An install with no grant says so too — that line is
+ * the one that keeps a read-only install describing itself correctly.
+ */
+const capabilityLine = (): string => {
+  const writes = grantedWrites();
+  if (writes.length === 0) {
+    return (
+      " This install can only read. It cannot create, change or delete " +
+      "anything in OneNote, Gmail or Google Calendar, and must never offer to."
+    );
+  }
+  return (
+    " This install has been granted these writes by the user: " +
+    writes.map((name) => `${name} (${WRITE_CAPABILITIES[name]})`).join('; ') +
+    ". Everything else is read-only, including all of OneNote. Never describe " +
+    "this server as read-only while any write is granted, and never write a " +
+    "value the notebook has not settled."
+  );
+};
+
 const createServer = async (call: Dispatch): Promise<McpServer> => {
   // Nothing is checked here on purpose. The server starts whether or not a
   // provider is connected, and a tool that needs one says so when it is called:
@@ -422,7 +445,20 @@ const createServer = async (call: Dispatch): Promise<McpServer> => {
     "it. Working from these tool descriptions alone means working with no " +
     "policy in force, which is not a lighter version of this server's " +
     "behaviour but a different one. If a call fails or the briefing reports a " +
-    "playbook it could not read, say so before answering.";
+    "playbook it could not read, say so before answering." +
+    // What this install may change, in the handshake as well as the briefing.
+    //
+    // The briefing is the statement of the rules and stays so. But a client
+    // asked "what can you do?" answers from the tool list without calling
+    // anything, so no tool description and no briefing can reach it — and a
+    // Desktop session did exactly that, describing itself as read-only after a
+    // write had been granted. A boundary the product states wrongly about
+    // itself is worse than one it states weakly.
+    //
+    // This is not the third copy of the rules that drifted in AGENTS.md: it is
+    // derived from the grant at startup, so it cannot say something the install
+    // is not. The rules themselves are still only in the pack.
+    capabilityLine();
 
   const server = new McpServer(
     { name: "artist-notes", version: serverVersion },
