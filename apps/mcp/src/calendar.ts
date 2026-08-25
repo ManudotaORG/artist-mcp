@@ -479,6 +479,23 @@ const draftFrom = (params: Record<string, unknown>): EventDraft => {
     throw failure('The event ends before it starts.');
   }
 
+  // Equal ends are the subtler half, and they differ by kind.
+  //
+  // Google treats an all-day `end.date` as exclusive: a gig on the 11th ends on
+  // the 12th. `end` equal to `start` is an empty range, which Google refuses —
+  // and a model that does not know the convention writes it without hesitating.
+  // A timed event of zero length is not a gig either. Refused here rather than
+  // surfacing as a Google 400 that says nothing about what to do.
+  if (end === start) {
+    throw failure(
+      allDay
+        ? `An all-day event ends on the following day: Google reads the end date as ` +
+            `exclusive, so a single day on ${start} is start ${start}, end ` +
+            `${new Date(new Date(start).getTime() + 86_400_000).toISOString().slice(0, 10)}.`
+        : 'The event starts and ends at the same moment. Give it a duration.',
+    );
+  }
+
   return {
     calendar_id: calendarId,
     summary: text(params.summary, 'summary', true) as string,

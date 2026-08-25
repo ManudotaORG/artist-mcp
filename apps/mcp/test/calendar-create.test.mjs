@@ -105,6 +105,33 @@ test('a mismatched start and end kind is refused', async () => {
   );
 });
 
+/**
+ * Google reads an all-day `end.date` as exclusive: a gig on the 11th ends on
+ * the 12th. Equal dates are an empty range and Google refuses them, and a model
+ * that does not know the convention writes it without hesitating — the one that
+ * did know got it right, which is not the same as the code being safe.
+ */
+test('an all-day event ending on its own start date is refused, with the fix', async () => {
+  await assert.rejects(
+    () =>
+      withFetch(emptyDay, () =>
+        previewEvent('t', {
+          summary: 'Classical Horizons',
+          start: '2028-09-11',
+          end: '2028-09-11',
+        }),
+      ),
+    /exclusive.*2028-09-12/s,
+  );
+});
+
+test('a zero-length timed event is refused', async () => {
+  await assert.rejects(
+    () => withFetch(emptyDay, () => previewEvent('t', { ...params, end: params.start })),
+    /same moment/,
+  );
+});
+
 test('an event that ends before it starts is refused', async () => {
   await assert.rejects(
     () => withFetch(emptyDay, () => previewEvent('t', { ...params, end: '2026-10-16T19:00:00' })),
