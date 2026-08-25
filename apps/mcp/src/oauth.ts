@@ -222,11 +222,36 @@ const pkcePair = (): { verifier: string; challenge: string } => {
  * Best-effort. A browser that does not open is an inconvenience, not a failure —
  * the URL is printed either way and pasting it works identically.
  */
+/**
+ * How to hand a URL to the desktop's browser, per platform.
+ *
+ * Separated from the spawn so it can be asserted for every platform from any
+ * platform — the bug below only ever appeared on Windows, where none of this
+ * suite runs.
+ *
+ * Windows does **not** go through `cmd`. It used to: `spawn('start', [url],
+ * { shell: true })` runs `cmd /c start <url>`, and cmd reads `&` as a command
+ * separator, so an authorize URL built by URLSearchParams was chopped at the
+ * first parameter. The browser received `...authorize?client_id=...` with no
+ * scope, response_type or redirect_uri, and Microsoft answered AADSTS900144.
+ * Quoting it for cmd is possible and fiddly; `rundll32 url.dll` opens the
+ * default handler with no shell involved, so there is no escaping to get
+ * wrong.
+ */
+export const browserOpener = (
+  os: string,
+  url: string,
+): { command: string; args: string[] } => {
+  if (os === 'win32') return { command: 'rundll32', args: ['url.dll,FileProtocolHandler', url] };
+  if (os === 'darwin') return { command: 'open', args: [url] };
+  return { command: 'xdg-open', args: [url] };
+};
+
 const openBrowser = (url: string): void => {
-  const command =
-    platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
+  const { command, args } = browserOpener(platform(), url);
   try {
-    spawn(command, [url], { detached: true, stdio: 'ignore', shell: platform() === 'win32' })
+    // No `shell`, on any platform. A shell is what interpreted the URL.
+    spawn(command, args, { detached: true, stdio: 'ignore' })
       .on('error', () => {})
       .unref();
   } catch {
