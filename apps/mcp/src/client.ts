@@ -40,3 +40,27 @@ export class GraphError extends Error {
     this.name = 'GraphError';
   }
 }
+
+/**
+ * A 403 that means "this token was never granted that", as opposed to a fault.
+ *
+ * Its own type because the two answers are different: a scope the product
+ * cannot work without is a reconnect prompt, and a scope that only makes an
+ * answer better is a sentence in the answer. A refresh token carries the scopes
+ * it was granted with and adding one later does not widen it, so both are
+ * permanent until the user reconnects — they are not transient failures to
+ * retry, and they are not integration bugs.
+ *
+ * `optional` is the caller's claim, not the provider's: only the caller knows
+ * whether it can produce a weaker but honest result without this.
+ */
+export class ScopeError extends GraphError {
+  constructor(
+    message: string,
+    readonly capability: string,
+    readonly optional: boolean,
+  ) {
+    super(message, !optional);
+    this.name = 'ScopeError';
+  }
+}

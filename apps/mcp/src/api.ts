@@ -7,7 +7,7 @@
  * from a specific failure, and a port is the wrong moment to second-guess them.
  */
 
-import { GraphError } from './client.js';
+import { GraphError, ScopeError } from './client.js';
 
 export const GRAPH = 'https://graph.microsoft.com/v1.0';
 export const GMAIL = 'https://gmail.googleapis.com/gmail/v1';
@@ -97,7 +97,22 @@ const humanWait = (ms: number): string => {
   return `about ${Math.ceil(seconds / 60)} minutes`;
 };
 
-export const getWithRetry = async (url: string, token: string, api: string): Promise<Response> => {
+/**
+ * What a call needs from the grant, for the one failure that is not a fault.
+ *
+ * `capability` is phrased for the user, because it ends up in the message they
+ * read. `optional` says whether the caller can still answer without it: reading
+ * events is the product, so its absence is a reconnect prompt, while knowing
+ * which calendars exist only makes an answer more honest about its own reach.
+ */
+export type ScopeNeed = { capability: string; optional: boolean };
+
+export const getWithRetry = async (
+  url: string,
+  token: string,
+  api: string,
+  need?: ScopeNeed,
+): Promise<Response> => {
   let spentWaiting = 0;
   let requestedWait: number | undefined;
 
@@ -149,7 +164,23 @@ export const getWithRetry = async (url: string, token: string, api: string): Pro
       // scope later does not widen it. A connection made before Calendar
       // existed here therefore authenticates fine and is refused per call, so
       // this has to read as "reconnect", not as a broken integration.
+      //
+      // Which reconnect prompt, though, depends on what was missing. Telling
+      // someone whose calendar reading works perfectly that their "connection
+      // predates Google Calendar access" is false and alarming; what actually
+      // failed was the newer, narrower thing the call happened to need.
       if (res.status === 403 && /insufficient|ACCESS_TOKEN_SCOPE/i.test(detail)) {
+        if (need) {
+          throw new ScopeError(
+            need.optional
+              ? `This connection cannot ${need.capability}. Everything else still works; ` +
+                'run `artist-mcp connect google` if you want it to.'
+              : `This connection cannot ${need.capability}. ` +
+                'Run `artist-mcp connect google` to grant it.',
+            need.capability,
+            need.optional,
+          );
+        }
         throw new GraphError(
           `This connection predates ${api} access. Run \`artist-mcp connect google\` to grant it.`,
           true,
@@ -196,5 +227,16 @@ export const graphGet = (path: string, token: string): Promise<Response> =>
 export const gmailGet = (path: string, token: string): Promise<Response> =>
   getWithRetry(`${GMAIL}${path}`, token, 'Gmail');
 
-export const calendarGet = (path: string, token: string): Promise<Response> =>
-  getWithRetry(`${CALENDAR}${path}`, token, 'Google Calendar');
+export const calendarGet = (path: string, token: string, need?: ScopeNeed): Promise<Response> =>
+  getWithRetry(`${CALENDAR}${path}`, token, 'Google Calendar', need);
+
+/**
+ * Knowing which calendars exist is the one Google read this product can do
+ * without. A connection made before `calendar.calendarlist.readonly` was asked
+ * for still reads events perfectly, so its absence degrades the answer — "only
+ * `primary` was searched" — rather than failing it.
+ */
+export const CALENDAR_LIST_NEED: ScopeNeed = {
+  capability: 'see which calendars you have',
+  optional: true,
+};

@@ -265,6 +265,12 @@ async function accessTokenFor(
   return body.access_token as string;
 }
 
+/**
+ * What a call needs from the grant, for the one 403 that is not a fault.
+ * Mirrors ScopeNeed in apps/mcp/src/api.ts.
+ */
+type ScopeNeed = { capability: string; optional: boolean };
+
 class HttpError extends Error {
   constructor(
     readonly status: number,
@@ -284,6 +290,7 @@ async function getWithRetry(
   url: string,
   token: string,
   api: string,
+  need?: ScopeNeed,
 ): Promise<Response> {
   const delays = [400, 1200];
 
@@ -303,7 +310,24 @@ async function getWithRetry(
       // scope later does not widen it. A connection made before Calendar
       // existed here therefore authenticates fine and is refused per-call, so
       // this has to read as "reconnect", not as a broken integration.
+      // Which reconnect prompt depends on what was missing. Telling someone
+      // whose calendar reading works perfectly that their connection predates
+      // Google Calendar access is false and alarming; what failed was the
+      // newer, narrower thing this particular call needed. Kept in step with
+      // ScopeNeed in apps/mcp/src/api.ts — the two custody models must answer
+      // a scope gap the same way.
       if (res.status === 403 && /insufficient|ACCESS_TOKEN_SCOPE/i.test(detail)) {
+        if (need) {
+          throw new HttpError(
+            403,
+            need.optional
+              ? `This connection cannot ${need.capability}. Everything else still works; ` +
+                "reconnect Google in the web app if you want it to."
+              : `This connection cannot ${need.capability}. ` +
+                "Reconnect Google in the web app to grant it.",
+            !need.optional,
+          );
+        }
         throw new HttpError(
           403,
           `This connection predates ${api} access. Reconnect Google in the web app to grant it.`,
@@ -330,8 +354,8 @@ function gmailGet(path: string, token: string): Promise<Response> {
   return getWithRetry(`${GMAIL}${path}`, token, "Gmail");
 }
 
-function calendarGet(path: string, token: string): Promise<Response> {
-  return getWithRetry(`${CALENDAR}${path}`, token, "Google Calendar");
+function calendarGet(path: string, token: string, need?: ScopeNeed): Promise<Response> {
+  return getWithRetry(`${CALENDAR}${path}`, token, "Google Calendar", need);
 }
 
 // ---------------------------------------------------------------- operations
