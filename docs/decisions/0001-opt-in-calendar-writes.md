@@ -1,0 +1,223 @@
+# 0001 — Writes are allowed, per tool, opt-in, to Google Calendar only
+
+Status: accepted. Supersedes the unqualified "no writes" rule for Google
+Calendar and only for Google Calendar. Raised by issue #85.
+
+## What the old rule said
+
+`CLAUDE.md` said: "If you find yourself adding writes, sends, or
+synchronization, stop." `docs/mvp-brief.md` said the read-only boundary **does
+not rest on the Markdown**, because no write tool exists.
+
+Both were true and both were load-bearing. Every "never write, send, book" line
+in the agent pack descends from the first, and the second is what made an edited
+playbook harmless — a user could rewrite a policy and still not reach their own
+OneNote.
+
+## What changed
+
+A gig lives on a OneNote page and never reaches the calendar, so the musician is
+the sync layer. That is the thing this product exists to stop being true. The
+read-only rule was protecting against a class of harm — durable, external,
+un-undoable change made on the agent's own judgement — and one write does not
+belong to that class:
+
+- A wrong calendar event is deleted in two seconds. A bad
+  `onenote-patch-content` against a `data-id` target corrupts a page
+  permanently, with no undo. Same reasoning as `policy:patch`: the recoverable
+  side goes first.
+- The calendar was already the derivative surface. OneNote is the knowledge
+  base; Gmail and Calendar are supporting evidence. Writing to the evidence
+  layer does not create a rival system of record for the work itself, which is
+  the reason Google Tasks was left out.
+
+## What is decided
+
+1. **One operation: create an event.** Not update, not delete, not move, not
+   respond, not sync. "Add all the gigs" is not a feature; one event per call.
+2. **OneNote writes stay out of scope**, and this record does not open a path to
+   them. `policy:patch` does not change — the musician still pastes page
+   updates.
+3. **Grants are opt-in at install time, named by capability, in one
+   argument.** See "How the grant is expressed" below.
+4. **A write tool that is not granted is not registered at all** — absent, not
+   registered-and-refusing. A tool that exists is a tool a model will try, and a
+   refusal in a tool result reads as an obstacle to route around.
+5. **A disputed or `UNKNOWN` value may never become a calendar event.** Two
+   pages disagreeing on a date is exactly what `policy:divergence` refuses to
+   decide; a write would decide it silently, durably, and where other people see
+   it. The write is refused and the refusal says why.
+6. **The boundary is now a capability check, not the absence of a write path.**
+   And the capability check is our code, not Google's — see "The scope layer
+   stops being a guarantee" below.
+7. **The tool never claims an event is missing.** It has no definition of
+   "missing" and does not need one; see "What makes an event missing" below.
+8. **A write is never offered unprompted.** This follows from 7: offering to add
+   an event *is* the claim that one is absent, which is the claim we cannot
+   make. The musician asks, or nothing happens.
+
+## How the grant is expressed
+
+One install argument carrying a list of capability names:
+
+```
+npx artist-mcp init --allow-writes=calendar-create
+```
+
+Today the list has exactly one legal value. An unrecognised name is refused by
+name rather than ignored, the way a misfiled pack file is.
+
+**Not a boolean, and not named for a harm category.** `--destructive` was
+considered and rejected on two grounds:
+
+- Creating a calendar event is not destructive — that is the whole argument for
+  doing it first. A flag named for the category collapses the recoverable /
+  unrecoverable distinction this record exists to draw, and inverts it: the day
+  a genuinely destructive tool ships, everyone who typed the flag for a calendar
+  insert has already granted it. No new consent moment, no reconnect, nothing in
+  the config diff to notice.
+- A boolean cannot tell `init` which scope to request. `scope` in
+  `apps/mcp/src/oauth.ts` is a constant read at connect time, and a refresh
+  token carries the scopes it was granted with — widening one later is a new
+  consent, not a config change. A boolean therefore forces `init` to request
+  every write scope the product has ever defined, for anyone who passes it.
+
+**Not per tool either.** One flag, not one flag per tool. The list is the grant
+set; a second write tool means the user edits that string, which is exactly the
+consent moment worth keeping and the only cost the list has over a boolean.
+
+## Where the grant lives, and what secures it
+
+In the `args` array of the Claude Desktop configuration file. **The security
+boundary is therefore filesystem permissions on that file**, and this is chosen
+rather than inherited: the OAuth tokens for every connected provider already sit
+under the same trust on the same machine, so a grant string there widens nothing
+that was not already reachable by anyone who could read them.
+
+It follows that the grant is a property of an install, not of a user or an
+account. Two installs on one machine can hold different grants, and copying a
+configuration file copies the grant with it.
+
+
+## What makes an event "missing"
+
+Nothing, decided deliberately. Absence from a calendar search is exactly the
+"cheap look that found nothing is not a finding" trap `policy:evidence` exists
+for, and `list_events` has five separate ways to return nothing while the event
+exists: free-text `q` missing a differently-worded title, `thinRecurring`
+dropping occurrences past three per series, the page cap of 25, the default
+window of −7 days to +365 days, and the calendar not being the one searched.
+Cancelled instances are also dropped before the caller sees them, so "cancelled"
+and "absent" arrive looking identical while wanting opposite responses.
+
+Requiring several queries to all come back empty was considered and rejected: N
+cheap looks that found nothing is the same trap in a bigger hat, and it fails
+all five hazards at once rather than one at a time.
+
+So the tool asserts nothing. Instead:
+
+- **The day is enumerated, not queried.** Given a settled date, every event on
+  that date is listed and shown to the musician. Absence becomes something a
+  person observed rather than something a search reported. A settled date is
+  required regardless, by rule 5.
+- **That listing is the preview.** It costs no call that was not already being
+  made, and it puts the evidence next to the claim.
+- **The preview names its own limits** — which calendars were covered, and that
+  the look was bounded. A preview that shows an empty day without saying
+  "`primary` only" makes the strong claim while displaying the weak evidence.
+- **A client-generated id, derived from the source page, guards duplicates.**
+  Google accepts client-set event ids (base32hex, unique per calendar), so a
+  retry collides instead of double-booking. This is a duplicate guard and not a
+  definition of absence: an event the musician typed in by hand carries no such
+  id, which is precisely the first-write case.
+
+To make the calendar disclosure honest, `calendar.calendarlist.readonly` is
+added to the **read** scopes. `calendar.events.readonly` does not authorise
+`calendarList.list`, and secondary calendar ids are opaque addresses, so without
+it "the day as it stands" silently means "the day on `primary`" for every
+musician who keeps gigs on a separate calendar — and we could not detect that
+such a calendar exists in order to say so. It is read-only, it is the narrowest
+scope that closes the hole, and the reconnect it forces is one this issue
+already requires.
+
+## The scope layer stops being a guarantee
+
+Stated plainly because the previous version of this boundary leaned on it.
+
+`events.insert` is authorised only by `calendar`, `calendar.events`,
+`calendar.app.created`, or `calendar.events.owned`. The realistic choice is
+`calendar.events` — which is **read and write over all events, including update
+and delete**, and which supersedes the read-only scope held today. Google
+publishes no insert-only scope.
+
+So the moment any write ships, the scope layer no longer constrains what the
+code could do; it only constrains what it can reach. Nothing but our own closed
+operation union and the registration-time capability check stands between this
+product and a deleted event — and both of those are our code, not the provider's
+enforcement.
+
+Verified rather than assumed: `events.insert` and `events.delete` accept the
+*identical* four scopes. Not overlapping lists — the same list. Google's scope
+table splits by reach and by read-versus-write, never by which write, so there is
+no create-without-delete grant to reach for.
+
+`calendar.events.owned` — "see, create, change, and delete events on calendars
+you own" — was considered. Identical power, strictly narrower reach: it excludes
+calendars shared with the musician but owned by someone else, which is where a
+wrong event does the most damage, since other people see it before the musician
+does. It was set aside for now in favour of the wider `calendar.events`, to keep
+the first write simple; reads stay on `calendar.events.readonly` regardless.
+Worth revisiting if a musician turns out to keep gigs on a band or venue
+calendar they do not own, or on the first wrong event written anywhere but their
+own calendar.
+
+`calendar.app.created` was considered, because it would keep a hard,
+provider-enforced floor. It confines the app to a calendar the app itself
+created, which is not the musician's calendar, so it defeats the purpose: the
+gig has to land where they already look. Rejected on that basis, not overlooked.
+
+The consequence is that the operation union and the capability check are now
+load-bearing in a way they were not, and must be treated as security code:
+adding an operation to that union is a boundary change, not a feature.
+
+
+## What the guarantee is now
+
+Weaker, and it has to be stated as weaker. Before, the boundary held because no
+write path existed anywhere in the codebase. Now it rests on four layers:
+
+1. Scopes granted to the token. These bound which *products* are reachable, but
+   from the first write onward they no longer bound read against write within
+   Calendar — see above. This layer is weaker than it was and is no longer the
+   floor.
+2. A closed operation union, each operation mapped to a provider.
+3. A capability check at registration, against the grant set: an ungranted write
+   tool is never exposed.
+4. The playbooks, which describe 1–3 and add the disputed-value rule.
+
+Layer 4 is the only one a user can edit. Layers 2 and 3 are now the real floor,
+and they are ours to hold. The sentence in `docs/mvp-brief.md` claiming the boundary
+does not rest on the Markdown becomes false the moment the first write tool
+ships, and is replaced as part of issue #85 rather than as a follow-up. An
+unreplaced version is the `AGENTS.md` drift again.
+
+Because a description outranks a playbook at the moment of a call, each write
+gate lives in the tool's own description as well as in the pack.
+
+## Consequences
+
+- **Every existing Google connection must reconnect.** A refresh token carries
+  the scopes it was granted with; adding a scope later does not widen it. The
+  403 handling in `supabase/functions/graph/index.ts` must tell "predates
+  Calendar writes" apart from "read-only by choice" — different user actions.
+  Two scopes are added at that reconnect, not one: `calendar.calendarlist.readonly`
+  for everyone, and `calendar.events` only where a write is granted.
+- Verification needs a disposable calendar. The MESSY notebook stays read-only.
+- Preview then confirm, idempotency via a client-generated id so a retry cannot
+  double-book, an audit line per write, and time zones stated explicitly.
+
+## What would reverse this
+
+If a created event is ever wrong in a way the musician does not catch before
+someone else acts on it, the preview-and-confirm step failed, and the grant
+model — not the wording — is what needs revisiting.
