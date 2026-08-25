@@ -69,6 +69,28 @@ export const runDisconnect = async (input?: string): Promise<void> => {
   );
 };
 
+/**
+ * `--allow-writes <list>`, read back out of the entry `init` wrote.
+ *
+ * Out of the entry, deliberately, and not out of this process's arguments: the
+ * grant belongs to the install, and `status` typed in a terminal carries none
+ * of it. Reporting what argv happens to say would tell every user their install
+ * is read-only, including the ones it is not.
+ */
+const recordedWrites = (args: unknown): string => {
+  if (!Array.isArray(args)) return 'none — this install can only read';
+  const at = args.indexOf('--allow-writes');
+  const value = at === -1 ? undefined : args[at + 1];
+  if (typeof value !== 'string' || value.trim() === '') {
+    return 'none — this install can only read';
+  }
+  return value
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(', ');
+};
+
 /** `--agents <dir>`, read back out of the entry `init` wrote. */
 const recordedAgentsDir = (args: unknown): string | undefined => {
   if (!Array.isArray(args)) return undefined;
@@ -142,6 +164,10 @@ const describeInstall = async (): Promise<void> => {
   } else {
     console.log(`Install    ${build}`);
   }
+
+  // Before the playbook lines, which return early. A grant that only printed on
+  // some installs would be worse than not printing it at all.
+  console.log(`Writes     ${recordedWrites(entry.args)}`);
 
   const agentsDir = recordedAgentsDir(entry.args);
   if (agentsDir === undefined) {

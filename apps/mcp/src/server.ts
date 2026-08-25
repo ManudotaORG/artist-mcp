@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { WRITE_CAPABILITIES, grantedWrites } from "./grants.js";
 import { listAgentWorkflows, loadAgentWorkflow, type ResolvedEntry } from "./agents.js";
 import { GraphError } from "./client.js";
 import { call as localCall, type Operation } from "./dispatch.js";
@@ -353,8 +354,37 @@ const renderWorkflowBriefing = async (
         ]
       : [];
 
+  // What this install may change, stated in the briefing rather than left to
+  // the tool list. A session that has to infer its own permissions from which
+  // tools happen to exist is inferring; and the read-only claim appears in
+  // seven roles and six policies, so a session must be told plainly when it is
+  // no longer true. The "none" line matters most: it is what keeps every
+  // read-only install saying the same thing it always said.
+  const writes = grantedWrites();
+  const capabilities =
+    writes.length === 0
+      ? [
+          "# What this install may change",
+          "Nothing. This install can only read. Never claim to have added, " +
+            "changed or removed anything in OneNote, Gmail or Calendar, and " +
+            "never offer to.",
+        ]
+      : [
+          "# What this install may change",
+          "This install has been granted the writes below by the user, at " +
+            "install time. Everything not listed here remains read-only, " +
+            "including all of OneNote.",
+          ...writes.map((name) => `- ${name}: ${WRITE_CAPABILITIES[name]}`),
+          "A disputed or UNKNOWN value may never be written. If two pages " +
+            "disagree, or a field is unsettled, refuse the write and say why — " +
+            "a written value persists and other people see it, which is exactly " +
+            "the decision policy:divergence refuses to make.",
+        ];
+
   return [
     ...alarm,
+    ...capabilities,
+    "",
     "# Roles and policies (load by id when needed)",
     summary.join("\n"),
     "",
