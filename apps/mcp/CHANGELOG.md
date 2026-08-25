@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.5.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.4.0...artist-mcp-v1.5.0) (2026-08-25)
+
+
+### Features
+
+* **mcp:** ask Google which calendars exist, and guard the scope lists ([5a67685](https://github.com/ManudotaORG/artist-mcp/commit/5a67685addc5c0fa0e7cc8afc4e99b768fffbe09)), closes [#85](https://github.com/ManudotaORG/artist-mcp/issues/85)
+* **mcp:** create one calendar event, previewed and confirmed ([d3d0f87](https://github.com/ManudotaORG/artist-mcp/commit/d3d0f8746eb8f8c7c1852bfe1113079a4844fb90)), closes [#85](https://github.com/ManudotaORG/artist-mcp/issues/85)
+* **mcp:** delete an event, but only one this tool created ([d749254](https://github.com/ManudotaORG/artist-mcp/commit/d749254b021a1bb8ebdcb14ddbd27daf1716ce33)), closes [#85](https://github.com/ManudotaORG/artist-mcp/issues/85)
+* **mcp:** let an install be granted a write, and say so everywhere ([ed5f8d3](https://github.com/ManudotaORG/artist-mcp/commit/ed5f8d3206ae5dff926cf6a37590c27385694ec9)), closes [#85](https://github.com/ManudotaORG/artist-mcp/issues/85)
+* **mcp:** list the calendars, so an absence can mean something ([f9c68b1](https://github.com/ManudotaORG/artist-mcp/commit/f9c68b17ab7a5af8f3b7d360cd0c0681a3ef0904)), closes [#85](https://github.com/ManudotaORG/artist-mcp/issues/85)
+
+
+### Bug Fixes
+
+* **mcp:** a date picked in chat does not settle a page that contradicts itself ([b376f1b](https://github.com/ManudotaORG/artist-mcp/commit/b376f1b1aa865500d248817da099e037835d1402)), closes [#85](https://github.com/ManudotaORG/artist-mcp/issues/85)
+* **mcp:** ask consent for the write, and stop refreshing with the wrong scope ([f9dffb7](https://github.com/ManudotaORG/artist-mcp/commit/f9dffb7561a1728fc5e75becff7e15dcec82bd57)), closes [#85](https://github.com/ManudotaORG/artist-mcp/issues/85)
+* **mcp:** read the deletion preview in the event's own zone, and name the bin ([4ed0c67](https://github.com/ManudotaORG/artist-mcp/commit/4ed0c6753ff703fd8e5648273aa607f80823b01a)), closes [#85](https://github.com/ManudotaORG/artist-mcp/issues/85)
+* **mcp:** record the write where the write happens ([dd17b22](https://github.com/ManudotaORG/artist-mcp/commit/dd17b22fcb20c7330384cba1617b7e77f482e412)), closes [#85](https://github.com/ManudotaORG/artist-mcp/issues/85)
+* **mcp:** say in the handshake what this install may change ([dcfde5e](https://github.com/ManudotaORG/artist-mcp/commit/dcfde5e70bc5c28c1fcfe4b751471e48c4c21c4e)), closes [#85](https://github.com/ManudotaORG/artist-mcp/issues/85)
+* **mcp:** say which grant is missing, not that the connection is old ([4fa42b8](https://github.com/ManudotaORG/artist-mcp/commit/4fa42b8931f7979b11748dbc535c16526ba46c5a)), closes [#85](https://github.com/ManudotaORG/artist-mcp/issues/85)
+
 ## [1.4.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.3.0...artist-mcp-v1.4.0) (2026-08-24)
 
 
