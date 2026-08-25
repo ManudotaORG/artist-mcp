@@ -78,6 +78,12 @@ That is the whole argument for doing it now rather than when it is wanted.
   provider*, while a grant is per user. A column there would repeat itself; a
   separate table is one more thing to keep in step. Either is defensible and
   neither is interesting enough to settle in advance of writing it.
+- **Whether the database should validate a capability name.** It does not, and
+  that is deliberate: the list lives in the package, so a check constraint would
+  be a second copy to keep in step and a migration for every capability added.
+  An unrecognised name is dropped when the grant is read, so it can never become
+  a registered tool — verified by storing `not-a-capability` against a real
+  Postgres and watching it stay inert.
 - **Whether to record the granted scope.** `connections` has no scope column,
   which is why the hosted refresh now sends none — the correct fix, since
   omitting it returns exactly what was granted. Storing it would let the app

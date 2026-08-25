@@ -8,7 +8,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { WRITE_CAPABILITIES, type WriteCapability } from '@manudota/artist-mcp/grants';
+import { isWriteCapability, type WriteCapability } from '@manudota/artist-mcp/grants';
 
 const need = (name: string): string => {
   const value = process.env[name];
@@ -22,11 +22,15 @@ const admin = () =>
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-const known = (value: unknown): value is WriteCapability =>
-  typeof value === 'string' && Object.keys(WRITE_CAPABILITIES).includes(value);
-
 /**
  * The capabilities this user opted into, or none.
+ *
+ * The database stores whatever it is told: there is deliberately no check
+ * constraint on the capability name, because the list of capabilities lives in
+ * the package and duplicating it in SQL would mean two lists to keep in step
+ * and a migration for every new one. What makes an unknown row harmless is
+ * here — a name this build does not recognise is dropped, so it can never
+ * become a registered tool.
  *
  * A failure to read is **not** treated as a grant. Any error here — an
  * unreachable database, a missing function, a renamed capability — must land on
@@ -41,7 +45,7 @@ export const writeGrantsFor = async (userId: string): Promise<WriteCapability[]>
       console.error(`[artist-mcp] could not read write grants for ${userId}: ${error.message}`);
       return [];
     }
-    return Array.isArray(data) ? data.filter(known) : [];
+    return Array.isArray(data) ? data.filter(isWriteCapability) : [];
   } catch (err) {
     console.error(`[artist-mcp] could not read write grants for ${userId}: ${err}`);
     return [];
