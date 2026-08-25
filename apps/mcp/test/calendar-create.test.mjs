@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -285,12 +285,20 @@ test('a write leaves a line naming what, where and from which page', async () =>
  * create it a second time.
  */
 test('an unwritable audit does not turn a successful write into a failure', async () => {
+  // A file standing where a directory would have to be. ENOTDIR on every
+  // platform, unlike a path such as /proc/... which exists on Linux and not on
+  // macOS and so tests something different depending on where it runs.
+  const dir = await mkdtemp(join(tmpdir(), 'artist-audit-'));
+  const blocker = join(dir, 'in-the-way');
+  await writeFile(blocker, 'not a directory');
+
   const previous = process.env.ARTIST_MCP_AUDIT;
-  process.env.ARTIST_MCP_AUDIT = '/proc/nonexistent/writes.log';
+  process.env.ARTIST_MCP_AUDIT = join(blocker, 'writes.log');
   try {
     await recordWrite({ operation: 'x', summary: 'y', target: 'z' });
   } finally {
     if (previous === undefined) delete process.env.ARTIST_MCP_AUDIT;
     else process.env.ARTIST_MCP_AUDIT = previous;
+    await rm(dir, { recursive: true, force: true });
   }
 });
