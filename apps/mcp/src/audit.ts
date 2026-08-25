@@ -19,6 +19,18 @@ import { dirname, join } from 'node:path';
 export const auditPath = (): string =>
   process.env.ARTIST_MCP_AUDIT ?? join(homedir(), '.artist-mcp', 'writes.log');
 
+/**
+ * Where a completed write is recorded.
+ *
+ * Injected for the same reason the token resolver is: on this machine it is a
+ * file in the user's home directory, and hosted it is a row bound to one user.
+ * A file on a serverless host is one nobody will ever read, and "detectable and
+ * reversible" is the whole justification for these writes existing — so the
+ * sink has to be the caller's to choose. See
+ * docs/decisions/0002-hosted-writes.md.
+ */
+export type RecordWrite = (entry: WriteRecord) => Promise<void>;
+
 export type WriteRecord = {
   operation: string;
   /** What was written, as the user would read it back. */

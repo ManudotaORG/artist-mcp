@@ -599,3 +599,44 @@ test('an event with no zone is labelled UTC rather than silently localised', asy
   );
   assert.match(preview, /UTC/);
 });
+
+
+/**
+ * The sink is injectable so hosted can write a row instead of a file. Asserted
+ * here because the package is where the write happens, and a default that
+ * quietly ignored the argument would leave hosted with no audit at all.
+ */
+test('a caller-supplied recorder is used instead of the file', async () => {
+  const recorded = [];
+  const token = await confirmationToken(draft);
+  await withFetch(
+    async (url, init) =>
+      init?.method === 'POST'
+        ? new Response(JSON.stringify({ id: 'created-id' }), { status: 200 })
+        : emptyDay(),
+    () =>
+      createEvent('t', { ...params, confirmation_token: token, source_page: 'page-9' }, async (e) =>
+        void recorded.push(e),
+      ),
+  );
+
+  assert.equal(recorded.length, 1);
+  assert.equal(recorded[0].operation, 'create_calendar_event');
+  assert.equal(recorded[0].source_page, 'page-9');
+  assert.match(recorded[0].summary, /Quartet at St Mary/);
+});
+
+test('a deletion reaches the supplied recorder too', async () => {
+  const recorded = [];
+  const { confirmation_token } = await withFetch(serving(ARTIST_EVENT), () =>
+    previewDeleteEvent('t', { event_id: ARTIST_EVENT.id }),
+  );
+  await withFetch(serving(ARTIST_EVENT), () =>
+    deleteEvent('t', { event_id: ARTIST_EVENT.id, confirmation_token }, async (e) =>
+      void recorded.push(e),
+    ),
+  );
+  assert.equal(recorded.length, 1);
+  assert.equal(recorded[0].operation, 'delete_calendar_event');
+  assert.match(recorded[0].summary, /Quartet at St Mary/);
+});

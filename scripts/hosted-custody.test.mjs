@@ -31,6 +31,8 @@ const CUSTODY_FUNCTIONS = [
   // publishable key, for the same reason its tokens are not.
   'write_grants_for',
   'set_write_grants',
+  // A record anyone could write is not a record.
+  'record_write',
 ];
 
 const allMigrations = [
@@ -39,6 +41,7 @@ const allMigrations = [
   '20260824120000_hosted_token_custody.sql',
   '20260824130000_revoke_hosted_functions_from_roles.sql',
   '20260826090000_write_grants.sql',
+  '20260826100000_write_audit.sql',
   '20260824140000_resolve_mcp_key.sql',
   '20260824150000_oauth_server.sql',
 ]
@@ -248,4 +251,60 @@ test('the hosted MCP route reads the grant per request', () => {
   // Inside the request handler, not at module scope.
   const handler = route.slice(route.indexOf('const handle'));
   assert.match(handler, /writeGrantsFor\(userId\)/, 'the grant is read outside the handler');
+});
+
+
+/**
+ * A file in a home directory is the local sink; on a serverless host it is a
+ * file nobody will ever read. "Detectable and reversible" is the whole
+ * justification for these writes existing, so hosted without the detectable
+ * half would be strictly worse than the local case, not equivalent.
+ */
+test('write_audit is not exposed through PostgREST', () => {
+  const audit = read('20260826100000_write_audit.sql');
+  assert.match(audit, /alter table public\.write_audit\s+enable row level security/);
+  assert.doesNotMatch(audit, /create policy/);
+});
+
+/**
+ * A record that can be edited is not one. There is no function to amend or
+ * remove a row, and adding one would need arguing for here first.
+ */
+test('nothing can amend or remove an audit row', () => {
+  const audit = read('20260826100000_write_audit.sql');
+  assert.doesNotMatch(audit, /update public\.write_audit/);
+  assert.doesNotMatch(audit, /delete from public\.write_audit/);
+});
+
+/**
+ * The audit must record what was written, not a reference to it: a wrong create
+ * leaves something visible, a wrong delete leaves a gap, and nobody notices an
+ * absence. The row has to be enough to put the event back by hand.
+ */
+test('an audit row carries the event as a person would read it', () => {
+  const audit = read('20260826100000_write_audit.sql');
+  for (const column of ['summary', 'target', 'source_page']) {
+    assert.match(audit, new RegExp(`\\b${column}\\b`), `write_audit has no ${column}`);
+  }
+});
+
+/**
+ * Bound to one user, like hostedTokens. A recorder that took the user id per
+ * call could be handed the wrong one; one that closes over it cannot.
+ */
+test('the hosted audit sink is bound to a single user', () => {
+  const sink = webSource('lib/write-audit.ts');
+  assert.match(sink, /hostedAudit\s*=\s*\(\s*userId: string\s*\)/);
+  assert.match(sink, /p_user_id: userId/);
+});
+
+/**
+ * The event exists by the time the record is written. Throwing would report a
+ * successful write as a failure, which is the one outcome guaranteed to make
+ * someone create it a second time.
+ */
+test('a failed audit does not fail the write', () => {
+  const sink = webSource('lib/write-audit.ts');
+  assert.match(sink, /catch/);
+  assert.doesNotMatch(sink.slice(sink.indexOf('catch')), /throw/);
 });
