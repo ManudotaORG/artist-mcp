@@ -120,3 +120,38 @@ test('the refresh lease is claimed in a single statement', () => {
   assert.match(custody, /update public\.connections[\s\S]*?refresh_lock_until = now\(\)/);
   assert.match(custody, /where[\s\S]*?refresh_lock_until is null or refresh_lock_until < now\(\)/);
 });
+
+/**
+ * A refresh must never ask for more than the connection was granted.
+ *
+ * The hosted refresh sent `scope: config.scope` — whatever the current build
+ * would ask for. `config` comes from the package, so adding a scope there
+ * (calendar.calendarlist.readonly, in 1.5.0) armed every hosted connection made
+ * before it to fail on its next refresh: an hour later, inside a session, far
+ * from the change that caused it. The package hit the identical bug and fixed
+ * it by sending the stored scope; hosted stores none, so it sends nothing,
+ * which returns exactly what was granted.
+ *
+ * Asserted over the source because the alternative is a live OAuth round trip
+ * against a real connection, and the failure is silent until a token expires.
+ */
+test('the hosted refresh does not ask for a scope', () => {
+  const source = readFileSync(
+    new URL('../apps/web/src/lib/hosted-tokens.ts', import.meta.url),
+    'utf8',
+  );
+  // Comments first, and before matching: the comment explaining this bug is
+  // longer than the object it guards, so a window sized for code would miss the
+  // object entirely and the assertion would pass by accident.
+  const code = source.replace(/^\s*\/\/.*$/gm, '');
+  const refreshBody = code.match(/grant_type:\s*'refresh_token'[\s\S]{0,400}?\}/);
+  assert.ok(refreshBody, 'the refresh_token grant is no longer a literal object');
+
+  assert.doesNotMatch(
+    refreshBody[0],
+    /\bscope\s*:/,
+    'The hosted refresh sends a scope again. A refresh asking for more than the ' +
+      'grant carries is rejected, so this breaks connections made before the ' +
+      'current scope list — in a session, not in CI.',
+  );
+});
