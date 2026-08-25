@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   WRITE_CAPABILITIES,
+  isWriteCapability,
   describeGrants,
   grantedWrites,
   isGranted,
@@ -43,6 +44,33 @@ test('the flag with no value is refused, not read as granting nothing', () => {
   assert.throws(() => parseGrants(''), /needs at least one capability/);
   assert.throws(() => parseGrants('  '), /needs at least one capability/);
   assert.throws(() => parseGrants(','), /needs at least one capability/);
+});
+
+/**
+ * A comma does not survive Windows. Claude Desktop spawns `npx`, which is a
+ * .cmd batch script there, and cmd.exe treats a comma as an argument separator:
+ * `--allow-writes calendar-create,calendar-delete` reached the server as the
+ * single string `calendar-create calendar-delete` and was refused as one
+ * unknown capability. Reported from a real Windows install, where it presented
+ * as Claude Desktop simply not listing the write tools.
+ */
+test('whitespace separates capabilities as well as a comma', () => {
+  assert.deepEqual(parseGrants('calendar-create calendar-delete'), [
+    'calendar-create',
+    'calendar-delete',
+  ]);
+  assert.deepEqual(parseGrants('calendar-create,  calendar-delete'), [
+    'calendar-create',
+    'calendar-delete',
+  ]);
+  assert.deepEqual(parseGrants('calendar-create\tcalendar-delete'), [
+    'calendar-create',
+    'calendar-delete',
+  ]);
+});
+
+test('a genuinely unknown name is still refused when space-separated', () => {
+  assert.throws(() => parseGrants('calendar-create calendar-update'), /calendar-update/);
 });
 
 test('a list is parsed, trimmed and deduplicated', () => {
@@ -181,4 +209,12 @@ test('delete can be granted without create', async () => {
   const names = await toolNames(['calendar-delete']);
   assert.ok(names.includes('delete_calendar_event'));
   assert.equal(names.includes('create_calendar_event'), false);
+});
+
+
+test('a capability token is recognised, and nothing else is', () => {
+  assert.equal(isWriteCapability('calendar-create'), true);
+  assert.equal(isWriteCapability('calendar-delete'), true);
+  assert.equal(isWriteCapability('status'), false);
+  assert.equal(isWriteCapability(undefined), false);
 });
