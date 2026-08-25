@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.1](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.5.0...artist-mcp-v1.5.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **mcp:** accept a space between capabilities, because Windows eats the comma ([c7e9e95](https://github.com/ManudotaORG/artist-mcp/commit/c7e9e95c2ef4d3f13e40c1ef36a8cdc85f2cbd11)), closes [#85](https://github.com/ManudotaORG/artist-mcp/issues/85)
+* **mcp:** open the browser without a shell, so the consent URL survives Windows ([d456897](https://github.com/ManudotaORG/artist-mcp/commit/d456897cc7de3de3f74994d69eed92dbc2642836)), closes [#85](https://github.com/ManudotaORG/artist-mcp/issues/85)
+
 ## [1.5.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.4.0...artist-mcp-v1.5.0) (2026-08-25)
 
 
