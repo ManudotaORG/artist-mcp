@@ -295,14 +295,80 @@ a fixed pack means every adjustment is a package release.
 
 Checksums mean something narrower for a local file: derived from the directory as
 it is read, they prove only that it did not change between being listed and being
-loaded. The user is the authority on their own files. **The read-only boundary
-does not rest on the Markdown** — it holds because no write tool exists, so an
-edited playbook can make the analysis worse but cannot write to OneNote, send
-outreach, or touch a calendar.
+loaded. The user is the authority on their own files. **The boundary does not
+rest on the Markdown** — an edited playbook can make the analysis worse, but it
+cannot reach a tool that was never registered.
+
+That sentence used to read "it holds because no write tool exists". It does not
+hold that way any more, and the weaker true version is worth stating plainly:
+the boundary is a capability check plus a closed operation union, both of which
+are this repository's own code rather than something Google enforces. See
+[decisions/0001-opt-in-calendar-writes.md](decisions/0001-opt-in-calendar-writes.md).
+
+## Opt-in Calendar writes (issue #85)
+
+Off by default. A grant at install time, one event, previewed and confirmed.
+Decisions and their cost: [decisions/0001-opt-in-calendar-writes.md](decisions/0001-opt-in-calendar-writes.md).
+
+- [x] A decision record written before any code, because `CLAUDE.md` told a
+      contributor to stop on seeing a write and would otherwise sit beside the
+      new behaviour with no way to tell which was current
+- [x] The operation table is enforced, not asserted: `test/operation-boundary`
+      fails on any edit to it, and on any non-GET beyond the single sanctioned
+      POST. This matters more than it reads — Google publishes no insert-only
+      Calendar scope, `events.insert` and `events.delete` take the identical
+      four, so the scopes stopped separating create from delete and this table
+      is what replaced them
+- [x] `calendar.calendarlist.readonly` added to both scope lists, guarded
+      against drift, so absence can mean something: `list_calendars` names what
+      was covered, and degrades to a stated limitation on a connection made
+      before it rather than reporting an empty result
+- [x] A 403 for a missing scope says which grant is missing rather than "this
+      connection predates Calendar", which was about to be false and alarming
+      for someone whose calendar reading works perfectly
+- [x] The grant is one install argument naming capabilities, in the Desktop
+      entry's args; an unknown name is refused by name, and `init`, `status` and
+      the workflow briefing each report what is in force
+- [x] An ungranted write tool is not registered at all — verified: 12 tools
+      without the grant, exactly those two more with it
+- [x] Preview then create, with the create bound to the previewed payload by a
+      token; unsettled values (`UNKNOWN`, `TBC`, a disputed date) refused in
+      code rather than only in a playbook; timed events refused without an IANA
+      zone; no retry on create; a 409 reported as already there; an audit line
+      per write in `~/.artist-mcp/writes.log`
+- [x] The pack and the docs corrected in the same work, not deferred — every
+      "read-only" claim across `CLAUDE.md`, `README.md`, `PRODUCT.md`, the brief,
+      `releases-and-agents.md` and four pack files
+- [x] Deleting, narrowed to events this tool created: the `artist` id prefix is
+      the whole basis, checked before the event is even fetched, so a gig the
+      musician typed in or one shared onto their calendar is unreachable. The
+      confirmation token is over the event as Google returns it rather than as
+      anyone described it, and the audit records the whole event, because nobody
+      notices an absence. No new scope and no reconnect — Google has one scope
+      for insert and delete
+- [x] **Verified against a real calendar.** Not done. Every test is a `fetch`
+      stub, so Google's actual behaviour for a client-set id, a 409 on a
+      duplicate, and the 403 shape when a token lacks the write scope were all
+      assumptions. Creating is now verified against a real calendar: the
+      client-set id is accepted, the duplicate 409 is reported as already there,
+      and the zone survives the round trip. Deleting is verified too: a real
+      event the musician made was refused by the prefix check, a stale token was
+      refused, the delete removed only what it showed, and recreating the same
+      event afterwards fails because the trashed event still holds the id — now
+      reported as "it is in the bin, restore it there" rather than as "already in
+      the calendar", which was false and unactionable. Four bugs came out of
+      running it for real: the audit sat above the write, the suite polluted the
+      real audit log, the deletion preview showed a UTC instant labelled with the
+      event's zone, and the duplicate message was wrong after a delete
+- [ ] Verified end to end in Claude Desktop with the grant, against the
+      disputed-date pair, confirming a write is refused while a page is in that
+      state
 
 ## Not in scope
 
-No autonomous agent processes. No writes to any source — not OneNote, Gmail, or Calendar. No message sending. No scheduled jobs. No teams or organisations. No billing. No copying or synchronizing source data. No workflow state in Supabase.
+No autonomous agent processes. No writes to OneNote or Gmail, ever. No message sending. No scheduled jobs. No teams or organisations. No billing. No copying or synchronizing source data. No workflow state in Supabase.
+
+This line originally read "No writes to any source — not OneNote, Gmail, or Calendar." Creating a single Calendar event has since shipped as an opt-in, so it is corrected here rather than quietly left standing. Updating, moving and deleting events are still out, as is every OneNote write.
 
 This line originally also read "No calendar. No Google. No web app deployment." All three have since shipped, so it is corrected here rather than quietly left standing:
 

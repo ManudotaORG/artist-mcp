@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { WRITE_CAPABILITIES, grantedWrites, isGranted } from "./grants.js";
 import { listAgentWorkflows, loadAgentWorkflow, type ResolvedEntry } from "./agents.js";
 import { GraphError } from "./client.js";
 import { call as localCall, type Operation } from "./dispatch.js";
@@ -228,7 +229,7 @@ const selectNotebook = async (
   return { pages, scope };
 };
 
-const serverVersion = '1.3.0'; // x-release-please-version
+const serverVersion = '1.4.0'; // x-release-please-version
 
 const errorResult = (err: unknown) => {
   const message =
@@ -353,8 +354,37 @@ const renderWorkflowBriefing = async (
         ]
       : [];
 
+  // What this install may change, stated in the briefing rather than left to
+  // the tool list. A session that has to infer its own permissions from which
+  // tools happen to exist is inferring; and the read-only claim appears in
+  // seven roles and six policies, so a session must be told plainly when it is
+  // no longer true. The "none" line matters most: it is what keeps every
+  // read-only install saying the same thing it always said.
+  const writes = grantedWrites();
+  const capabilities =
+    writes.length === 0
+      ? [
+          "# What this install may change",
+          "Nothing. This install can only read. Never claim to have added, " +
+            "changed or removed anything in OneNote, Gmail or Calendar, and " +
+            "never offer to.",
+        ]
+      : [
+          "# What this install may change",
+          "This install has been granted the writes below by the user, at " +
+            "install time. Everything not listed here remains read-only, " +
+            "including all of OneNote.",
+          ...writes.map((name) => `- ${name}: ${WRITE_CAPABILITIES[name]}`),
+          "A disputed or UNKNOWN value may never be written. If two pages " +
+            "disagree, or a field is unsettled, refuse the write and say why — " +
+            "a written value persists and other people see it, which is exactly " +
+            "the decision policy:divergence refuses to make.",
+        ];
+
   return [
     ...alarm,
+    ...capabilities,
+    "",
     "# Roles and policies (load by id when needed)",
     summary.join("\n"),
     "",
@@ -362,6 +392,29 @@ const renderWorkflowBriefing = async (
     loaded.join("\n\n"),
     ...provenance,
   ].join("\n");
+};
+
+/**
+ * One sentence naming what this install may change, for the handshake.
+ *
+ * Derived, never restated. An install with no grant says so too — that line is
+ * the one that keeps a read-only install describing itself correctly.
+ */
+const capabilityLine = (): string => {
+  const writes = grantedWrites();
+  if (writes.length === 0) {
+    return (
+      " This install can only read. It cannot create, change or delete " +
+      "anything in OneNote, Gmail or Google Calendar, and must never offer to."
+    );
+  }
+  return (
+    " This install has been granted these writes by the user: " +
+    writes.map((name) => `${name} (${WRITE_CAPABILITIES[name]})`).join('; ') +
+    ". Everything else is read-only, including all of OneNote. Never describe " +
+    "this server as read-only while any write is granted, and never write a " +
+    "value the notebook has not settled."
+  );
 };
 
 const createServer = async (call: Dispatch): Promise<McpServer> => {
@@ -392,7 +445,20 @@ const createServer = async (call: Dispatch): Promise<McpServer> => {
     "it. Working from these tool descriptions alone means working with no " +
     "policy in force, which is not a lighter version of this server's " +
     "behaviour but a different one. If a call fails or the briefing reports a " +
-    "playbook it could not read, say so before answering.";
+    "playbook it could not read, say so before answering." +
+    // What this install may change, in the handshake as well as the briefing.
+    //
+    // The briefing is the statement of the rules and stays so. But a client
+    // asked "what can you do?" answers from the tool list without calling
+    // anything, so no tool description and no briefing can reach it — and a
+    // Desktop session did exactly that, describing itself as read-only after a
+    // write had been granted. A boundary the product states wrongly about
+    // itself is worse than one it states weakly.
+    //
+    // This is not the third copy of the rules that drifted in AGENTS.md: it is
+    // derived from the grant at startup, so it cannot say something the install
+    // is not. The rules themselves are still only in the pack.
+    capabilityLine();
 
   const server = new McpServer(
     { name: "artist-notes", version: serverVersion },
@@ -1007,6 +1073,284 @@ const createServer = async (call: Dispatch): Promise<McpServer> => {
     },
   );
 
+  // Registered only when the user granted it at install time. Absent, not
+  // present and refusing: a tool that exists is a tool a model will try, and a
+  // refusal in a tool result reads as an obstacle to route around rather than
+  // as a boundary. See docs/decisions/0001-opt-in-calendar-writes.md.
+  if (isGranted("calendar-create")) {
+    server.tool(
+      "preview_calendar_event",
+      "Call this before create_calendar_event — it is the only way to obtain the confirmation_token that one requires, and it is what puts the exact event in front of the musician. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. " +
+        "Renders a Google Calendar event exactly as it would be written, and " +
+        "lists what is already on that day in that calendar, so an event that " +
+        "is already there is visible before a second one is added. Changes " +
+        "nothing. It searches ONE calendar — call list_calendars first if you " +
+        "have not established which calendar this gig would live on. A value " +
+        "the notebook has not settled (UNKNOWN, TBC, a disputed date) is " +
+        "refused here rather than written. Asking the musician to pick between " +
+        "two pages that disagree does NOT settle it: their answer in chat " +
+        "leaves the notebook recording both, while the event you would write is " +
+        "durable and seen by other people. Say the pages need settling first.",
+      {
+        summary: z.string().describe("The event title, as the page words it"),
+        start: z
+          .string()
+          .describe("YYYY-MM-DD for an all-day event, or an RFC3339 date-time such as 2026-10-16T20:00:00"),
+        end: z.string().describe("The same kind as start: both dates, or both date-times"),
+        time_zone: z
+          .string()
+          .optional()
+          .describe("IANA name such as Europe/Madrid. Required for a timed event."),
+        location: z.string().optional().describe("Where, as the page words it"),
+        description: z.string().optional().describe("Notes to carry onto the event"),
+        calendar_id: z
+          .string()
+          .optional()
+          .describe("Which calendar, from list_calendars. Defaults to the primary one."),
+      },
+      async (params) => {
+        try {
+          const { preview, confirmation_token, existing_that_day, calendar_searched } =
+            await call<{
+              preview: string;
+              confirmation_token: string;
+              existing_that_day: EventSummary[];
+              calendar_searched: string;
+            }>("preview_calendar_event", params);
+
+          // The day comes first. A preview that leads with what would be added
+          // invites exactly the question it is here to answer.
+          const already =
+            existing_that_day.length === 0
+              ? `Nothing else is on that day in ${calendar_searched}. That is one ` +
+                "calendar only — it does not show the day is free elsewhere."
+              : `Already on that day in ${calendar_searched}:\n` +
+                existing_that_day.map((e) => `- ${e.summary} — ${when(e)}`).join("\n");
+
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `${already}\n\nThis would be created:\n\n${preview}\n\n` +
+                  "Show this to the musician and wait for their yes. If they " +
+                  "agree, call create_calendar_event with the SAME values and " +
+                  `confirmation_token: ${confirmation_token}`,
+              },
+            ],
+          };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+
+    server.tool(
+      "create_calendar_event",
+      "Only call this after preview_calendar_event AND after the musician has said yes to what the preview showed. Never call it to find out whether it would work. " +
+        "Creates ONE event in Google Calendar. It cannot update, move or delete " +
+        "anything, and there is no bulk form — 'add all the gigs' is not " +
+        "something this can do. Requires the confirmation_token from a preview " +
+        "of these exact values; change any field and the token stops matching, " +
+        "which means preview again and show the musician the new version. " +
+        "Creating the same event twice is refused by Google rather than " +
+        "duplicated. OneNote is never written by anything. Never call this with " +
+        "a value the musician chose in chat to break a tie between pages that " +
+        "still disagree — the calendar is a derivative of the page, and a page " +
+        "that contradicts itself has nothing to derive from yet.",
+      {
+        summary: z.string().describe("Exactly what the preview showed"),
+        start: z.string().describe("Exactly what the preview showed"),
+        end: z.string().describe("Exactly what the preview showed"),
+        time_zone: z.string().optional().describe("Exactly what the preview showed"),
+        location: z.string().optional().describe("Exactly what the preview showed"),
+        description: z.string().optional().describe("Exactly what the preview showed"),
+        calendar_id: z.string().optional().describe("Exactly what the preview showed"),
+        confirmation_token: z
+          .string()
+          .describe("The token preview_calendar_event returned for these exact values"),
+        source_page: z
+          .string()
+          .optional()
+          .describe("The OneNote page this came from, recorded locally so the write can be traced back"),
+      },
+      async (params) => {
+        try {
+          const { created, link, calendar_id, written } = await call<{
+            created: EventSummary;
+            link: string | null;
+            calendar_id: string;
+            written: string;
+          }>("create_calendar_event", params);
+
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `Created in ${calendar_id}:\n\n${written}\n` +
+                  (link ? `\n${link}\n` : "") +
+                  "\nTell the musician it is in the calendar and that they can " +
+                  "delete it there if it is wrong. The page in OneNote was not " +
+                  "changed — nothing here writes to OneNote.",
+              },
+            ],
+          };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+  }
+
+  if (isGranted("calendar-delete")) {
+    server.tool(
+      "preview_calendar_delete",
+      "Call this before delete_calendar_event — it is the only way to obtain the confirmation_token that one requires. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. " +
+        "Shows the event that would be removed, read fresh from Google rather " +
+        "than from anything you were told about it. Changes nothing. Only an " +
+        "event artist-mcp created can be previewed here; anything the musician " +
+        "made themselves, or that was shared onto their calendar, is refused.",
+      {
+        event_id: z.string().describe("The id of the event, as returned when it was created"),
+        calendar_id: z
+          .string()
+          .optional()
+          .describe("Which calendar it is on. Defaults to the primary one."),
+      },
+      async (params) => {
+        try {
+          const { preview, confirmation_token } = await call<{
+            preview: string;
+            confirmation_token: string;
+          }>("preview_calendar_delete", params);
+
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `This would be deleted:\n\n${preview}\n\n` +
+                  "Show this to the musician and wait for their yes. If they " +
+                  "agree, call delete_calendar_event with the same event_id and " +
+                  `confirmation_token: ${confirmation_token}`,
+              },
+            ],
+          };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+
+    server.tool(
+      "delete_calendar_event",
+      "Only call this after preview_calendar_delete AND after the musician has said yes to what the preview showed. " +
+        "Deletes ONE event that artist-mcp itself created. It cannot delete an " +
+        "event the musician made, or one shared onto their calendar — those are " +
+        "theirs, and are refused. It cannot change an event, only remove it, and " +
+        "there is no bulk form. Google keeps a deleted event in that calendar's " +
+        "bin for 30 days, so tell the musician they can restore it there.",
+      {
+        event_id: z.string().describe("Exactly what the preview showed"),
+        calendar_id: z.string().optional().describe("Exactly what the preview showed"),
+        confirmation_token: z
+          .string()
+          .describe("The token preview_calendar_delete returned for this event"),
+        source_page: z
+          .string()
+          .optional()
+          .describe("The OneNote page this relates to, recorded locally"),
+      },
+      async (params) => {
+        try {
+          const { deleted, calendar_id } = await call<{
+            deleted: string;
+            calendar_id: string;
+          }>("delete_calendar_event", params);
+
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `Deleted from ${calendar_id}:\n\n${deleted}\n\n` +
+                  "Google keeps it in that calendar's bin for 30 days, so the " +
+                  "musician can restore it there if this was wrong. What it " +
+                  "said is recorded locally either way.",
+              },
+            ],
+          };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+  }
+
+  server.tool(
+    "list_calendars",
+    "Call this before concluding that something is NOT in the calendar. A search of one calendar that finds nothing is not evidence of absence — it is evidence about one calendar. Gigs commonly sit on a band, venue or shared calendar rather than the primary one. " +
+      "Lists the Google calendars this musician has, with which one is primary " +
+      "and whether each is writable by them. Read-only: this never creates, " +
+      "changes or removes a calendar or an event. Takes no arguments, because " +
+      "the value is knowing the whole set. Use the ids it returns as " +
+      "calendar_id for list_events. If the result says it is partial, repeat " +
+      "that limitation in your answer rather than reporting a clean absence. " +
+      "Requires a Google connection.",
+    {},
+    async () => {
+      try {
+        const { calendars, complete, limitation } = await call<{
+          calendars: {
+            id: string;
+            summary: string;
+            primary: boolean;
+            access_role: string | null;
+            time_zone: string | null;
+          }[];
+          complete: boolean;
+          limitation: string | null;
+        }>("list_calendars");
+
+        // The degraded case is not an empty diary and must never read as one.
+        if (!complete) {
+          return { content: [{ type: "text", text: limitation ?? "" }] };
+        }
+        if (calendars.length === 0) {
+          return {
+            content: [{ type: "text", text: "This Google account has no calendars." }],
+          };
+        }
+
+        const lines = calendars.map((c) => {
+          const marks = [
+            c.primary ? "primary" : null,
+            // Said plainly: a reader deciding where a gig lives needs to know
+            // which of these they could only ever look at.
+            c.access_role === "reader" || c.access_role === "freeBusyReader" ? "read-only" : null,
+            c.time_zone,
+          ].filter(Boolean);
+          return `- ${c.summary}${marks.length ? ` (${marks.join(", ")})` : ""}\n  id: ${c.id}`;
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                `${calendars.length} calendar${calendars.length === 1 ? "" : "s"}:\n` +
+                lines.join("\n") +
+                "\n\nSearching only one of these cannot show that something is absent.",
+            },
+          ],
+        };
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
   server.tool(
     "list_events",
     "Only call this when the musician has asked for this specific look, and wait for their yes. A connected account is not standing permission; a gap, a contradiction, or two pages disagreeing is not a reason to search. Offer, name the search, and stop. " +
@@ -1017,7 +1361,10 @@ const createServer = async (call: Dispatch): Promise<McpServer> => {
       "never itself the working unit. When a page and the calendar disagree, " +
       "report both and name each source; do not pick a winner. Recurring " +
       "occurrences are expanded and flagged, so 'every Tuesday' and 'this " +
-      "Tuesday' stay distinguishable. Requires a Google connection.",
+      "Tuesday' stay distinguishable. This searches ONE calendar, the primary " +
+      "one unless told otherwise, so finding nothing here does not show that " +
+      "nothing exists — call list_calendars and say which calendars you " +
+      "actually covered before reporting an absence. Requires a Google connection.",
     {
       query: z
         .string()

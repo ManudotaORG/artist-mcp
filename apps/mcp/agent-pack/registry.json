@@ -15,7 +15,7 @@
       "name": "Divergence",
       "description": "When two pages in the notebook describe the same event, say so, and let the musician settle each fact the two disagree on. Neither page is the project — the event is, and the pages are two records of it.",
       "file": ".artist/policies/DIVERGENCE.md",
-      "sha256": "944c4e685740dc1968c44176998759a1949bb3ca43a8a84a19711dde05fcf88f"
+      "sha256": "af0e1139bd842a3adcc551f9c8cf7b6fce89fd0a7133025a56ff4eac6909d6ef"
     },
     {
       "id": "policy:evidence",
@@ -31,7 +31,7 @@
       "name": "Intake",
       "description": "Turn an unorganized notebook into working units without inventing anything.",
       "file": ".artist/policies/INTAKE.md",
-      "sha256": "413bf0d256a7842ea2568e1a6b1c91260f5aa29f76ebbb97ecdf637a3da9a52b"
+      "sha256": "28f4c9f23f1b70dccc38663389463e83d28f2ea5611213d94390b3d789b08431"
     },
     {
       "id": "policy:local-state",
@@ -39,7 +39,7 @@
       "name": "Local State",
       "description": "Use local state only when it helps the musician resume work without rereading the same context. The backend remains stateless: it stores connection credentials, never agent memory or copies of OneNote content.",
       "file": ".artist/policies/LOCAL_STATE.md",
-      "sha256": "f29aab016151d8f42fabe5f573622bb79b81c292c3601919ed0bfc839bbbe975"
+      "sha256": "541c9b297668dd7647e756db4c94242756c12580602d1cf67881a04900514fee"
     },
     {
       "id": "policy:patch",
@@ -119,7 +119,7 @@
       "name": "Orchestrator",
       "description": "Turn the user's request and live OneNote evidence into one useful next action.",
       "file": ".artist/roles/ORCHESTRATOR.md",
-      "sha256": "5370bf9f5ec2561a481f883dd7546cbd0cd607ea704aa4695774ee8724de4cb5"
+      "sha256": "c7496baa5d5e86cdc905ed37b3a72265bb6e982d7084091ed8fe024fddf50c2b"
     },
     {
       "id": "role:project-manager",

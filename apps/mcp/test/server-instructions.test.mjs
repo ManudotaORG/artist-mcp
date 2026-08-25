@@ -15,8 +15,8 @@ const entry = resolve(fileURLToPath(new URL('../dist/index.js', import.meta.url)
  * Claude Desktop, because nothing told the client to ask. What was broken was
  * the handshake, so the test has to be the handshake.
  */
-const initialize = async () => {
-  const server = spawn(process.execPath, [entry], { stdio: ['pipe', 'pipe', 'pipe'] });
+const initialize = async (args = []) => {
+  const server = spawn(process.execPath, [entry, ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
   try {
     server.stdin.write(
       `${JSON.stringify({
@@ -75,5 +75,44 @@ test('the handshake carries no rules of its own', async () => {
   assert.ok(
     instructions.length < 1200,
     `instructions are ${instructions.length} chars; they are drifting into a rules copy`,
+  );
+});
+
+/**
+ * A client asked "what can you do?" answers from the tool list without calling
+ * anything, so neither a tool description nor the briefing can reach it. A
+ * Claude Desktop session did exactly that and described this server as
+ * read-only after a write had been granted — stating a boundary wrongly about
+ * itself, which is worse than stating it weakly.
+ *
+ * This is not the rules copy the test above guards against. It is derived from
+ * the grant at startup, so it cannot claim something the install is not.
+ */
+test('an ungranted install says in the handshake that it can only read', async () => {
+  const { instructions } = await initialize();
+  assert.match(instructions, /can only read/);
+  assert.match(instructions, /never offer to/);
+});
+
+test('a granted install names its writes in the handshake', async () => {
+  const { instructions } = await initialize(['--allow-writes', 'calendar-create,calendar-delete']);
+  assert.match(instructions, /calendar-create/);
+  assert.match(instructions, /calendar-delete/);
+  // The sentence that stops the observed failure recurring.
+  assert.match(instructions, /Never describe this server as read-only/);
+  assert.doesNotMatch(instructions, /can only read/);
+});
+
+/**
+ * The derived line grows with each capability, so it needs its own ceiling
+ * rather than borrowing the rules-drift one — and it still needs a ceiling, or
+ * a fourth capability turns the handshake into a document nobody reads.
+ */
+test('the capability line stays a sentence, not a document', async () => {
+  const { instructions } = await initialize(['--allow-writes', 'calendar-create,calendar-delete']);
+  assert.ok(
+    instructions.length < 1500,
+    `instructions are ${instructions.length} chars with two grants; the capability ` +
+      'line is turning into prose. Shorten the descriptions in WRITE_CAPABILITIES.',
   );
 });

@@ -35,6 +35,7 @@ import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { platform } from 'node:os';
+import { type WriteCapability } from './grants.js';
 
 import { GraphError, isStagingVersion, packageVersion } from './client.js';
 import {
@@ -128,6 +129,45 @@ const fetchGoogleClientSecret = async (): Promise<string> => {
   return body.google_client_secret;
 };
 
+/**
+ * The extra scope each granted write needs, on top of the read-only set.
+ *
+ * Kept out of `PROVIDERS.scope` on purpose: that list is what every user is
+ * asked for, and a write scope belongs behind a grant rather than on everyone's
+ * consent screen. `test/google-scopes` asserts exactly that.
+ *
+ * `calendar.events` is read and write over all events, including update and
+ * delete, because Google publishes no insert-only Calendar scope — insert and
+ * delete accept the identical four. The narrowing this cannot do at the
+ * provider is done by the operation table instead. See
+ * docs/decisions/0001-opt-in-calendar-writes.md.
+ */
+export const WRITE_SCOPES: Readonly<Record<WriteCapability, readonly string[]>> = {
+  'calendar-create': ['https://www.googleapis.com/auth/calendar.events'],
+  // The same scope, because Google has only one: events.insert and
+  // events.delete accept the identical four. Granting delete after create
+  // therefore needs no new consent screen at all, which is the one convenience
+  // that follows from the scopes being this coarse.
+  'calendar-delete': ['https://www.googleapis.com/auth/calendar.events'],
+};
+
+/**
+ * What to ask consent for, given what this install was granted.
+ *
+ * Asked at connect time and never widened afterwards: a refresh token carries
+ * the scopes it was granted with, so granting a write after connecting means
+ * reconnecting, not a quieter upgrade.
+ */
+export const scopesFor = (
+  provider: ProviderName,
+  grants: readonly WriteCapability[] = [],
+): string => {
+  const base = PROVIDERS[provider].scope;
+  if (provider !== 'google' || grants.length === 0) return base;
+  const extra = grants.flatMap((name) => [...(WRITE_SCOPES[name] ?? [])]);
+  return [...new Set([...base.split(' '), ...extra])].join(' ');
+};
+
 export const PROVIDERS: Readonly<Record<ProviderName, ProviderConfig>> = {
   microsoft: {
     label: 'Microsoft',
@@ -144,12 +184,21 @@ export const PROVIDERS: Readonly<Record<ProviderName, ProviderConfig>> = {
     label: 'Google',
     authorize: 'https://accounts.google.com/o/oauth2/v2/auth',
     token: 'https://oauth2.googleapis.com/token',
-    // Kept in step with the SCOPES list in the web app's Google route. Events
-    // rather than the whole calendar: events are the evidence, and the broader
-    // scope would also hand over metadata and sharing ACLs nothing reads.
+    // Kept in step with GOOGLE_SCOPES in supabase/functions/graph/index.ts —
+    // asserted by test/google-scopes, because the two have to agree and a
+    // refresh asking for more than the grant carries is rejected.
+    //
+    // Events rather than the whole calendar: events are the evidence, and the
+    // broader scope would also hand over metadata and sharing ACLs nothing
+    // reads. calendarlist.readonly is the exception, and it is read-only: it
+    // names which calendars exist, without which "the day as it stands" quietly
+    // means "the day on primary" for anyone keeping gigs on a second calendar,
+    // and we could not detect that one exists in order to say so. See
+    // docs/decisions/0001-opt-in-calendar-writes.md.
     scope: [
       'https://www.googleapis.com/auth/gmail.readonly',
       'https://www.googleapis.com/auth/calendar.events.readonly',
+      'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
     ].join(' '),
     clientId: env(
       'ARTIST_MCP_GOOGLE_CLIENT_ID',
@@ -311,8 +360,12 @@ export const postToken = async (
  * Run consent for one provider and store what comes back. Resolves once the
  * connection is usable, so a caller can report success without a second check.
  */
-export const connect = async (provider: ProviderName): Promise<void> => {
+export const connect = async (
+  provider: ProviderName,
+  grants: readonly WriteCapability[] = [],
+): Promise<void> => {
   const config = PROVIDERS[provider];
+  const scope = scopesFor(provider, grants);
 
   // Before the browser opens, so a configuration problem is reported while the
   // user is still in the terminal rather than after they have consented.
@@ -328,7 +381,7 @@ export const connect = async (provider: ProviderName): Promise<void> => {
     client_id: config.clientId,
     response_type: 'code',
     redirect_uri: REDIRECT_URI,
-    scope: config.scope,
+    scope,
     state,
     code_challenge: challenge,
     code_challenge_method: 'S256',
@@ -366,7 +419,7 @@ export const connect = async (provider: ProviderName): Promise<void> => {
 
   await saveProvider(provider, {
     refreshToken: tokens.refresh_token,
-    scope: tokens.scope ?? config.scope,
+    scope: tokens.scope ?? scope,
     connectedAt: new Date().toISOString(),
     ...(clientSecret === undefined ? {} : { clientSecret }),
   });
@@ -410,7 +463,12 @@ export const accessTokenFor = async (provider: ProviderName): Promise<string> =>
     {
       grant_type: 'refresh_token',
       refresh_token: stored.refreshToken,
-      scope: config.scope,
+      // What this connection actually carries, not what the current build would
+      // ask for. A refresh requesting more than the grant carries is rejected,
+      // so using config.scope here breaks every existing connection the moment
+      // a scope is added to the product — an hour later, in a session, far from
+      // the change that caused it.
+      scope: stored.scope,
     },
     clientSecret,
   );

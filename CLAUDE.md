@@ -9,14 +9,26 @@ starting work.** It is the source of truth for scope and for what is actually
 done — a ticked box means done *and verified*, and blocked items say why.
 Update it as you go rather than at the end.
 
-Scope is deliberately narrow. The read-only workflow layer is defined in
+Scope is deliberately narrow. The workflow layer is defined in
 `apps/mcp/agent-pack`: one OneNote page is one working unit, Markdown roles and
-project types are loaded at runtime, and every result stays in chat. If you find
-yourself adding writes, sends, or synchronization, stop.
+project types are loaded at runtime, and every result stays in chat.
 
-Sources are read-only and deliberately few. OneNote holds the working unit;
-Gmail and Google Calendar are **supporting evidence only** — they corroborate
-or fill gaps in a page and are never themselves a working unit. That asymmetry
+**If you find yourself adding writes, sends, or synchronization, stop.** That
+rule stands, with exactly one exception, and the exception is not a precedent:
+an install granted `--allow-writes calendar-create` may create a single Google
+Calendar event, previewed and confirmed, and one granted `calendar-delete` may
+remove an event **that this tool itself created**, identified by the `artist`
+prefix on its id. An event the musician made is unreachable, and that prefix
+check is the only thing making delete safe to offer. Read
+[docs/decisions/0001-opt-in-calendar-writes.md](docs/decisions/0001-opt-in-calendar-writes.md)
+before touching that path — it says what was decided, what it cost, and what
+would reverse it. OneNote writes, message sending and synchronization remain
+out, and the reasoning for each is there rather than restated here.
+
+Sources are read-only apart from that one grant, and deliberately few. OneNote
+holds the working unit; Gmail and Google Calendar are **supporting evidence
+only** — they corroborate or fill gaps in a page and are never themselves a
+working unit. That asymmetry
 is the whole reason further sources did not dissolve the one-page-one-unit rule
 that every role and playbook depends on. Each new source means re-deciding it,
 not repeating it: Google Tasks was considered and left out, because a task list
@@ -52,10 +64,30 @@ docs/           the brief
   token and everything dies after an hour.
 - **Microsoft rotates refresh tokens.** Every exchange invalidates the old one.
   Miss the write-back and the connection dies silently on the *next* call.
-- **Tokens live on the user's machine and nowhere else.** No service here stores
-  a refresh token or holds a credential that could read one — that is the point
-  of #22, not an implementation detail. `connections` and `mcp_keys` remain in
-  the schema but are dormant and unwritten; see `docs/operations.md`.
+- **There are two custody models, and conflating them is the mistake.** The
+  published package holds its own tokens on the user's machine, and nothing
+  server-side can read them. The hosted server holds a named user's refresh
+  tokens encrypted in `connections`, which a maintainer with the service role
+  and the encryption key can decrypt; hosted users are told so before they
+  connect. `connections` and `mcp_keys` were dormant while custody sat only on
+  user machines and have been live again since #55. This entry used to say
+  tokens live on the user's machine "and nowhere else" — true of one model,
+  false of the other, and the sentence a contributor reads first. The authority
+  is "Hosted credential storage" in [docs/operations.md](docs/operations.md).
+- **`supabase/functions/graph/` is not deployed.** It speaks the old `/v1/` POST
+  shape rather than MCP, and hosted users are served by
+  `apps/web/src/app/api/mcp/route.ts`, which builds the same `createServer` the
+  published package uses. Keep it compiling if you touch shared shapes, but it
+  is not where a hosted feature goes.
+- **Write grants are process state, so hosted has none.** `setGrants` in
+  `apps/mcp/src/grants.ts` is module-level, which is right for one stdio process
+  serving one user and unsafe in the multi-user hosted route — setting it per
+  request would let one user's grant reach another's session. Hosted therefore
+  registers no write tool at all, which is the safe default rather than a
+  decision anyone made. Giving hosted users writes means passing grants into
+  `createServer` first, and arguing the hosted case on its own terms: the local
+  one rests on filesystem permissions on the user's own machine, which does not
+  transfer to a service holding many people's tokens.
 - **`/me/onenote/pages` dies on accounts with many sections.** Graph answers the
   whole request with 400 and error `20266`, so listing goes from working to
   broken with no partial result. Enumerate `/me/onenote/sections` and fetch
@@ -77,8 +109,14 @@ docs/           the brief
   writing code there.
 - **`apps/mcp` must not import from other workspace packages** — it ships to npm
   standalone.
-- **Workflow Markdown is executable policy.** Preserve the read-only boundary,
-  regenerate `agent-pack/registry.json`, and verify checksums when it changes.
+- **Workflow Markdown is executable policy.** Regenerate
+  `agent-pack/registry.json` and verify checksums when it changes. The pack
+  describes *what a tool requires*, not what a session must remember to do, so
+  that it stays true whether or not an install was granted a write.
+- **The operation table in `dispatch.ts` is security code.** Since Google
+  publishes no insert-only Calendar scope, the scopes no longer separate
+  creating an event from deleting one — that table and the grant check do.
+  `test/operation-boundary` fails on any edit to it, deliberately.
 - **A rule in a role is not in force.** Roles arrive in the briefing as a
   one-line summary; only project types and the policies in `alwaysInFull` load
   in full. Three bugs came from rules sitting where no session could see them.

@@ -321,8 +321,10 @@ Three rules make that safe rather than sloppy:
   the intake policy are returned in full, unasked, so an oversized playbook does
   not fail — it silently spends the context the notes needed.
 
-The read-only boundary does not depend on any of this. It holds because no write
-tool exists: an edited playbook can make the analysis worse, but it cannot write
-to OneNote, send outreach, or touch a calendar.
+The boundary does not depend on any of this. An edited playbook can make the
+analysis worse, but it cannot write to OneNote, send outreach, or reach a tool
+this install was not granted: a write tool that was not granted is never
+registered, so there is nothing for a playbook to invoke. What a playbook cannot
+do is widen what an install may change.
 
 `artist-mcp agents status` prints every entry and where it came from.

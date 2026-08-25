@@ -113,7 +113,8 @@ Then choose a returned page and ask:
 
 > Read the note titled “Test”.
 
-The MCP server exposes eleven read-only tools.
+The MCP server exposes twelve read-only tools, and two more only if this
+install was granted a write (see "Letting it add a calendar event" below).
 
 OneNote holds the working unit:
 
@@ -159,8 +160,14 @@ needs a separate Google connection:
   to start from next, or, for a document too large to read in chat, says so
   and asks which pages are wanted rather than inviting a walk that cannot
   finish.
+- `list_calendars` — lists which calendars this account has, which is primary,
+  and which are read-only. Worth calling before concluding that something is
+  *not* in the calendar: searching one calendar and finding nothing is evidence
+  about that calendar, and gigs often live on a band or venue one. On a Google
+  connection made before this tool existed it says so and names the limit,
+  rather than reporting an empty result.
 - `list_events` — lists Google Calendar events in a time window, with recurring
-  occurrences expanded and flagged.
+  occurrences expanded and flagged. Searches one calendar at a time.
 - `read_event` — accepts an id from `list_events` and returns description and
   attendees.
 
@@ -172,6 +179,54 @@ The workflow pack:
 The MCP process calls Microsoft Graph, Gmail and Google Calendar directly with
 tokens it holds itself. Nothing is proxied through a hosted service, so no
 request is visible to anyone but you and the provider.
+
+## Letting it add a calendar event
+
+Off by default, and opt-in per install:
+
+```bash
+npx @manudota/artist-mcp init --allow-writes calendar-create
+artist-mcp connect google
+```
+
+The reconnect is not optional. A refresh token carries the scopes it was
+granted with, so an existing Google connection cannot write until it is renewed
+— the grant alone changes nothing.
+
+`--allow-writes calendar-create,calendar-delete` also lets it remove an event
+it created itself, identified by the `artist` prefix on the event id. An event
+you made, or one shared onto your calendar, is refused — this is an undo for its
+own mistakes, not calendar management. Google keeps a deleted event in that
+calendar's bin for 30 days. Delete needs no extra consent beyond create, because
+Google has one scope for both.
+
+Creating adds two tools and nothing else. `preview_calendar_event` shows the exact
+event and what is already on that day; `create_calendar_event` writes it, and
+only accepts the confirmation token the preview returned for those exact values.
+Change any field after the preview and the token stops matching, so the event
+has to be shown again.
+
+What it deliberately cannot do:
+
+- Update, move or respond to an event. Google grants all of those with the same
+  scope as creating one; the tools to do them do not exist here.
+- Delete an event it did not create, even with `calendar-delete` granted.
+- Add more than one event per call. There is no "add all the gigs".
+- Write a value the notebook has not settled. `UNKNOWN`, `TBC` and a disputed
+  date are refused, with a message saying which field and why.
+- Touch OneNote. Nothing in this package ever writes to a page.
+
+Every write appends a line to `~/.artist-mcp/writes.log` recording what was
+written, where, when, and from which page — so an event can be traced back and
+undone later, when the conversation is long gone.
+
+Without the flag, neither tool is registered. Not present and refusing: absent.
+`artist-mcp status` prints a `Writes` line saying which it is, read from the
+Claude Desktop entry rather than from whatever you typed just now.
+
+To withdraw the grant, re-run `init` without the flag. The token keeps the wider
+scope until you also `artist-mcp disconnect google` and reconnect, but the tool
+is gone either way.
 
 ## 4. Install the workflow files in a project
 
