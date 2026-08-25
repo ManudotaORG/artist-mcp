@@ -19,6 +19,21 @@ import { recordWrite, auditPath } from '../dist/audit.js';
  * wrong read is a wrong answer, a wrong write is on someone's calendar.
  */
 
+/**
+ * Every test in this file is redirected away from the real audit log before any
+ * of them run.
+ *
+ * Two tests set this per-case already; the ones that simply create an event did
+ * not, and so appended stub events to ~/.artist-mcp/writes.log on the machine
+ * running the suite. That file exists to trace real writes back to a page, and
+ * entries for events that were never created are worse than no file at all.
+ * Set at module scope because node --test gives each file its own process.
+ */
+process.env.ARTIST_MCP_AUDIT = join(
+  await mkdtemp(join(tmpdir(), 'artist-audit-suite-')),
+  'writes.log',
+);
+
 const withFetch = async (impl, run) => {
   const original = globalThis.fetch;
   globalThis.fetch = impl;
