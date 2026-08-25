@@ -64,10 +64,30 @@ docs/           the brief
   token and everything dies after an hour.
 - **Microsoft rotates refresh tokens.** Every exchange invalidates the old one.
   Miss the write-back and the connection dies silently on the *next* call.
-- **Tokens live on the user's machine and nowhere else.** No service here stores
-  a refresh token or holds a credential that could read one — that is the point
-  of #22, not an implementation detail. `connections` and `mcp_keys` remain in
-  the schema but are dormant and unwritten; see `docs/operations.md`.
+- **There are two custody models, and conflating them is the mistake.** The
+  published package holds its own tokens on the user's machine, and nothing
+  server-side can read them. The hosted server holds a named user's refresh
+  tokens encrypted in `connections`, which a maintainer with the service role
+  and the encryption key can decrypt; hosted users are told so before they
+  connect. `connections` and `mcp_keys` were dormant while custody sat only on
+  user machines and have been live again since #55. This entry used to say
+  tokens live on the user's machine "and nowhere else" — true of one model,
+  false of the other, and the sentence a contributor reads first. The authority
+  is "Hosted credential storage" in [docs/operations.md](docs/operations.md).
+- **`supabase/functions/graph/` is not deployed.** It speaks the old `/v1/` POST
+  shape rather than MCP, and hosted users are served by
+  `apps/web/src/app/api/mcp/route.ts`, which builds the same `createServer` the
+  published package uses. Keep it compiling if you touch shared shapes, but it
+  is not where a hosted feature goes.
+- **Write grants are process state, so hosted has none.** `setGrants` in
+  `apps/mcp/src/grants.ts` is module-level, which is right for one stdio process
+  serving one user and unsafe in the multi-user hosted route — setting it per
+  request would let one user's grant reach another's session. Hosted therefore
+  registers no write tool at all, which is the safe default rather than a
+  decision anyone made. Giving hosted users writes means passing grants into
+  `createServer` first, and arguing the hosted case on its own terms: the local
+  one rests on filesystem permissions on the user's own machine, which does not
+  transfer to a service holding many people's tokens.
 - **`/me/onenote/pages` dies on accounts with many sections.** Graph answers the
   whole request with 400 and error `20266`, so listing goes from working to
   broken with no partial result. Enumerate `/me/onenote/sections` and fetch
