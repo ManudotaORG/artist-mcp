@@ -14,6 +14,7 @@
     ".": "./dist/index.js",
     "./server": "./dist/server.js",
     "./dispatch": "./dist/dispatch.js",
+    "./grants": "./dist/grants.js",
     "./oauth": "./dist/oauth.js",
     "./client": "./dist/client.js"
   },

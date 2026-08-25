@@ -191,3 +191,61 @@ test('setting grants replaces the set, so a capability can be withdrawn', () => 
   const grants = read('20260826090000_write_grants.sql');
   assert.match(grants, /delete from public\.write_grants/);
 });
+
+// ------------------------------------------------------------ hosted grants
+
+const webSource = (file) =>
+  readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8');
+
+/**
+ * A failure to read the grant must land on the read-only side.
+ *
+ * An unreachable database, a missing function, a renamed capability — any of
+ * them would otherwise let a fault decide that someone may write to a calendar.
+ * This is the one place where "fail closed" is not a slogan: the closed side is
+ * what the product was before #85.
+ */
+test('an unreadable grant is treated as no grant', () => {
+  const source = webSource('lib/write-grants.ts');
+  assert.match(source, /catch/, 'write-grants does not handle a failed read at all');
+  // Every exit from the error paths returns nothing granted.
+  const returns = [...source.matchAll(/return\s+\[\]/g)];
+  assert.ok(
+    returns.length >= 2,
+    'a failed read should return no capabilities, on both the error and the throw path',
+  );
+});
+
+/**
+ * The security argument for hosted writes in 0002: a user who never opted in
+ * holds a read-only token, so a compromise of this service cannot write their
+ * calendar. A fixed write scope on the consent route would make every account's
+ * token write-capable to serve the few who asked.
+ */
+test('the consent scope comes from the user grant, not a constant', () => {
+  const route = webSource('app/api/auth/[provider]/route.ts');
+  assert.match(
+    route,
+    /scopesFor\(\s*provider,\s*await writeGrantsFor\(/,
+    'the authorize scope is no longer derived from this user\'s grant',
+  );
+  assert.doesNotMatch(
+    route,
+    /calendar\.events(?!\.readonly)/,
+    'a write scope is named directly in the consent route, which would ask for ' +
+      'it regardless of whether this user opted in',
+  );
+});
+
+/**
+ * One process serves many users. A grant read once and reused would hand one
+ * user's capability to another's session — the failure createServer taking a
+ * parameter exists to prevent.
+ */
+test('the hosted MCP route reads the grant per request', () => {
+  const route = webSource('app/api/mcp/route.ts');
+  assert.match(route, /await writeGrantsFor\(userId\)/);
+  // Inside the request handler, not at module scope.
+  const handler = route.slice(route.indexOf('const handle'));
+  assert.match(handler, /writeGrantsFor\(userId\)/, 'the grant is read outside the handler');
+});
