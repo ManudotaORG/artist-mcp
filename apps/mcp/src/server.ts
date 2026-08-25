@@ -1087,7 +1087,10 @@ const createServer = async (call: Dispatch): Promise<McpServer> => {
         "nothing. It searches ONE calendar — call list_calendars first if you " +
         "have not established which calendar this gig would live on. A value " +
         "the notebook has not settled (UNKNOWN, TBC, a disputed date) is " +
-        "refused here rather than written.",
+        "refused here rather than written. Asking the musician to pick between " +
+        "two pages that disagree does NOT settle it: their answer in chat " +
+        "leaves the notebook recording both, while the event you would write is " +
+        "durable and seen by other people. Say the pages need settling first.",
       {
         summary: z.string().describe("The event title, as the page words it"),
         start: z
@@ -1151,7 +1154,10 @@ const createServer = async (call: Dispatch): Promise<McpServer> => {
         "of these exact values; change any field and the token stops matching, " +
         "which means preview again and show the musician the new version. " +
         "Creating the same event twice is refused by Google rather than " +
-        "duplicated. OneNote is never written by anything.",
+        "duplicated. OneNote is never written by anything. Never call this with " +
+        "a value the musician chose in chat to break a tie between pages that " +
+        "still disagree — the calendar is a derivative of the page, and a page " +
+        "that contradicts itself has nothing to derive from yet.",
       {
         summary: z.string().describe("Exactly what the preview showed"),
         start: z.string().describe("Exactly what the preview showed"),

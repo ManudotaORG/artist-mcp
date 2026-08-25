@@ -47,6 +47,17 @@ belong to that class:
    pages disagreeing on a date is exactly what `policy:divergence` refuses to
    decide; a write would decide it silently, durably, and where other people see
    it. The write is refused and the refusal says why.
+
+   **A choice made in chat does not settle it.** Offering the musician the two
+   dates and writing whichever they pick leaves the notebook recording both
+   while the event is durable and seen by other people: the calendar is a
+   derivative of the page, and a page that contradicts itself has nothing to
+   derive from yet. Observed in Claude Desktop — the model refused to guess,
+   correctly, and then offered a menu of the two dates, which nothing in the
+   tools would have stopped it acting on. `refuseUnsettled` cannot catch it,
+   because by then the value is a clean date; the divergence lives in the pages,
+   and no tool knows about pages. So it is stated in `policy:divergence` and in
+   both calendar tool descriptions instead.
 6. **The boundary is now a capability check, not the absence of a write path.**
    And the capability check is our code, not Google's — see "The scope layer
    stops being a guarantee" below.

@@ -15,7 +15,7 @@
       "name": "Divergence",
       "description": "When two pages in the notebook describe the same event, say so, and let the musician settle each fact the two disagree on. Neither page is the project — the event is, and the pages are two records of it.",
       "file": ".artist/policies/DIVERGENCE.md",
-      "sha256": "944c4e685740dc1968c44176998759a1949bb3ca43a8a84a19711dde05fcf88f"
+      "sha256": "af0e1139bd842a3adcc551f9c8cf7b6fce89fd0a7133025a56ff4eac6909d6ef"
     },
     {
       "id": "policy:evidence",

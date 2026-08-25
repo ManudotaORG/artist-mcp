@@ -168,3 +168,10 @@ first reported, above.
   a single answer is unavoidable, ask for the values it needs and say which page
   supplied every fact you used.
 - A page too thin to judge is not a duplicate. Say it is too thin and ask.
+- A value chosen in chat does not settle a page. Where a tool can change
+  something outside OneNote, a field two pages disagree on stays unsettled until
+  the pages agree — offering the musician a choice and then writing their answer
+  makes the decision durable and visible to other people while the notebook
+  still records both. Ask them to settle the page, and say that is what is
+  needed. Answering from both, naming each, is still right; writing one of them
+  is not.
