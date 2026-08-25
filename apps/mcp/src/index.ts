@@ -4,7 +4,7 @@ import { runInit, runUninstall } from './init.js';
 import { runServer } from './server.js';
 import { installAgentPack, runAgentsStatus, setLocalAgentRoot } from './agents.js';
 import { runConnect, runDisconnect, runStatus } from './connect.js';
-import { parseGrants, setGrants } from './grants.js';
+import { isWriteCapability, parseGrants, setGrants } from './grants.js';
 
 const argv = process.argv.slice(2);
 
@@ -52,6 +52,16 @@ try {
   if (writes !== undefined && COMMANDS.includes(writes)) {
     argv.unshift(writes);
     writes = '';
+  }
+  // The same Windows mangling in its other shape. Depending on the shell, a
+  // comma-separated value arrives either as one string with spaces — handled in
+  // parseGrants — or split across separate arguments, where `takeOption` takes
+  // only the first and the rest would be read as a command. Capability names
+  // are a closed set, so absorbing any that follow is unambiguous.
+  if (writes !== undefined && writes !== '') {
+    while (argv.length > 0 && isWriteCapability(argv[0])) {
+      writes += `,${argv.shift()}`;
+    }
   }
   const grants = parseGrants(writes);
   mode = argv[0];
