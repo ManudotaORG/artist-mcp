@@ -1,6 +1,6 @@
 {
   "name": "@manudota/artist-mcp",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "MCP server that reads your OneNote notes, with optional Gmail and Calendar as supporting evidence, via a hosted connection.",
   "repository": {
     "type": "git",
