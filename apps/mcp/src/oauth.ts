@@ -184,9 +184,9 @@ export const PROVIDERS: Readonly<Record<ProviderName, ProviderConfig>> = {
     label: 'Google',
     authorize: 'https://accounts.google.com/o/oauth2/v2/auth',
     token: 'https://oauth2.googleapis.com/token',
-    // Kept in step with GOOGLE_SCOPES in supabase/functions/graph/index.ts —
-    // asserted by test/google-scopes, because the two have to agree and a
-    // refresh asking for more than the grant carries is rejected.
+    // The one place these are declared. A second copy lived in the edge
+    // function that served pre-1.0 installs, and had to be kept in step
+    // because its refresh spent it; that function is gone.
     //
     // Events rather than the whole calendar: events are the evidence, and the
     // broader scope would also hand over metadata and sharing ACLs nothing

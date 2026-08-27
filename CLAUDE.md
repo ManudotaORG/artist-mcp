@@ -74,11 +74,17 @@ docs/           the brief
   tokens live on the user's machine "and nowhere else" — true of one model,
   false of the other, and the sentence a contributor reads first. The authority
   is "Hosted credential storage" in [docs/operations.md](docs/operations.md).
-- **`supabase/functions/graph/` is not deployed.** It speaks the old `/v1/` POST
-  shape rather than MCP, and hosted users are served by
-  `apps/web/src/app/api/mcp/route.ts`, which builds the same `createServer` the
-  published package uses. Keep it compiling if you touch shared shapes, but it
-  is not where a hosted feature goes.
+- **There is no edge function any more.** `supabase/functions/graph/` served
+  installs before 1.0.0, when every operation went through it; 1.0.0 moved that
+  onto the user's own machine. It was removed once 0.x stopped mattering, along
+  with its tests, its CI job and its `[functions.graph]` config. Hosted users
+  are served by `apps/web/src/app/api/mcp/route.ts`, which builds the same
+  `createServer` the published package does.
+
+  It said "not deployed" here for a while, which was true of production and not
+  of staging, and reading it literally is what sent someone deploying it. The
+  entry is kept as a headstone: if you find a reference to that function, it is
+  stale.
 - **Write grants are a parameter, never state.** `createServer(call, grants)`
   takes them, because one stdio process serves one user while the hosted route
   serves many from one process — a grant held in a module and set per request

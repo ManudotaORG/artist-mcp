@@ -211,9 +211,6 @@ Important invariants:
   see *The grants trap* below for why two of those look like one.
 - Every new table in `public` has RLS enabled, even with no policies. PostgREST
   serves the whole schema, so a table without RLS is a public endpoint.
-- The Graph function, if it is ever redeployed, keeps `verify_jwt = false` and
-  verifies the connection key inside the function. It is not deployed today —
-  see *What is still kept dormant* below.
 - Refresh-token rotation is written back on every Microsoft token exchange.
 - Callers select only `verify`, `list_notes`, `map_notes`, `read_note`, `list_emails`,
   `read_email`, `read_attachment`, `map_attachment`, `list_events`, or
@@ -334,17 +331,29 @@ Vercel snapshots environment variables per deployment, so migrate consumers and
 **redeploy** before disabling legacy keys, or the running deployment keeps using
 values that have stopped working.
 
-### What is still kept dormant
+### Nothing is kept dormant any more
 
-| Kept | State |
-| --- | --- |
-| `supabase/functions/graph/` | Source and tests only, not deployed. Speaks the old `/v1/` POST shape, not MCP |
-| `verify_jwt = false` for `graph` in `supabase/config.toml` | Configuration for a function that is not deployed |
-| Dummy provider env vars in `ci.yml` | Needed by the Deno tests, whose module scope reads them at import; the values are the string `unused` |
+This section listed things kept on a bet that they would be wanted again. The
+list is empty, and both entries are worth recording rather than deleting,
+because how each one ended is the useful part.
 
-`apps/web/src/lib/crypto.ts` is no longer on this list: encryption happens in
-the database through `set_connection`, so if it is still unimported it is now
-cleanup rather than a considered bet.
+**`supabase/functions/graph/`** — removed, with its tests, its CI job and its
+`[functions.graph]` config. It served installs before 1.0.0, when every
+operation went through it; 1.0.0 moved that onto the user's own machine and
+nothing has called it since. Keeping it was defensible while 0.x installs might
+exist. What made removing it the better answer was not the dead code: it
+authenticated against `mcp_keys`, the same table the hosted server uses, and
+refreshed tokens without taking the lease `try_lock_refresh` exists to hold — so
+a call to it could invalidate a connection the hosted server was using. A
+dormant thing that shares live state is not dormant.
+
+**`apps/web/src/lib/crypto.ts`** — encryption happens in the database through
+`set_connection`, so if it is still unimported it is cleanup rather than a
+considered bet.
+
+The `connections` and `mcp_keys` tables were on this list too, and came back:
+see *Hosted credential storage* above. That is the case for writing down why
+something is kept rather than only that it is.
 
 ### History
 

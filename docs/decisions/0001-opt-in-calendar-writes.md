@@ -366,7 +366,7 @@ failed or was removed, and the capability should go back to not existing.
 
 - **Every existing Google connection must reconnect.** A refresh token carries
   the scopes it was granted with; adding a scope later does not widen it. The
-  403 handling in `supabase/functions/graph/index.ts` must tell "predates
+  403 handling in the hosted path must tell "predates
   Calendar writes" apart from "read-only by choice" — different user actions.
   Two scopes are added at that reconnect, not one: `calendar.calendarlist.readonly`
   for everyone, and `calendar.events` only where a write is granted.
