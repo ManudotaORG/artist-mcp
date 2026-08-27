@@ -21,7 +21,9 @@ import {
   listEvents,
   previewDeleteEvent,
   previewEvent,
+  previewRescheduleEvent,
   readEvent,
+  rescheduleEvent,
 } from './calendar.js';
 import { listEmails, readEmail } from './mail.js';
 import { listNotes, mapNotes, readNote } from './notes.js';
@@ -64,6 +66,14 @@ export const OPERATIONS = {
   // Reads the event so a deletion is confirmed against what is really there.
   preview_calendar_delete: { provider: 'google', effect: 'read' },
   delete_calendar_event: { provider: 'google', effect: 'write' },
+  // Reads both halves — the event as it stands and the day it would move to.
+  preview_calendar_reschedule: { provider: 'google', effect: 'read' },
+  // One row, two writes: it creates the replacement and removes the original.
+  // Not a third capability. It is gated on holding *both* calendar-create and
+  // calendar-delete, because it is exactly those two writes and nothing more,
+  // and a separate grant would mean asking every hosted user to consent again
+  // for permission they have already given.
+  reschedule_calendar_event: { provider: 'google', effect: 'write' },
 } as const satisfies Record<string, { provider: ProviderName; effect: 'read' | 'write' }>;
 
 export type Operation = keyof typeof OPERATIONS;
@@ -153,6 +163,10 @@ export const dispatchWith =
         return (await previewDeleteEvent(token, params)) as T;
       case 'delete_calendar_event':
         return (await deleteEvent(token, params, record)) as T;
+      case 'preview_calendar_reschedule':
+        return (await previewRescheduleEvent(token, params)) as T;
+      case 'reschedule_calendar_event':
+        return (await rescheduleEvent(token, params, record)) as T;
       case 'list_calendars':
         // No parameters by design: the whole value is knowing the full set, and
         // a filtered list of what exists is the reach problem again.

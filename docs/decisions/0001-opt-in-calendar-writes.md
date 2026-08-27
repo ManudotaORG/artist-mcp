@@ -362,6 +362,69 @@ An event deleted that this tool did not create. That would mean the prefix check
 failed or was removed, and the capability should go back to not existing.
 
 
+## Rescheduling: the pair, not an update
+
+Added when moving a deadline turned out to be the commonest maintenance a
+project-management sweep produces, and delete-then-create-by-hand turned out to
+cost four confirmations and lose track of which event was which.
+
+**It is deliberately not an update.** Google grants `PATCH` under the same
+`calendar.events` scope, and this refuses it, because `idempotencyId` is a hash
+of every field of the event. Identity here *is* content. Patch the date and the
+event keeps an id that no longer describes it: the double-book guard stops
+matching, and the next create of that same task lands a second copy nobody asked
+for. Deriving the id from the content is what makes a retry safe and what makes
+deleting safe to offer, and neither survives an in-place edit. `PATCH` and `PUT`
+stay absent from `api.ts`, asserted by `test/operation-boundary`.
+
+So `reschedule_calendar_event` writes the replacement and removes the original.
+
+### The order is the design
+
+New first, old second. Interrupted between the two, that leaves a **visible
+duplicate**, which anyone looking at the calendar can see and clean up. The
+other order leaves a gap, and — as the delete section above says — nobody
+notices absence. A failed delete is therefore reported rather than swallowed,
+naming the event left behind and the calendar it is on, because the musician is
+now looking at two events and has to be told which is which.
+
+Both halves are audited under their own operation names, so the log stays a
+record of what actually reached Google rather than of an intention. A
+half-completed move is two rows saying so.
+
+### No new capability
+
+It is gated on holding **both** `calendar-create` and `calendar-delete`. It is
+exactly those two writes and can reach nothing either could not reach
+separately, so a third grant would buy no safety — and would make every hosted
+user consent again for permission they had already given. The operation table
+carries it as one `write` row; the boundary test names it as such.
+
+### What it costs, and callers must say so
+
+The replacement is a new event with a new id. Reminders the musician set on the
+old one, and notifications other people on a shared calendar arranged for it, do
+not come across. The tool descriptions say this and the preview repeats it,
+because it is invisible at the moment of confirming and only noticed later, when
+a reminder does not arrive.
+
+### Moving back hits the bin
+
+The bin problem above applies with a twist. Move an event from A to B, then
+move it back to A, and the create half is asking for an id the trashed original
+still holds — so it fails, and `describeDuplicate` explains that it is in the
+bin and restorable for 30 days. That is the correct answer rather than a
+workaround: the original event is still there, and restoring it is cheaper than
+writing a third one.
+
+### What would reverse this
+
+A `PATCH` or `PUT` appearing in `api.ts`, or an id that is not derived from the
+event's own contents. Either means the invariant this rests on has been
+abandoned, and rescheduling should go back to being two separate confirmed
+operations.
+
+
 ## Consequences
 
 - **Every existing Google connection must reconnect.** A refresh token carries

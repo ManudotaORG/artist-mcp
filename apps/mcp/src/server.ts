@@ -1217,6 +1217,141 @@ const createServer = async (
     );
   }
 
+  // Both grants, not a third one. A reschedule is exactly a create and a delete,
+  // so an install holding both has already consented to everything it does —
+  // and inventing `calendar-update` would make every hosted user re-consent for
+  // permission they already gave. Absent either grant, the tools are absent.
+  if (isGranted(grants, "calendar-create") && isGranted(grants, "calendar-delete")) {
+    server.tool(
+      "preview_calendar_reschedule",
+      "Call this before reschedule_calendar_event — it is the only way to obtain the confirmation_token that one requires. SHOW THE MUSICIAN BOTH HALVES AND WAIT FOR THEIR YES. " +
+        "Shows the event as Google has it now and the values that would replace " +
+        "it, side by side, and lists what is already on the destination day. " +
+        "Changes nothing. Only an event artist-mcp created can be rescheduled; " +
+        "anything the musician made themselves, or that was shared onto their " +
+        "calendar, is refused. Use it to move an event in time, to rename it, or " +
+        "to move it to another calendar with to_calendar_id — those are one " +
+        "operation. A value the notebook has not settled (UNKNOWN, TBC, a " +
+        "disputed date) is refused here rather than written, and a new date the " +
+        "musician did not give you is not settled: a deadline that slipped is " +
+        "not a reason to invent the next one.",
+      {
+        event_id: z.string().describe("The id of the event to replace"),
+        calendar_id: z
+          .string()
+          .optional()
+          .describe("Which calendar it is on now. Defaults to the primary one."),
+        to_calendar_id: z
+          .string()
+          .optional()
+          .describe("Move it to this calendar. Defaults to the one it is already on."),
+        summary: z.string().describe("The title it should have, as the page words it"),
+        start: z
+          .string()
+          .describe(
+            "YYYY-MM-DD for an all-day event, or an RFC3339 date-time such as 2026-10-16T20:00:00",
+          ),
+        end: z
+          .string()
+          .describe(
+            "The same kind as start: both dates, or both date-times. For an all-day event Google reads this as EXCLUSIVE, so a task due on 2026-10-30 is start 2026-10-30, end 2026-10-31",
+          ),
+        time_zone: z.string().optional(),
+        location: z.string().optional(),
+        description: z.string().optional(),
+      },
+      async (params) => {
+        try {
+          const { before, after, confirmation_token, existing_that_day, calendar_searched } =
+            await call<{
+              before: string;
+              after: string;
+              confirmation_token: string;
+              existing_that_day: unknown[];
+              calendar_searched: string;
+            }>("preview_calendar_reschedule", params);
+
+          const day =
+            existing_that_day.length === 0
+              ? `Nothing else is on that day in ${calendar_searched}. That is one calendar only — it does not show the day is free elsewhere.`
+              : `Already on that day in ${calendar_searched}:\n${JSON.stringify(existing_that_day, null, 2)}`;
+
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `${day}\n\nThis event would be replaced:\n\n${before}\n\n` +
+                  `by this one:\n\n${after}\n\n` +
+                  "The replacement is a new event: reminders set on the old one, " +
+                  "and notifications other people arranged for it, do not come " +
+                  "across. Say so, show the musician both halves, and wait for " +
+                  "their yes. If they agree, call reschedule_calendar_event with " +
+                  `the SAME values and confirmation_token: ${confirmation_token}`,
+              },
+            ],
+          };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+
+    server.tool(
+      "reschedule_calendar_event",
+      "Only call this after preview_calendar_reschedule AND after the musician has said yes to what the preview showed. " +
+        "Replaces ONE event that artist-mcp itself created: it writes the new " +
+        "event first and removes the old one after, so an interruption leaves a " +
+        "visible duplicate rather than a gap. It is not an update — the " +
+        "replacement has its own id, and reminders or notifications on the old " +
+        "event are lost. There is no bulk form. Google keeps the removed event " +
+        "in that calendar's bin for 30 days.",
+      {
+        event_id: z.string().describe("Exactly what the preview showed"),
+        calendar_id: z.string().optional().describe("Exactly what the preview showed"),
+        to_calendar_id: z.string().optional().describe("Exactly what the preview showed"),
+        summary: z.string().describe("Exactly what the preview showed"),
+        start: z.string().describe("Exactly what the preview showed"),
+        end: z.string().describe("Exactly what the preview showed"),
+        time_zone: z.string().optional(),
+        location: z.string().optional(),
+        description: z.string().optional(),
+        confirmation_token: z
+          .string()
+          .describe("The token preview_calendar_reschedule returned for these exact values"),
+        source_page: z.string().optional(),
+      },
+      async (params) => {
+        try {
+          const { removed, written, link, calendar_id } = await call<{
+            removed: string;
+            written: string;
+            link: string | null;
+            calendar_id: string;
+          }>("reschedule_calendar_event", params);
+
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `Rescheduled in ${calendar_id}.\n\nRemoved:\n\n${removed}\n\n` +
+                  `Created:\n\n${written}\n\n` +
+                  (link ? `${link}\n\n` : "") +
+                  "Tell the musician it has moved, that the old one is in that " +
+                  "calendar's bin for 30 days, and that any reminder they had set " +
+                  "on it did not come across. The page in OneNote was not " +
+                  "changed — nothing here writes to OneNote.",
+              },
+            ],
+          };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+  }
+
   if (isGranted(grants, "calendar-delete")) {
     server.tool(
       "preview_calendar_delete",
