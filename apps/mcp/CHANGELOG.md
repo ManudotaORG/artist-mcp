@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.6.0...artist-mcp-v1.7.0) (2026-08-27)
+
+
+### Features
+
+* **notes:** keep OneNote to-do tags readable as [x] and [ ] ([806a679](https://github.com/ManudotaORG/artist-mcp/commit/806a679592322971fd1e3b6afc449c7df8b5f95c))
+
 ## [1.6.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.5.2...artist-mcp-v1.6.0) (2026-08-25)
 
 
