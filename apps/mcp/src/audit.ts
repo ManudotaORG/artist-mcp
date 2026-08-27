@@ -39,6 +39,17 @@ export type WriteRecord = {
   target: string;
   /** The OneNote page this came from, when the caller named one. */
   source_page?: string | null;
+  /**
+   * For a created OneNote page: the app identifier Microsoft stamped on it.
+   *
+   * Recorded because it cannot be derived. It is an opaque legacy identifier
+   * unrelated to the client id this product configures, so it can only be
+   * learned by creating a page and reading it back — and anything later asking
+   * "did this tool create that page?" has nothing to compare against unless the
+   * value was kept at the one moment it was known. See
+   * docs/decisions/0003-onenote-writes.md.
+   */
+  created_by_app_id?: string | null;
 };
 
 /**
