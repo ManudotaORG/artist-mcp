@@ -45,6 +45,11 @@ export const htmlToText = (html: string): string =>
     .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, '\n')
+    // A to-do tag is an attribute on the paragraph, so it dies with the tag
+    // strip below unless it is turned into text first. Above the <li> rule
+    // too: that rule rewrites the opening tag, attribute and all.
+    .replace(/<(p|li)[^>]*data-tag="[^"]*\bto-do:completed\b[^"]*"[^>]*>/gi, '$&[x] ')
+    .replace(/<(p|li)[^>]*data-tag="[^"]*\bto-do\b(?!:)[^"]*"[^>]*>/gi, '$&[ ] ')
     .replace(/<li[^>]*>/gi, '- ')
     .replace(/<[^>]+>/g, '')
     // Numeric entities first: OneNote emits these for accented characters, so

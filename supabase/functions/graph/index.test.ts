@@ -962,6 +962,37 @@ Deno.test("htmlToText decodes the entities Gmail and OneNote both emit", () => {
   assertEquals(htmlToText("<p>M&#252;ller &amp; Sons</p>"), "Müller & Sons");
 });
 
+Deno.test("a to-do tag survives as a marker, ticked apart from open", () => {
+  // The tag lives in an attribute and the tag stripper discards attributes, so
+  // without this a ticked task and an open one arrive as the same line.
+  assertEquals(
+    htmlToText(
+      '<p data-tag="to-do:completed">Vertrag zurückgeschickt</p>' +
+        '<p data-tag="to-do">Kurzbio nachreichen</p>',
+    ),
+    "[x] Vertrag zurückgeschickt\n[ ] Kurzbio nachreichen",
+  );
+});
+
+Deno.test("a to-do on a list item keeps both the bullet and the marker", () => {
+  assertEquals(
+    htmlToText('<ul><li data-tag="to-do">Flüge buchen</li></ul>'),
+    "- [ ] Flüge buchen",
+  );
+});
+
+Deno.test("a to-do among other tags is still a to-do, and a non-to-do tag is not", () => {
+  // OneNote allows several tags on one paragraph. A paragraph tagged only
+  // `important` is not a task and gets no marker.
+  assertEquals(
+    htmlToText(
+      '<p data-tag="important,to-do:completed">Foto geschickt</p>' +
+        '<p data-tag="important">Gage 10.000 €</p>',
+    ),
+    "[x] Foto geschickt\nGage 10.000 €",
+  );
+});
+
 // ------------------------------------------------------------ calendar shaping
 
 Deno.test("eventTime reads a timed event", () => {
