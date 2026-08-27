@@ -142,13 +142,27 @@ const fetchGoogleClientSecret = async (): Promise<string> => {
  * provider is done by the operation table instead. See
  * docs/decisions/0001-opt-in-calendar-writes.md.
  */
-export const WRITE_SCOPES: Readonly<Record<WriteCapability, readonly string[]>> = {
-  'calendar-create': ['https://www.googleapis.com/auth/calendar.events'],
+export const WRITE_SCOPES: Readonly<
+  Record<WriteCapability, { readonly provider: ProviderName; readonly scopes: readonly string[] }>
+> = {
+  'calendar-create': {
+    provider: 'google',
+    scopes: ['https://www.googleapis.com/auth/calendar.events'],
+  },
   // The same scope, because Google has only one: events.insert and
   // events.delete accept the identical four. Granting delete after create
   // therefore needs no new consent screen at all, which is the one convenience
   // that follows from the scopes being this coarse.
-  'calendar-delete': ['https://www.googleapis.com/auth/calendar.events'],
+  'calendar-delete': {
+    provider: 'google',
+    scopes: ['https://www.googleapis.com/auth/calendar.events'],
+  },
+  // The opposite case, and the reason this table now names a provider at all.
+  // `Notes.Create` creates pages and cannot modify or delete one, so the
+  // narrowing the calendar rows had to do in our own code is done here by
+  // Microsoft. Asking for `Notes.ReadWrite` instead would hand back exactly
+  // the position 0001 was stuck in. See docs/decisions/0003-onenote-writes.md.
+  'onenote-create': { provider: 'microsoft', scopes: ['Notes.Create'] },
 };
 
 /**
@@ -163,8 +177,20 @@ export const scopesFor = (
   grants: readonly WriteCapability[] = [],
 ): string => {
   const base = PROVIDERS[provider].scope;
-  if (provider !== 'google' || grants.length === 0) return base;
-  const extra = grants.flatMap((name) => [...(WRITE_SCOPES[name] ?? [])]);
+  if (grants.length === 0) return base;
+
+  // Filtered by provider, not merely looked up. Until OneNote there was only
+  // one provider that could be widened, and `provider !== 'google'` said so
+  // directly; with two, that shortcut would have asked Microsoft for a Calendar
+  // scope and Google for `Notes.Create`. Both are rejected at the authorize
+  // endpoint, so the failure would have landed on the consent screen of a user
+  // who had done nothing wrong.
+  const extra = grants
+    .map((name) => WRITE_SCOPES[name])
+    .filter((entry) => entry !== undefined && entry.provider === provider)
+    .flatMap((entry) => [...entry.scopes]);
+
+  if (extra.length === 0) return base;
   return [...new Set([...base.split(' '), ...extra])].join(' ');
 };
 
