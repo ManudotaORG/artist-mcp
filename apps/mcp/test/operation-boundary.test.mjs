@@ -39,6 +39,12 @@ const SANCTIONED = {
   create_calendar_event: 'write',
   preview_calendar_delete: 'read',
   delete_calendar_event: 'write',
+  preview_calendar_reschedule: 'read',
+  // Two writes under one row: it creates the replacement and deletes the
+  // original. Sanctioned as one because it is gated on holding both
+  // calendar-create and calendar-delete, so it can reach nothing those two
+  // could not reach separately.
+  reschedule_calendar_event: 'write',
 };
 
 test('the operation table is exactly what was sanctioned', () => {
@@ -90,6 +96,11 @@ test('the HTTP layer sends exactly one non-GET, and it is the sanctioned one', a
 /**
  * Deleting is now possible, and narrowly: only an event this tool created, by
  * the `artist` id prefix. Updating still is not, and that is the assertion —
+ * rescheduling is deliberately not an exception to it: it writes a new event
+ * and deletes the old, precisely so that no PATCH is needed and the event id
+ * goes on being a hash of the event's own contents. If a PATCH ever appears
+ * here, that invariant has been abandoned somewhere.
+ *
  * Google grants PATCH and PUT with the same scope, so nothing at the provider
  * stops them and only this repository does.
  *
@@ -129,8 +140,12 @@ test('no module outside the sanctioned list exports a write-shaped helper', asyn
   // Case-insensitive, which it was not: `deleteEvent` and `createEvent` slipped
   // straight past a pattern looking for a capital D, so the guard was blind to
   // the two functions that actually write. Found when adding delete.
+  // `reschedule` is in the list because it was not, and `rescheduleEvent` —
+  // which creates and deletes — sailed through a pattern built from HTTP verbs
+  // and CRUD words. A write can be named for what it accomplishes rather than
+  // for how, and this guard has now missed that twice.
   const suspicious =
-    /export\s+(?:const|function|async function)\s+(\w*(?:post|put|patch|delete|insert|create|send|write)\w*)/gi;
+    /export\s+(?:const|function|async function)\s+(\w*(?:post|put|patch|delete|insert|create|send|write|reschedule|move|replace)\w*)/gi;
   const files = ['api.ts', 'calendar.ts', 'mail.ts', 'notes.ts', 'attachments.ts'];
   // The sanctioned write path, named in full. Anything else matching the shape
   // is a boundary change and fails here.
@@ -142,6 +157,12 @@ test('no module outside the sanctioned list exports a write-shaped helper', asyn
     // A read: it fetches the event so a deletion is confirmed against what is
     // really there. Named here because the pattern cannot tell it apart.
     'calendar.ts:previewDeleteEvent',
+    // Create then delete, never an update. Both halves are the sanctioned
+    // paths above; this is the pair applied in one confirmed step.
+    'calendar.ts:rescheduleEvent',
+    // A read, like previewDeleteEvent: it fetches the event so the move is
+    // confirmed against what is really there.
+    'calendar.ts:previewRescheduleEvent',
   ];
   const found = [];
   for (const file of files) {

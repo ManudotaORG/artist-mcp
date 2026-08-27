@@ -18,8 +18,11 @@ rule stands, with exactly one exception, and the exception is not a precedent:
 an install granted `--allow-writes calendar-create` may create a single Google
 Calendar event, previewed and confirmed, and one granted `calendar-delete` may
 remove an event **that this tool itself created**, identified by the `artist`
-prefix on its id. An event the musician made is unreachable, and that prefix
-check is the only thing making delete safe to offer. Read
+prefix on its id. An install holding *both* may also reschedule one, which is
+those two writes in one confirmed step — a create then a delete, never a
+`PATCH`, because the event id is a hash of the event's own contents. An event
+the musician made is unreachable, and that prefix check is the only thing
+making delete safe to offer. Read
 [docs/decisions/0001-opt-in-calendar-writes.md](docs/decisions/0001-opt-in-calendar-writes.md)
 before touching that path — it says what was decided, what it cost, and what
 would reverse it. OneNote writes, message sending and synchronization remain
@@ -83,11 +86,14 @@ docs/           the brief
   takes them, because one stdio process serves one user while the hosted route
   serves many from one process — a grant held in a module and set per request
   would let one user's capability reach another's session, and would pass every
-  test that runs one user at a time. Hosted still registers no write tool: it
-  passes none. Giving hosted users writes means deciding the hosted case on its
-  own terms, since the local justification rests on filesystem permissions on
-  the user's own machine and does not transfer to a service holding many
-  people's decryptable tokens. See #98.
+  test that runs one user at a time. Giving hosted users writes meant deciding
+  the hosted case on its own terms, since the local justification rests on
+  filesystem permissions on the user's own machine and does not transfer to a
+  service holding many people's decryptable tokens. That case has been decided:
+  hosted reads its per-user capabilities from `write_grants_for` and passes
+  them, so a hosted user who granted them gets the same write tools a local
+  install does. Parity is the intent — a feature that ships to one custody
+  model ships to both. See #98.
 - **`/me/onenote/pages` dies on accounts with many sections.** Graph answers the
   whole request with 400 and error `20266`, so listing goes from working to
   broken with no partial result. Enumerate `/me/onenote/sections` and fetch
