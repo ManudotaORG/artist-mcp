@@ -389,3 +389,34 @@ test('a full-length preview reports more to come, a short one does not', async (
   assert.equal(sketches[0].more, true);
   assert.equal(sketches[1].more, false);
 });
+
+/**
+ * A to-do tag lives in an attribute, and the tag stripper discards attributes.
+ * Without the markers a ticked task and an open one arrive as the same line,
+ * so the notebook's own record of what is done becomes invisible to the tool.
+ */
+test('a to-do tag survives as a marker, ticked apart from open', () => {
+  const text = htmlToText(
+    '<p data-tag="to-do:completed">Vertrag zurückgeschickt</p>' +
+      '<p data-tag="to-do">Kurzbio nachreichen</p>',
+  );
+
+  assert.equal(text, '[x] Vertrag zurückgeschickt\n[ ] Kurzbio nachreichen');
+});
+
+test('a to-do on a list item keeps both the bullet and the marker', () => {
+  assert.equal(htmlToText('<ul><li data-tag="to-do">Flüge buchen</li></ul>'), '- [ ] Flüge buchen');
+});
+
+/**
+ * OneNote allows several tags on one paragraph, so the to-do can arrive beside
+ * others. A paragraph tagged only `important` is not a task and gets no marker.
+ */
+test('a to-do among other tags is still a to-do, and a non-to-do tag is not', () => {
+  const text = htmlToText(
+    '<p data-tag="important,to-do:completed">Foto geschickt</p>' +
+      '<p data-tag="important">Gage 10.000 €</p>',
+  );
+
+  assert.equal(text, '[x] Foto geschickt\nGage 10.000 €');
+});

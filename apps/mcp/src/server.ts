@@ -229,7 +229,7 @@ const selectNotebook = async (
   return { pages, scope };
 };
 
-const serverVersion = '1.5.2'; // x-release-please-version
+const serverVersion = '1.6.0'; // x-release-please-version
 
 const errorResult = (err: unknown) => {
   const message =

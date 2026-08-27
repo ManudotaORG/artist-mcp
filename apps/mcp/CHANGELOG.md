@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.5.2...artist-mcp-v1.6.0) (2026-08-25)
+
+
+### Features
+
+* **web:** ask consent for the writes this user opted into, and no more ([3da0347](https://github.com/ManudotaORG/artist-mcp/commit/3da034709340b857829b8ce1b958b4f4801a436c)), closes [#98](https://github.com/ManudotaORG/artist-mcp/issues/98)
+* **web:** record hosted writes where someone can read them ([558b242](https://github.com/ManudotaORG/artist-mcp/commit/558b2428d5fa14430c163bd050fb96b9e79dd3c2)), closes [#98](https://github.com/ManudotaORG/artist-mcp/issues/98)
+
 ## [1.5.2](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.5.1...artist-mcp-v1.5.2) (2026-08-25)
 
 
