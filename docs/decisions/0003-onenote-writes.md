@@ -2,8 +2,8 @@
 
 Status: **accepted; phase 1 shipped.** The create-only claim was observed
 rather than quoted before any code was written, and the `createdByAppId` claim
-corrected — see "What was verified". Phase 2 remains undecided and its open
-questions are listed below. Extends
+corrected — see "What was verified". Phase 2's delete half is **ruled out**, on
+evidence rather than on cost; its edit half is untested and undecided. Extends
 [0001](0001-opt-in-calendar-writes.md), which ruled OneNote writes out and said
 so in terms this record has to answer. Raised by issue #117.
 
@@ -62,6 +62,10 @@ They need `Notes.ReadWrite`, which grants edit and delete over everything, and
 at that moment the restriction becomes ours to enforce again — with
 `createdByAppId` as the check, exactly as the `artist` prefix works today.
 
+That last clause was wrong, and finding out how wrong is what settled the
+question. See "Deleting our own pages" below: the check it names cannot be
+built.
+
 ## What was verified, once the probe was run
 
 Issue #117 called for the create-only claim to be observed rather than quoted,
@@ -109,18 +113,59 @@ regardless. Treating "no other app has written here" as a possible state would
 be the only way this becomes dangerous, so it is ruled out by assumption rather
 than left to a survey nobody will run.
 
-## What must still be verified before that second step
+## Deleting our own pages: ruled out, because the check cannot be built
 
-- **Whether `createdByAppId` is stable across accounts,** or must be recorded per
-  page when we create it. The audit log already records enough to find a page
-  again and is the natural place for it.
-- **Whether OneNote's recycle bin covers a Graph delete.** The calendar argument
-  turned on Google keeping a deleted event for 30 days, which is what moved
-  delete from "unrecoverable" to "closer to creating". If a Graph delete bypasses
-  the notebook bin, delete should not ship.
-- **Whether `data-id` patching is survivable in practice.** `CLAUDE.md` says a
-  bad patch corrupts a page permanently. Editing looks riskier here than
-  deleting, the reverse of the calendar.
+Phase 2 assumed one question could be answered — "did this tool create this
+page?" — and that `createdByAppId` answered it. Tested, it does not answer the
+question that matters.
+
+**`createdByAppId` identifies the creator, not the contents.** A page this tool
+created, which the musician then renames and writes three paragraphs into, still
+reports the tool's app id. 0003 listed that durability as a strength — the field
+"survives the page being renamed, moved or edited" — and it is precisely the
+failure. A delete gated on it would destroy the musician's work while correctly
+reporting, by its own logic, that it touched only its own page. That risk is far
+sharper than the calendar's: an event holds a line of text, while a page is the
+working unit, and a page this tool wrote about a gig is exactly the page a
+musician would then work in.
+
+**The obvious fix does not exist either.** "Refuse if the page has been modified
+since we created it" would have been a sound guard and cheap, since
+`lastModifiedDateTime` is already read for `list_notes`. It does not move when a
+page is edited in a OneNote client. Observed across three pages, three clients
+including a phone, and two kinds of edit — Graph serving the edited content and
+the original timestamp from the same resource, still unchanged 18 minutes later.
+See #122, which is a bug in the read path quite apart from this record.
+
+So there is no field distinguishing "a page we created" from "a page we created
+that is now partly the musician's". Not a weak signal — none. **Delete is ruled
+out on that ground**, which is stronger than the cost argument: even granted
+`Notes.ReadWrite`, and even with the audit log recording every id we ever wrote,
+the guard could not be written.
+
+The recycle-bin question is therefore moot and was never run. It only mattered
+as a way to make a wrong delete recoverable, and there is no delete to make
+recoverable.
+
+## What is still open
+
+- **Whether `data-id` patching is survivable in practice.** Untested, and now
+  the only phase 2 experiment worth the `Notes.ReadWrite` risk. `CLAUDE.md` says
+  a bad patch corrupts a page permanently; that claim has never been observed
+  either way.
+
+  It is worth keeping open for a reason that is not "editing is phase 2's other
+  half". A tool that *maintains* a page across sessions is a different proposal
+  from an undo, and it does not need the ownership check that just failed —
+  under maintenance the musician editing the page is the expected case, not the
+  danger sign. It would collide with "one OneNote page is one working unit" and
+  with `policy:patch`, so it needs its own record rather than an extension of
+  this one. Nothing about it is decided, and phase 1 forecloses none of it: the
+  scope it holds cannot patch, so no path has been opened by shipping.
+- **Whether `createdByAppId` is stable across accounts.** Unanswered, and now
+  largely academic — two consents on one account produced the same value, and
+  nothing turns on it while no capability checks the field. The audit log
+  records it at create time regardless, because it can only be learned then.
 
 ## What does not change
 
