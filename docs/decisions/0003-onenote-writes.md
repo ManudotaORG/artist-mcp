@@ -2,8 +2,10 @@
 
 Status: **accepted; phase 1 shipped.** The create-only claim was observed
 rather than quoted before any code was written, and the `createdByAppId` claim
-corrected — see "What was verified". Phase 2's delete half is **ruled out**, on
-evidence rather than on cost; its edit half is untested and undecided. Extends
+corrected — see "What was verified". **Deleting and replacing are ruled out
+permanently**, because a Graph write leaves nothing recoverable — not because
+the scope is too broad, which turned out to be false. Appending is undecided and
+is a different question. Extends
 [0001](0001-opt-in-calendar-writes.md), which ruled OneNote writes out and said
 so in terms this record has to answer. Raised by issue #117.
 
@@ -62,9 +64,10 @@ They need `Notes.ReadWrite`, which grants edit and delete over everything, and
 at that moment the restriction becomes ours to enforce again — with
 `createdByAppId` as the check, exactly as the `artist` prefix works today.
 
-That last clause was wrong, and finding out how wrong is what settled the
-question. See "Deleting our own pages" below: the check it names cannot be
-built.
+Both halves of that paragraph turned out to be wrong, and the sections below
+say how: `Notes.ReadWrite` is not the only door, and `createdByAppId` is not a
+usable check. Neither matters in the end, because a Graph write leaves nothing
+recoverable.
 
 ## What was verified, once the probe was run
 
@@ -113,59 +116,125 @@ regardless. Treating "no other app has written here" as a possible state would
 be the only way this becomes dangerous, so it is ruled out by assumption rather
 than left to a survey nobody will run.
 
-## Deleting our own pages: ruled out, because the check cannot be built
+## Deleting and editing our own pages: ruled out, because nothing can be undone
 
-Phase 2 assumed one question could be answered — "did this tool create this
-page?" — and that `createdByAppId` answered it. Tested, it does not answer the
-question that matters.
+This section was rewritten after being wrong twice. Both wrong versions are
+worth stating, because the same mistakes are available to the next person.
 
-**`createdByAppId` identifies the creator, not the contents.** A page this tool
-created, which the musician then renames and writes three paragraphs into, still
-reports the tool's app id. 0003 listed that durability as a strength — the field
-"survives the page being renamed, moved or edited" — and it is precisely the
-failure. A delete gated on it would destroy the musician's work while correctly
-reporting, by its own logic, that it touched only its own page. That risk is far
-sharper than the calendar's: an event holds a line of text, while a page is the
-working unit, and a page this tool wrote about a gig is exactly the page a
-musician would then work in.
+**Wrong the first time:** that `createdByAppId` answers "did this tool create
+this page?" It answers it, but that is not the question that matters. The field
+identifies the creator, not the contents. A page this tool created, which the
+musician then renames and writes three paragraphs into, still reports the tool's
+app id — so a delete gated on it destroys their work while correctly reporting,
+by its own logic, that it touched only its own page. `lastModifiedDateTime`
+would have been the guard for that, and it does not move when a page is edited
+in a OneNote client (see #122). Neither signal distinguishes "our page" from
+"our page that is now partly theirs".
 
-**The obvious fix does not exist either.** "Refuse if the page has been modified
-since we created it" would have been a sound guard and cheap, since
-`lastModifiedDateTime` is already read for `list_notes`. It does not move when a
-page is edited in a OneNote client. Observed across three pages, three clients
-including a phone, and two kinds of edit — Graph serving the edited content and
-the original timestamp from the same resource, still unchanged 18 minutes later.
-See #122, which is a bug in the read path quite apart from this record.
+**Wrong the second time:** that the only door was `Notes.ReadWrite`, granting
+edit and delete over every page in the notebook, so the restriction would become
+ours to enforce again. That premise was false, and the evidence had been in hand
+for hours inside a 403 body that was truncated before the end of the sentence.
 
-So there is no field distinguishing "a page we created" from "a page we created
-that is now partly the musician's". Not a weak signal — none. **Delete is ruled
-out on that ground**, which is stronger than the cost argument: even granted
-`Notes.ReadWrite`, and even with the audit log recording every id we ever wrote,
-the guard could not be written.
+## `Notes.ReadWrite.CreatedByApp` exists, and it works
 
-The recycle-bin question is therefore moot and was never run. It only mattered
-as a way to make a wrong delete recoverable, and there is no delete to make
-recoverable.
+Microsoft names it in its own refusal, for both operations:
+
+```
+Please make sure you are including one or more of the following scopes:
+  Office.onenote_update, Notes.ReadWrite,
+  Office.onenote_update_by_app, Notes.ReadWrite.CreatedByApp, ...
+```
+
+It is grantable on a consumer account — consent returned
+`Notes.Read Notes.ReadWrite.CreatedByApp Notes.Create`, folding in create
+without being asked — and it is enforced precisely. Tested in a real notebook:
+
+```
+PATCH a page the musician made by hand   -> 401  40003 Access Denied
+PATCH a page another app created         -> 403  40006 "no permission to edit
+                                                  the page created by a
+                                                  different application"
+PATCH a page this tool created           -> 204
+DELETE a page this tool created          -> 204
+```
+
+It distinguishes *this* app from *another* app, not merely "some app". That is
+the provider-enforced version of exactly what this record wanted, and it is the
+strongest form available.
+
+**It is absent from the documentation for the operations it enables.** The
+permissions table on `page-delete` lists only `Notes.ReadWrite` and
+`Notes.ReadWrite.All`, and says higher privileges are "not available" for a
+personal account — while a personal account deleted a page with
+`Notes.ReadWrite.CreatedByApp`. This is the third divergence between the OneNote
+documentation and its behaviour found here, after `lastModifiedDateTime` and the
+undocumented delete semantics below. **Treat the reference as describing intent,
+and probe for behaviour.**
+
+## What actually rules it out: nothing can be undone
+
+The scope removed the objection. Recoverability closed the question anyway, on
+0001's original grounds — *OneNote is the knowledge base and has no undo.*
+
+Tested against a real notebook, on this account:
+
+| Operation | Result | Recovery |
+| --- | --- | --- |
+| `DELETE` a page | `204` | **not in the notebook recycle bin** |
+| `PATCH` replacing the body | `204` | **no page version retained** |
+
+The Graph documentation says nothing at all about either — `page-delete`
+specifies the verb, the `204`, and an empty body, and is silent on permanence.
+
+0001 permitted calendar deletion because Google keeps a deleted event for 30
+days, and said so explicitly: that recoverability is what moved delete from
+"unrecoverable" to "closer to creating". There is no such bin here. **A wrong
+delete is permanent, and a wrong replace destroys what it overwrote.** No amount
+of provider-enforced scoping changes that, because the scope governs *which*
+pages can be destroyed, not whether destruction can be undone.
+
+One caveat, recorded rather than glossed: OneNote may create versions for edits
+made in its own clients and not for API edits, and only the API path was tested.
+"OneNote has no version history" would be the wrong summary. "A Graph write
+leaves no recoverable trace" is the right one — and it is the API path this tool
+would use.
+
+## The line is additive versus destructive, not create versus edit
+
+Both 0001 and the first draft of this record framed the boundary as create on
+one side, edit and delete on the other. The evidence puts it elsewhere:
+
+- **Additive** — creating a page, and `PATCH` with `action: append`. Nothing
+  existing is lost. A mistake leaves something the musician deletes by hand,
+  which is exactly the position phase 1 already ships in.
+- **Destructive** — `PATCH` with `action: replace`, and `DELETE`. Content ceases
+  to exist, with no bin and no version.
+
+Phase 1 is on the additive side, which is why it was safe to ship. Deleting and
+replacing are on the destructive side, and stay out **permanently, on
+recoverability grounds** — not because the scope is too broad, which is no
+longer true and will be rediscovered as untrue by whoever reads the permission
+error next.
+
+Appending is the interesting case this reframing exposes. It carries phase 1's
+risk profile rather than delete's, so a future page-maintenance capability is
+not automatically disqualified — but it needs its own record, and it must be
+`append` with `replace` unreachable rather than "patch" as a general power. See
+"What is still open".
 
 ## What is still open
 
-- **Whether `data-id` patching is survivable in practice.** Untested, and now
-  the only phase 2 experiment worth the `Notes.ReadWrite` risk. `CLAUDE.md` says
-  a bad patch corrupts a page permanently; that claim has never been observed
-  either way.
-
-  It is worth keeping open for a reason that is not "editing is phase 2's other
-  half". A tool that *maintains* a page across sessions is a different proposal
-  from an undo, and it does not need the ownership check that just failed —
-  under maintenance the musician editing the page is the expected case, not the
-  danger sign. It would collide with "one OneNote page is one working unit" and
-  with `policy:patch`, so it needs its own record rather than an extension of
-  this one. Nothing about it is decided, and phase 1 forecloses none of it: the
-  scope it holds cannot patch, so no path has been opened by shipping.
-- **Whether `createdByAppId` is stable across accounts.** Unanswered, and now
-  largely academic — two consents on one account produced the same value, and
-  nothing turns on it while no capability checks the field. The audit log
-  records it at create time regardless, because it can only be learned then.
+- **Whether `data-id` targeting is survivable for an append.** `CLAUDE.md` says
+  a bad patch corrupts a page permanently. A body-level `append` was tested and
+  behaved; targeting a specific element by `data-id` was not.
+- **Whether a maintenance capability is wanted at all.** It is a different
+  proposal from an undo, needing no ownership check — under maintenance the
+  musician editing the page is the expected case, not the danger sign. It
+  collides with "one OneNote page is one working unit" and with `policy:patch`,
+  so it wants its own record rather than an extension of this one. Nothing about
+  it is decided, and phase 1 forecloses none of it: the scope it holds cannot
+  patch at all.
 
 ## What does not change
 
@@ -181,3 +250,9 @@ A page the musician wrote being changed or removed. Under create-only that
 should be impossible at the provider, so it happening at all would mean the
 scope granted was wider than intended — and the capability should go back to not
 existing rather than being repaired.
+
+The reverse, reopening delete or replace, needs one thing and it is not a
+better scope: a way to undo them. If OneNote gains a recycle bin that catches a
+Graph delete, or retains a version across a Graph patch, the argument changes
+and this record should be revisited. Until then, `Notes.ReadWrite.CreatedByApp`
+being available is not a reason — it was available all along.
