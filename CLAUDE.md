@@ -14,8 +14,9 @@ Scope is deliberately narrow. The workflow layer is defined in
 project types are loaded at runtime, and every result stays in chat.
 
 **If you find yourself adding writes, sends, or synchronization, stop.** That
-rule stands, with exactly one exception, and the exception is not a precedent:
-an install granted `--allow-writes calendar-create` may create a single Google
+rule stands, with two exceptions, and neither is a precedent.
+
+An install granted `--allow-writes calendar-create` may create a single Google
 Calendar event, previewed and confirmed, and one granted `calendar-delete` may
 remove an event **that this tool itself created**, identified by the `artist`
 prefix on its id. An install holding *both* may also reschedule one, which is
@@ -25,10 +26,26 @@ the musician made is unreachable, and that prefix check is the only thing
 making delete safe to offer. Read
 [docs/decisions/0001-opt-in-calendar-writes.md](docs/decisions/0001-opt-in-calendar-writes.md)
 before touching that path — it says what was decided, what it cost, and what
-would reverse it. OneNote writes, message sending and synchronization remain
-out, and the reasoning for each is there rather than restated here.
+would reverse it.
 
-Sources are read-only apart from that one grant, and deliberately few. OneNote
+An install granted `onenote-create` may create a new OneNote page, previewed
+and confirmed. **It cannot edit or delete any page, including one it created**,
+and that is not a rule this repository keeps — the scope is `Notes.Create`,
+which cannot express an edit or a delete, verified as a 403 on both against a
+page the token had just created itself. This is the inverse of the calendar
+situation, where no insert-only scope exists and the boundary had to become our
+code. The price is that a created page is permanent as far as this tool is
+concerned: there is no undo, and the musician removes it in OneNote themselves.
+Read [docs/decisions/0003-onenote-writes.md](docs/decisions/0003-onenote-writes.md)
+before touching that path. **Editing an existing page is still out.** Asking for
+`Notes.ReadWrite` would hand back edit and delete over every page in the
+notebook and put the boundary in our code again, which is exactly what 0003
+exists to avoid.
+
+Message sending and synchronization remain out, and the reasoning is in the
+records rather than restated here.
+
+Sources are read-only apart from those grants, and deliberately few. OneNote
 holds the working unit; Gmail and Google Calendar are **supporting evidence
 only** — they corroborate or fill gaps in a page and are never themselves a
 working unit. That asymmetry
@@ -61,8 +78,11 @@ docs/           the brief
 
 ## Things that bite
 
-- **Notes are OneNote, not OneDrive files.** Scope is `Notes.Read`, the API is
-  `/me/onenote/*`, and pages are addressed by id — there is no path.
+- **Notes are OneNote, not OneDrive files.** Scope is `Notes.Read`, plus
+  `Notes.Create` behind a grant. The API is `/me/onenote/*`, and pages are
+  addressed by id — there is no path. A page is created by POSTing an XHTML
+  document, not JSON; sending JSON is answered with a 400 that names neither
+  problem.
 - **`offline_access` is not optional.** Without it Microsoft returns no refresh
   token and everything dies after an hour.
 - **Microsoft rotates refresh tokens.** Every exchange invalidates the old one.
@@ -128,7 +148,19 @@ docs/           the brief
 - **The operation table in `dispatch.ts` is security code.** Since Google
   publishes no insert-only Calendar scope, the scopes no longer separate
   creating an event from deleting one — that table and the grant check do.
-  `test/operation-boundary` fails on any edit to it, deliberately.
+  `test/operation-boundary` fails on any edit to it, deliberately. The OneNote
+  rows are the exception that proves the rule: `Notes.Create` separates create
+  from edit at the provider, so those rows record a boundary rather than
+  keeping one. `WRITE_CAPABILITIES` has the same kind of guard in
+  `test/grants` — it did not until #117, so a capability could be added with
+  the suite staying green.
+- **The hosted write switch grants every capability there is.** One question,
+  derived from `WRITE_CAPABILITIES` rather than listed, so it cannot come to
+  mean less than its label. The edge is that a new capability is covered by
+  consent already given — so **adding one requires a migration clearing
+  `write_grants`**, the way `20260828120000_reset_write_grants.sql` does.
+  Without it, users find a tool they never agreed to in their list, since
+  registration is gated on the grant and not on the token's scope.
 - **A rule in a role is not in force.** Roles arrive in the briefing as a
   one-line summary; only project types and the policies in `alwaysInFull` load
   in full. Three bugs came from rules sitting where no session could see them.

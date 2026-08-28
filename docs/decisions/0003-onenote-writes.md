@@ -1,8 +1,9 @@
 # 0003 — OneNote writes: create only, and let the provider enforce it
 
-Status: **proposed, nothing built.** The create-only claim has since been
-observed rather than quoted, and the `createdByAppId` claim corrected — see
-"What was verified". Extends
+Status: **accepted; phase 1 shipped.** The create-only claim was observed
+rather than quoted before any code was written, and the `createdByAppId` claim
+corrected — see "What was verified". Phase 2 remains undecided and its open
+questions are listed below. Extends
 [0001](0001-opt-in-calendar-writes.md), which ruled OneNote writes out and said
 so in terms this record has to answer. Raised by issue #117.
 
@@ -43,7 +44,7 @@ because the Calendar work had just proved the opposite for Google.
 
 ## What would be decided
 
-**Create only, at first, and possibly for good.**
+**Create only, at first, and possibly for good.** This is what shipped:
 
 - A `onenote-create` capability, opt-in per install and per hosted user, absent
   unless granted — the shape 0001 and 0002 settled and which does not need
