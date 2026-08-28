@@ -67,6 +67,10 @@ test('pages are fetched per section, never through /me/onenote/pages', async () 
     section: 'Gigs',
     notebook: 'Work',
     last_modified: '2026-08-01T00:00:00Z',
+    // Carried on every page so a caller cannot read the date without also
+    // being told whether it means anything. False here: the stub gives the
+    // section no timestamp, so nothing contradicts the page.
+    date_is_creation: false,
   });
   assert.ok(!seen.some((url) => /\/me\/onenote\/pages(\?|$)/.test(url)), 'used the failing call');
 });
