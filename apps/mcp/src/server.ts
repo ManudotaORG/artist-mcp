@@ -6,7 +6,7 @@ import { WRITE_CAPABILITIES, isGranted, type WriteCapability } from "./grants.js
 import { listAgentWorkflows, loadAgentWorkflow, type ResolvedEntry } from "./agents.js";
 import { GraphError } from "./client.js";
 import { call as localCall, type Operation } from "./dispatch.js";
-import { narrowNotes } from "./notes.js";
+import { narrowNotes, narrowSections } from "./notes.js";
 
 /**
  * How a tool reaches the outside world. Injected rather than imported so the
@@ -27,6 +27,20 @@ type NoteSummary = {
   /** Absent from responses served by an older edge function. */
   notebook?: string | null;
   last_modified: string | null;
+};
+
+/**
+ * A section, which on some accounts is the only thing that reports change.
+ *
+ * Optional throughout, because a response served by an older edge function
+ * carries no sections at all — the same reason `notebook` above is optional.
+ */
+type SectionSummary = {
+  id: string;
+  name: string;
+  notebook: string | null;
+  last_modified: string | null;
+  pages: number;
 };
 
 type NoteSketch = NoteSummary & {
@@ -165,8 +179,24 @@ const selectNotebook = async (
   call: Dispatch,
   notebook: string | undefined,
   tool: string,
-): Promise<{ pages: NoteSummary[]; scope: string | null } | { message: string }> => {
-  const { notes } = await call<{ notes: NoteSummary[] }>("list_notes");
+): Promise<
+  | {
+      pages: NoteSummary[];
+      sections: SectionSummary[];
+      creationDates: boolean;
+      scope: string | null;
+    }
+  | { message: string }
+> => {
+  const {
+    notes,
+    sections = [],
+    page_dates_are_creation_dates = false,
+  } = await call<{
+    notes: NoteSummary[];
+    sections?: SectionSummary[];
+    page_dates_are_creation_dates?: boolean;
+  }>("list_notes");
   if (notes.length === 0) return { message: "No notes found." };
 
   const names = [...new Set(notes.map((n) => n.notebook ?? "(unnamed notebook)"))];
@@ -226,7 +256,85 @@ const selectNotebook = async (
         "one, do not infer it from anything outside this conversation — ask."
       : null;
 
-  return { pages, scope };
+  // Sections are narrowed to the chosen notebook the same way the pages are:
+  // a section list spanning notebooks would reintroduce exactly the scope bug
+  // the paragraph above describes.
+  const inScope = wanted
+    ? sections.filter((sec) => (sec.notebook ?? "").trim().toLowerCase() === wanted)
+    : sections;
+
+  return {
+    pages,
+    sections: inScope,
+    creationDates: page_dates_are_creation_dates,
+    scope,
+  };
+};
+
+/**
+ * What "what changed since X" looks like when only sections can answer it.
+ *
+ * Leads with the limitation rather than appending it. A caveat after a list is
+ * read as a footnote on a result already believed; the same sentence first is
+ * read as the terms the result comes on — and this result needs to be read on
+ * its terms, because "these sections changed" and "these pages changed" are
+ * different claims and only one of them is supported.
+ */
+const renderChangedSections = (
+  chosen: { sections: SectionSummary[]; scope: string | null },
+  notebook: string | undefined,
+  since: string,
+): string => {
+  const { sections: changed, undated } = narrowSections(chosen.sections, since);
+  const where = notebook ? `"${notebook}"` : "this account";
+
+  const preamble =
+    "OneNote is not reporting page modification times on this account — " +
+    "Microsoft returns each page's creation date in that field — so this " +
+    "answers at section level, which does report change correctly.";
+
+  if (changed.length === 0) {
+    return (
+      `${preamble}\n\nNo section in ${where} changed on or after ${since}. ` +
+      "Nothing in the notebook was edited in that window." +
+      (undated > 0
+        ? ` ${undated} section${undated === 1 ? " has" : "s have"} no date recorded ` +
+          "and were left out rather than assumed recent."
+        : "")
+    );
+  }
+
+  const lines = changed.map((sec) => {
+    const where2 = sec.notebook ? `${sec.notebook} / ` : "";
+    return (
+      `- ${where2}${sec.name} — changed ${sec.last_modified ?? "unknown"}` +
+      `\n  ${sec.pages} page${sec.pages === 1 ? "" : "s"} in this section`
+    );
+  });
+
+  const caveats = [
+    "Tell the musician WHICH SECTIONS changed. Do not name pages as changed — " +
+      "OneNote cannot say which page it was, and a section holds several. " +
+      "To look inside one, call list_notes with that notebook and no `since`, " +
+      "then read the pages of that section.",
+    "\"Changed\" includes a page being added, removed or moved, not only edited.",
+    "A section shows only its most recent change, so an older edit in a section " +
+      "that changed again later cannot be seen separately.",
+  ];
+  if (chosen.scope) caveats.unshift(chosen.scope);
+  if (undated > 0) {
+    caveats.push(
+      `${undated} section${undated === 1 ? "" : "s"} with no date recorded ` +
+        `${undated === 1 ? "is" : "are"} not in this window.`,
+    );
+  }
+
+  return [
+    preamble,
+    `Sections in ${where} that changed on or after ${since}:`,
+    lines.join("\n"),
+    caveats.join("\n\n"),
+  ].join("\n\n");
 };
 
 const serverVersion = '1.7.0'; // x-release-please-version
@@ -534,7 +642,7 @@ const createServer = async (
   server.tool(
     "list_notes",
     "List the user's OneNote pages, with title, notebook, section and last " +
-      "modified date. Takes an optional notebook name. When the account holds " +
+      "date. Takes an optional notebook name. When the account holds " +
       "more than one notebook and none is given, this returns the list of " +
       "notebooks instead of any pages, so the user can say which one to work " +
       "in.",
@@ -555,9 +663,14 @@ const createServer = async (
         .string()
         .optional()
         .describe(
-          "Only pages modified on or after this date, as an ISO date such as " +
-            "2026-08-10. Use it for 'what moved this week'. Pages the account " +
-            "records no modified date for are left out rather than guessed at.",
+          "What changed on or after this date, as an ISO date such as " +
+            "2026-08-10. Use it for 'what moved this week'. On accounts where " +
+            "OneNote reports page modification times, this returns PAGES. On " +
+            "accounts where it does not — Microsoft returns the creation date " +
+            "in that field on some of them — it returns the SECTIONS that " +
+            "changed instead, because which page changed is genuinely unknown " +
+            "there. The reply says which of the two it gave you. Never report " +
+            "a section as a changed page.",
         ),
       limit: z
         .number()
@@ -578,6 +691,26 @@ const createServer = async (
         }
         const selected = chosen.pages;
 
+        // When page dates carry no modification information, a `since` question
+        // is answered about SECTIONS instead — and answers with sections, not
+        // with their pages.
+        //
+        // Returning the pages of a changed section would be the same lie in a
+        // new place: four page titles under "changed since Monday" reads as
+        // four changed pages, and we know only that one of them is. The section
+        // is the whole of what is known, so it is the whole of what is said.
+        //
+        // Nothing is lost from the answer itself. A section's timestamp moves
+        // for any single page edit inside it, tested with a control, so no
+        // change escapes this. What is surrendered is which page. See #122.
+        if (since !== undefined && chosen.creationDates) {
+          return {
+            content: [
+              { type: "text", text: renderChangedSections(chosen, notebook, since) },
+            ],
+          };
+        }
+
         // Narrowed only after the notebook is settled, so a `since` window can
         // never be what makes a notebook look empty enough to skip choosing.
         const { notes: shown, matched, undated } = narrowNotes(selected, { since, limit });
@@ -589,9 +722,11 @@ const createServer = async (
               {
                 type: "text",
                 text:
-                  `No pages in ${scope} modified on or after ${since}.` +
+                  `No pages in ${scope} dated on or after ${since}. This is not ` +
+                  `evidence that nothing changed: the date OneNote reports may be ` +
+                  `when a page was created rather than when it was last edited.` +
                   (undated > 0
-                    ? ` ${undated} page${undated === 1 ? " has" : "s have"} no modified date ` +
+                    ? ` ${undated} page${undated === 1 ? " has" : "s have"} no date ` +
                       "recorded and were left out of the window rather than assumed recent; " +
                       "list without `since` to see them."
                     : ""),
@@ -602,7 +737,11 @@ const createServer = async (
 
         const lines = shown.map((n) => {
           const location = [n.notebook, n.section].filter(Boolean).join(" / ");
-          return `- ${n.title}${location ? ` (${location})` : ""} — modified ${
+          // "dated", not "modified". The field behind it is currently the
+          // creation date on some accounts, and a line that says "modified" is
+          // read as proof of when someone last worked — the one claim it
+          // cannot support. See #122.
+          return `- ${n.title}${location ? ` (${location})` : ""} — dated ${
             n.last_modified ?? "unknown"
           }\n  id: ${n.id}`;
         });
@@ -613,13 +752,13 @@ const createServer = async (
         if (chosen.scope) caveats.push(chosen.scope);
         if (shown.length < matched) {
           caveats.push(
-            `Showing the ${shown.length} most recently modified of ${matched} matching ` +
+            `Showing the ${shown.length} newest by date of ${matched} matching ` +
               "pages. Raise `limit` or narrow with `since` for the rest.",
           );
         }
         if (undated > 0) {
           caveats.push(
-            `${undated} page${undated === 1 ? "" : "s"} with no modified date recorded ` +
+            `${undated} page${undated === 1 ? "" : "s"} with no date recorded ` +
               `${undated === 1 ? "is" : "are"} not in this window. That is unrecorded, ` +
               "not old — list without `since` to see them.",
           );
@@ -658,7 +797,11 @@ const createServer = async (
       since: z
         .string()
         .optional()
-        .describe("Only sketch pages modified on or after this ISO date."),
+        .describe(
+          "Only sketch pages changed on or after this ISO date. Refused on " +
+            "accounts where OneNote does not report page modification times — " +
+            "use list_notes with `since` there, which answers at section level.",
+        ),
       limit: z
         .number()
         .int()
@@ -675,6 +818,34 @@ const createServer = async (
           return { content: [{ type: "text", text: chosen.message }] };
         }
 
+        // `since` cannot be honoured here when page dates are creation dates,
+        // and unlike list_notes there is no honest substitute: this tool
+        // sketches page CONTENT, so answering with sections would not be a
+        // coarser version of the same answer, it would be a different one.
+        //
+        // Refused rather than silently narrowed. Sketching the pages created
+        // since a date, labelled as the pages that changed, is the failure this
+        // whole change exists to remove — and it would be expensive as well as
+        // wrong, since every sketch is a request. See #122.
+        if (since !== undefined && chosen.creationDates) {
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  "Cannot map by change on this account: OneNote is not " +
+                  "reporting page modification times — Microsoft returns each " +
+                  "page's creation date in that field — so `since` here would " +
+                  "sketch the pages CREATED since then, which is a different " +
+                  "set and would be reported as the wrong answer.\n\n" +
+                  "Call list_notes with `since` instead: it reports which " +
+                  "SECTIONS changed, which does work. Then map that notebook " +
+                  "without `since` and read the pages of the sections it named.",
+              },
+            ],
+          };
+        }
+
         // A default cap, because this is one call per page: a notebook of two
         // hundred pages should not become two hundred requests because nobody
         // said a number. It reports itself, as every other truncation does.
@@ -686,7 +857,16 @@ const createServer = async (
         if (pages.length === 0) {
           return {
             content: [
-              { type: "text", text: `No pages to map${since ? ` modified on or after ${since}` : ""}.` },
+              {
+                type: "text",
+                text:
+                  `No pages to map${since ? ` dated on or after ${since}` : ""}.` +
+                  (since
+                    ? " The date OneNote reports may be when a page was created" +
+                      " rather than when it was last edited, so this is not" +
+                      " evidence that nothing changed."
+                    : ""),
+              },
             ],
           };
         }
@@ -699,7 +879,7 @@ const createServer = async (
         const blocks = sketches.map((s) => {
           const location = [s.notebook, s.section].filter(Boolean).join(" / ");
           const head =
-            `## ${s.title}${location ? ` (${location})` : ""} — modified ${s.last_modified ?? "unknown"}` +
+            `## ${s.title}${location ? ` (${location})` : ""} — dated ${s.last_modified ?? "unknown"}` +
             `\nid: ${s.id}`;
           if (s.sketch === null) {
             // Named as a gap. A page missing from a survey reads as a page
@@ -734,13 +914,13 @@ const createServer = async (
         }
         if (pages.length < matched) {
           caveats.push(
-            `Sketched the ${pages.length} most recently modified of ${matched} pages. ` +
+            `Sketched the ${pages.length} newest by date of ${matched} pages. ` +
               "Raise `limit` or narrow with `since` for the rest.",
           );
         }
         if (undated > 0) {
           caveats.push(
-            `${undated} page${undated === 1 ? "" : "s"} with no modified date recorded ` +
+            `${undated} page${undated === 1 ? "" : "s"} with no date recorded ` +
               `${undated === 1 ? "is" : "are"} not in this window.`,
           );
         }

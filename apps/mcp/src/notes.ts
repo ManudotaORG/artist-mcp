@@ -23,6 +23,7 @@ type OneNotePage = {
 type OneNoteSection = {
   id: string;
   displayName?: string;
+  lastModifiedDateTime?: string;
   parentNotebook?: { displayName?: string };
 };
 
@@ -32,7 +33,59 @@ export type NoteSummary = {
   section: string | null;
   notebook: string | null;
   last_modified: string | null;
+  /**
+   * Whether `last_modified` is known to be the creation date rather than a
+   * modification date. See `pageDatesAreCreationDates`.
+   */
+  date_is_creation?: boolean;
 };
+
+export type SectionSummary = {
+  id: string;
+  name: string;
+  notebook: string | null;
+  /** When anything in the section last changed. This field does work. */
+  last_modified: string | null;
+  pages: number;
+};
+
+/**
+ * Whether this account reports page modification times at all.
+ *
+ * Microsoft returns each page's creation date in `lastModifiedDateTime` on some
+ * storage clusters — measured at 164 pages out of 164 on one account, and
+ * confirmed by three independent public reports. It is not universal, it is not
+ * documented, and it has been fixed once before and come back, so it cannot be
+ * assumed in either direction at build time. See #122.
+ *
+ * The test is a contradiction the data exhibits, not a heuristic: if a section
+ * changed more recently than every page it contains, then something in it
+ * changed and no page reported it. One such section is proof. A healthy account
+ * cannot produce that, because a section's timestamp moves only when something
+ * inside it does.
+ *
+ * Deliberately not "are all pages frozen". A page whose modified date equals its
+ * creation date is ambiguous — on a healthy account that honestly means "created
+ * and never edited" — and one public report describes an account where title
+ * edits propagate while body edits do not. A frozen-ratio test would call that
+ * account healthy and then silently miss every body edit, which is this bug
+ * wearing a detector. The contradiction test catches a partially broken field as
+ * readily as a completely dead one.
+ *
+ * Recomputed per call, from data already fetched, so it heals itself if the
+ * regression is fixed and re-arms if it returns.
+ */
+export const pageDatesAreCreationDates = (
+  sections: readonly { last_modified: string | null }[],
+  pagesBySection: readonly (readonly { last_modified: string | null }[])[],
+): boolean =>
+  sections.some((section, i) => {
+    const pages = pagesBySection[i] ?? [];
+    if (section.last_modified === null || pages.length === 0) return false;
+    const newest = pages.reduce((a, p) => ((p.last_modified ?? '') > a ? (p.last_modified ?? '') : a), '');
+    if (newest === '') return false;
+    return section.last_modified > newest;
+  });
 
 /**
  * OneNote nests deeply and emits entities for accented characters, so the raw
@@ -79,41 +132,105 @@ export const htmlToText = (html: string): string =>
  *
  * Do not "simplify" this back to the single call.
  */
-export const listNotes = async (token: string): Promise<{ notes: NoteSummary[] }> => {
+export const listNotes = async (
+  token: string,
+): Promise<{
+  notes: NoteSummary[];
+  sections: SectionSummary[];
+  /** Whether `last_modified` on every page is really its creation date. */
+  page_dates_are_creation_dates: boolean;
+}> => {
   const sectionsRes = await graphGet(
-    '/me/onenote/sections?$select=id,displayName' +
+    // lastModifiedDateTime is what the detector reads, and it is the field
+    // that actually tracks change — unlike the one on a page. Selected here
+    // rather than fetched separately: the request is made either way.
+    '/me/onenote/sections?$select=id,displayName,lastModifiedDateTime' +
       '&$expand=parentNotebook($select=displayName)&$top=100',
     token,
   );
   const sections = ((await sectionsRes.json()) as { value?: OneNoteSection[] }).value ?? [];
 
+  const usable = sections.filter((s) => typeof s.id === 'string' && ONENOTE_ID.test(s.id));
+
   const perSection = await Promise.all(
-    sections
-      .filter((s) => typeof s.id === 'string' && ONENOTE_ID.test(s.id))
-      .map(async (section) => {
-        const res = await graphGet(
-          `/me/onenote/sections/${section.id}/pages` +
-            '?$select=id,title,lastModifiedDateTime&$top=100',
-          token,
-        );
-        const pages = ((await res.json()) as { value?: OneNotePage[] }).value ?? [];
-        return pages.map((p) => ({
-          id: p.id,
-          title: p.title ?? '(untitled)',
-          section: section.displayName ?? null,
-          notebook: section.parentNotebook?.displayName ?? null,
-          last_modified: p.lastModifiedDateTime ?? null,
-        }));
-      }),
+    usable.map(async (section) => {
+      const res = await graphGet(
+        `/me/onenote/sections/${section.id}/pages` +
+          // createdDateTime is selected only so the two can be compared. It
+          // costs nothing — the request is made either way.
+          '?$select=id,title,createdDateTime,lastModifiedDateTime&$top=100',
+        token,
+      );
+      const pages = ((await res.json()) as { value?: OneNotePage[] }).value ?? [];
+      return pages.map((p) => ({
+        id: p.id,
+        title: p.title ?? '(untitled)',
+        section: section.displayName ?? null,
+        notebook: section.parentNotebook?.displayName ?? null,
+        last_modified: p.lastModifiedDateTime ?? null,
+      }));
+    }),
   );
+
+  const sectionSummaries: SectionSummary[] = usable.map((section, i) => ({
+    id: section.id,
+    name: section.displayName ?? '(unnamed section)',
+    notebook: section.parentNotebook?.displayName ?? null,
+    last_modified: section.lastModifiedDateTime ?? null,
+    pages: (perSection[i] ?? []).length,
+  }));
+
+  const creationDates = pageDatesAreCreationDates(sectionSummaries, perSection);
 
   // Newest first, matching the order the single-call version happened to
   // return; pages with no timestamp sort last rather than jumping to the top.
   const notes = perSection
     .flat()
+    .map((n) => ({ ...n, date_is_creation: creationDates }))
     .sort((a, b) => (b.last_modified ?? '').localeCompare(a.last_modified ?? ''));
 
-  return { notes };
+  // Sections newest first for the same reason, and because when page dates are
+  // useless this is the ordering the caller actually reads.
+  const sectionList = sectionSummaries.sort((a, b) =>
+    (b.last_modified ?? '').localeCompare(a.last_modified ?? ''),
+  );
+
+  return { notes, sections: sectionList, page_dates_are_creation_dates: creationDates };
+};
+
+/**
+ * The sections that changed within a window.
+ *
+ * The counterpart to `narrowNotes` for the case where page dates carry no
+ * modification information. A section's timestamp does move when any single
+ * page inside it is edited — tested with a control: one line added to one page
+ * of a section untouched for eleven days moved that section and left its
+ * siblings alone.
+ *
+ * So nothing goes undetected at this resolution. What is surrendered is which
+ * page, and — because a section holds one timestamp — an older change masked by
+ * a newer one in the same section.
+ */
+export const narrowSections = <T extends { last_modified: string | null }>(
+  sections: readonly T[],
+  since: string | undefined,
+): { sections: T[]; undated: number } => {
+  if (since === undefined) return { sections: [...sections], undated: 0 };
+  const cutoff = parseSince(since);
+  let undated = 0;
+  const matched = sections.filter((s) => {
+    if (s.last_modified === null) {
+      undated += 1;
+      return false;
+    }
+    const at = Date.parse(s.last_modified);
+    if (Number.isNaN(at)) {
+      undated += 1;
+      return false;
+    }
+    return at >= cutoff;
+  });
+  return { sections: matched, undated };
 };
 
 /**
