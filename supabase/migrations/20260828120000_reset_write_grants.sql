@@ -1,0 +1,29 @@
+-- Clear every write grant, because the switch that set them now means more.
+--
+-- The dashboard asks one question — "may this write on my behalf" — and grants
+-- every capability the build has. That is a deliberate choice and it has one
+-- sharp edge: when a capability is added, a switch someone flipped months ago
+-- silently starts covering it. `onenote-create` is the first time that edge is
+-- reached, and it is the worst possible first case — the notebook is the record
+-- every later session reads back, and a user who agreed to calendar entries
+-- agreed to nothing of the sort.
+--
+-- Registration is gated on the grant rather than on the token's scope, so
+-- without this every existing granted user would find `create_onenote_page` in
+-- their tool list on deploy. A tool that exists is a tool a model will try, and
+-- it would have failed at call time against a Microsoft connection made before
+-- Notes.Create existed — a capability they never chose, failing in a way that
+-- reads as a bug rather than as a boundary.
+--
+-- So the grants go back to empty and everyone re-answers the question as it is
+-- now worded. It costs each granted user one click and a reconnect, which is
+-- the correct price for their notebook not becoming writable while they were
+-- not looking.
+--
+-- **This is required of every future capability**, not a one-off for this one.
+-- Adding to WRITE_CAPABILITIES without a migration like this one widens a
+-- consent that was already given, which is the thing the local install's
+-- per-capability flag exists to prevent. See
+-- docs/decisions/0003-onenote-writes.md.
+
+delete from public.write_grants;

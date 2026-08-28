@@ -67,8 +67,45 @@ test('pages are fetched per section, never through /me/onenote/pages', async () 
     section: 'Gigs',
     notebook: 'Work',
     last_modified: '2026-08-01T00:00:00Z',
+    // Carried on every page so a caller cannot read the date without also
+    // being told whether it means anything. False here: the stub gives the
+    // section no timestamp, so nothing contradicts the page.
+    date_is_creation: false,
   });
   assert.ok(!seen.some((url) => /\/me\/onenote\/pages(\?|$)/.test(url)), 'used the failing call');
+});
+
+/**
+ * Asserted against the URL, not the parsed result, because a stub can hand back
+ * a field the real request never asked for — which is exactly what happened:
+ * the section detector was written, tested green against stubs that supplied
+ * `lastModifiedDateTime` directly, and shipped a `$select` that omitted it. It
+ * failed silently on a real account, always concluding the field was healthy.
+ *
+ * Both fields are free — the two requests are made either way — so the only way
+ * to lose them is to forget them. See #122.
+ */
+test('the fields the detector needs are actually requested', async () => {
+  const seen = stubGraph({
+    '/me/onenote/sections?': { value: [{ id: 'sec1', displayName: 'S' }] },
+    '/sections/sec1/pages': { value: [] },
+  });
+
+  await listNotes('token');
+
+  const sectionsCall = seen.find((url) => url.includes('/me/onenote/sections?'));
+  assert.match(
+    sectionsCall,
+    /lastModifiedDateTime/,
+    'sections are fetched without their timestamp, so the detector can never fire',
+  );
+
+  const pagesCall = seen.find((url) => url.includes('/sections/sec1/pages'));
+  assert.match(
+    pagesCall,
+    /createdDateTime/,
+    'pages are fetched without createdDateTime, so nothing can be compared',
+  );
 });
 
 test('notes are newest first, and undated pages sort last rather than first', async () => {

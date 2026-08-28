@@ -14,7 +14,8 @@ import {
 } from '../dist/attachments.js';
 
 /**
- * Ported from supabase/functions/graph/index.test.ts alongside the code they
+ * Ported from the edge function that served pre-1.0 installs, since removed,
+ * alongside the code they
  * cover. These are the parts that fail silently — a broken decode returns
  * plausible rubbish rather than throwing — so they came across with the code
  * rather than being rewritten against it.
