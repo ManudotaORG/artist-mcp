@@ -141,7 +141,10 @@ export const listNotes = async (
   page_dates_are_creation_dates: boolean;
 }> => {
   const sectionsRes = await graphGet(
-    '/me/onenote/sections?$select=id,displayName' +
+    // lastModifiedDateTime is what the detector reads, and it is the field
+    // that actually tracks change — unlike the one on a page. Selected here
+    // rather than fetched separately: the request is made either way.
+    '/me/onenote/sections?$select=id,displayName,lastModifiedDateTime' +
       '&$expand=parentNotebook($select=displayName)&$top=100',
     token,
   );
