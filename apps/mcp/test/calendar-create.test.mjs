@@ -313,7 +313,7 @@ test('a failed create is attempted exactly once', async () => {
 
 // -------------------------------------------------------------- the preview
 
-test('the preview shows the day alongside what would be written', async () => {
+test('the preview shows what the event would sit among, alongside what would be written', async () => {
   const result = await withFetch(
     async () =>
       new Response(
@@ -325,7 +325,7 @@ test('the preview shows the day alongside what would be written', async () => {
     () => previewEvent('t', params),
   );
 
-  assert.equal(result.existing_that_day.length, 1);
+  assert.equal(result.existing_in_range.length, 1);
   assert.match(result.preview, /Quartet at St Mary/);
   assert.match(result.preview, /Europe\/Madrid/);
   assert.equal(result.confirmation_token, await confirmationToken(draft));

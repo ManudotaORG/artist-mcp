@@ -523,6 +523,30 @@ const renderDraft = (draft: EventDraft): string => {
 };
 
 /**
+ * Everything already on the stretch the event would occupy.
+ *
+ * The start day alone was enough while every event was one day long. It stopped
+ * being enough the moment spans arrived: a fortnight written straight through
+ * an occupied week returned "nothing else is on that day" and was telling the
+ * truth about the one day it had looked at, which is the most misleading form
+ * a true answer can take.
+ *
+ * Google's `timeMax` is exclusive and an all-day `end` is exclusive too, so the
+ * window is the draft's own range — no arithmetic, and none of the off-by-one
+ * this file has already been bitten by.
+ */
+const occupying = async (token: string, draft: EventDraft) => {
+  const { events } = await listEvents(
+    token,
+    draft.calendar_id,
+    undefined,
+    `${draft.start.slice(0, 10)}T00:00:00Z`,
+    `${draft.end.slice(0, 10)}T23:59:59Z`,
+  );
+  return events;
+};
+
+/**
  * Show an event exactly as it would be written, and hand back the token that
  * lets it be written.
  *
@@ -535,19 +559,12 @@ export async function previewEvent(token: string, params: Record<string, unknown
   const draft = draftFrom(params);
   refuseUnsettled(draft);
 
-  const day = draft.start.slice(0, 10);
-  const { events } = await listEvents(
-    token,
-    draft.calendar_id,
-    undefined,
-    `${day}T00:00:00Z`,
-    `${day}T23:59:59Z`,
-  );
+  const events = await occupying(token, draft);
 
   return {
     preview: renderDraft(draft),
     confirmation_token: await confirmationToken(draft),
-    existing_that_day: events,
+    existing_in_range: events,
     calendar_searched: draft.calendar_id,
   };
 }
@@ -918,22 +935,15 @@ export async function previewRescheduleEvent(token: string, params: Record<strin
   refuseUnsettled(draft);
   await refuseUnchanged(eventId, draft);
 
-  // The destination day, for the same reason a create previews it: an event
-  // already sitting there is the thing a move most often collides with.
-  const day = draft.start.slice(0, 10);
-  const { events } = await listEvents(
-    token,
-    draft.calendar_id,
-    undefined,
-    `${day}T00:00:00Z`,
-    `${day}T23:59:59Z`,
-  );
+  // The whole destination stretch, for the same reason a create previews it: an
+  // event already sitting there is the thing a move most often collides with.
+  const events = await occupying(token, draft);
 
   return {
     before: renderExisting(existing, fromCalendarId),
     after: renderDraft(draft),
     confirmation_token: await rescheduleToken(existing, fromCalendarId, draft),
-    existing_that_day: events,
+    existing_in_range: events,
     calendar_searched: draft.calendar_id,
   };
 }
