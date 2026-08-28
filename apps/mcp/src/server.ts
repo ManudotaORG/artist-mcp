@@ -523,7 +523,7 @@ const createServer = async (
   server.tool(
     "list_notes",
     "List the user's OneNote pages, with title, notebook, section and last " +
-      "modified date. Takes an optional notebook name. When the account holds " +
+      "date. Takes an optional notebook name. When the account holds " +
       "more than one notebook and none is given, this returns the list of " +
       "notebooks instead of any pages, so the user can say which one to work " +
       "in.",
@@ -544,9 +544,14 @@ const createServer = async (
         .string()
         .optional()
         .describe(
-          "Only pages modified on or after this date, as an ISO date such as " +
-            "2026-08-10. Use it for 'what moved this week'. Pages the account " +
-            "records no modified date for are left out rather than guessed at.",
+          "Only pages dated on or after this date, as an ISO date such as " +
+            "2026-08-10. Pages the account records no date for are left out " +
+            "rather than guessed at. WARNING: Microsoft is currently returning " +
+            "each page's CREATION date in the modified-date field on some " +
+            "accounts, so this may filter on when pages were created rather " +
+            "than when they were last worked on. Do not tell the musician a " +
+            "page has not been touched since some date, and do not use an " +
+            "absent result as evidence that nothing changed.",
         ),
       limit: z
         .number()
@@ -578,9 +583,11 @@ const createServer = async (
               {
                 type: "text",
                 text:
-                  `No pages in ${scope} modified on or after ${since}.` +
+                  `No pages in ${scope} dated on or after ${since}. This is not ` +
+                  `evidence that nothing changed: the date OneNote reports may be ` +
+                  `when a page was created rather than when it was last edited.` +
                   (undated > 0
-                    ? ` ${undated} page${undated === 1 ? " has" : "s have"} no modified date ` +
+                    ? ` ${undated} page${undated === 1 ? " has" : "s have"} no date ` +
                       "recorded and were left out of the window rather than assumed recent; " +
                       "list without `since` to see them."
                     : ""),
@@ -591,7 +598,11 @@ const createServer = async (
 
         const lines = shown.map((n) => {
           const location = [n.notebook, n.section].filter(Boolean).join(" / ");
-          return `- ${n.title}${location ? ` (${location})` : ""} — modified ${
+          // "dated", not "modified". The field behind it is currently the
+          // creation date on some accounts, and a line that says "modified" is
+          // read as proof of when someone last worked — the one claim it
+          // cannot support. See #122.
+          return `- ${n.title}${location ? ` (${location})` : ""} — dated ${
             n.last_modified ?? "unknown"
           }\n  id: ${n.id}`;
         });
@@ -602,13 +613,13 @@ const createServer = async (
         if (chosen.scope) caveats.push(chosen.scope);
         if (shown.length < matched) {
           caveats.push(
-            `Showing the ${shown.length} most recently modified of ${matched} matching ` +
+            `Showing the ${shown.length} newest by date of ${matched} matching ` +
               "pages. Raise `limit` or narrow with `since` for the rest.",
           );
         }
         if (undated > 0) {
           caveats.push(
-            `${undated} page${undated === 1 ? "" : "s"} with no modified date recorded ` +
+            `${undated} page${undated === 1 ? "" : "s"} with no date recorded ` +
               `${undated === 1 ? "is" : "are"} not in this window. That is unrecorded, ` +
               "not old — list without `since` to see them.",
           );
@@ -647,7 +658,11 @@ const createServer = async (
       since: z
         .string()
         .optional()
-        .describe("Only sketch pages modified on or after this ISO date."),
+        .describe(
+          "Only sketch pages dated on or after this ISO date. The same warning " +
+            "as list_notes: this date may be when the page was created rather " +
+            "than when it was last edited.",
+        ),
       limit: z
         .number()
         .int()
@@ -675,7 +690,16 @@ const createServer = async (
         if (pages.length === 0) {
           return {
             content: [
-              { type: "text", text: `No pages to map${since ? ` modified on or after ${since}` : ""}.` },
+              {
+                type: "text",
+                text:
+                  `No pages to map${since ? ` dated on or after ${since}` : ""}.` +
+                  (since
+                    ? " The date OneNote reports may be when a page was created" +
+                      " rather than when it was last edited, so this is not" +
+                      " evidence that nothing changed."
+                    : ""),
+              },
             ],
           };
         }
@@ -688,7 +712,7 @@ const createServer = async (
         const blocks = sketches.map((s) => {
           const location = [s.notebook, s.section].filter(Boolean).join(" / ");
           const head =
-            `## ${s.title}${location ? ` (${location})` : ""} — modified ${s.last_modified ?? "unknown"}` +
+            `## ${s.title}${location ? ` (${location})` : ""} — dated ${s.last_modified ?? "unknown"}` +
             `\nid: ${s.id}`;
           if (s.sketch === null) {
             // Named as a gap. A page missing from a survey reads as a page
@@ -723,13 +747,13 @@ const createServer = async (
         }
         if (pages.length < matched) {
           caveats.push(
-            `Sketched the ${pages.length} most recently modified of ${matched} pages. ` +
+            `Sketched the ${pages.length} newest by date of ${matched} pages. ` +
               "Raise `limit` or narrow with `since` for the rest.",
           );
         }
         if (undated > 0) {
           caveats.push(
-            `${undated} page${undated === 1 ? "" : "s"} with no modified date recorded ` +
+            `${undated} page${undated === 1 ? "" : "s"} with no date recorded ` +
               `${undated === 1 ? "is" : "are"} not in this window.`,
           );
         }
