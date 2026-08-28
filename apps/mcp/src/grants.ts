@@ -33,6 +33,15 @@ export const WRITE_CAPABILITIES = {
   'calendar-delete':
     'remove an event that artist-mcp itself created, after showing it to you first. ' +
     'It cannot touch an event you made or one someone shared with you.',
+  // The only capability here whose boundary is not this file's to keep.
+  // `Notes.Create` permits creating pages and nothing else, so a token holding
+  // it cannot edit or delete any page — verified, not assumed: a 403 on both
+  // PATCH and DELETE against a page the token had just created itself. Every
+  // other row above exists because Google would not draw that line for us.
+  // See docs/decisions/0003-onenote-writes.md.
+  'onenote-create':
+    'add a new page to a OneNote section, after showing it to you first. ' +
+    'It cannot change or delete any page, including the ones it made.',
 } as const;
 
 export type WriteCapability = keyof typeof WRITE_CAPABILITIES;

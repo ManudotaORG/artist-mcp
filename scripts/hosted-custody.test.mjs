@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 
 /**
@@ -318,7 +318,7 @@ test('a failed audit does not fail the write', () => {
  */
 test('granting a write uses the service role and the session user', () => {
   const actions = webSource('app/actions.ts');
-  const fn = actions.slice(actions.indexOf('export const setCalendarWrites'));
+  const fn = actions.slice(actions.indexOf('export const setWriteGrant'));
   assert.match(fn, /SUPABASE_SERVICE_ROLE_KEY/, 'the grant is set with the browser key');
   assert.match(fn, /p_user_id: user\.id/, 'the grant is set for someone other than the caller');
   assert.match(fn, /auth\.getUser\(\)/);
@@ -326,8 +326,32 @@ test('granting a write uses the service role and the session user', () => {
 
 test('withdrawing sends an empty set rather than deleting nothing', () => {
   const actions = webSource('app/actions.ts');
-  const fn = actions.slice(actions.indexOf('export const setCalendarWrites'));
-  assert.match(fn, /wanted \? \['calendar-create', 'calendar-delete'\] : \[\]/);
+  const fn = actions.slice(actions.indexOf('export const setWriteGrant'));
+  assert.match(fn, /wanted \? \(Object\.keys\(WRITE_CAPABILITIES\)[^)]*\) : \[\]/);
+});
+
+/**
+ * The dashboard asks one question and grants everything, so the set it grants
+ * has to be derived. Listing the capabilities here would let the switch come to
+ * mean less than its own label says the moment one was added.
+ */
+test('the single switch grants every capability, derived rather than listed', () => {
+  const actions = webSource('app/actions.ts');
+  const fn = actions.slice(actions.indexOf('export const setWriteGrant'));
+  assert.match(fn, /Object\.keys\(WRITE_CAPABILITIES\)/);
+  assert.doesNotMatch(fn, /'calendar-create'/, 'the switch names capabilities instead of deriving them');
+});
+
+/**
+ * The other half of that decision. One switch means a capability added later is
+ * covered by consent already given, and the only thing that keeps it honest is
+ * clearing the grants so everyone answers the newly-worded question again.
+ */
+test('the capability that widened the switch also reset the grants', () => {
+  const migrations = readdirSync(new URL('../supabase/migrations/', import.meta.url));
+  const reset = migrations.filter((name) => /reset_write_grants/.test(name));
+  assert.notDeepEqual(reset, [], 'no migration clears grants after the switch widened');
+  assert.match(read(reset.at(-1)), /delete from public\.write_grants/);
 });
 
 /**
@@ -338,7 +362,9 @@ test('withdrawing sends an empty set rather than deleting nothing', () => {
  */
 test('the connect screen states that a grant needs a reconnect', () => {
   const page = webSource('app/page.tsx');
-  assert.match(page, /RECONNECT GOOGLE FOR THIS TO TAKE EFFECT/);
-  // And the off state says plainly that nothing can change the calendar.
-  assert.match(page, /NOT ALLOWED — READ ONLY/);
+  assert.match(page, /FOR THIS TO TAKE\n?\s*EFFECT/);
+  // Both providers, since a grant now widens each of them.
+  assert.match(page, /RECONNECT \{\[\.\.\.connected\]/);
+  // And the off state says plainly that nothing can change either source.
+  assert.match(page, /NOT ALLOWED — READ ONLY\. NOTHING CAN CHANGE YOUR CALENDAR OR YOUR NOTES/);
 });

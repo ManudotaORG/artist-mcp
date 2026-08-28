@@ -515,12 +515,23 @@ const capabilityLine = (writes: readonly WriteCapability[]): string => {
       "anything in OneNote, Gmail or Google Calendar, and must never offer to."
     );
   }
+  // "including all of OneNote" was true of every grant that existed until
+  // onenote-create, and stating it unconditionally would have made the
+  // handshake assert the opposite of what the install could do. Derived, so it
+  // cannot drift again.
+  const onenote = writes.includes('onenote-create')
+    ? " In OneNote it can add new pages and nothing else: it cannot change or " +
+      "delete any page, including ones it created, because the permission it " +
+      "holds cannot express that."
+    : " Everything else is read-only, including all of OneNote.";
+
   return (
     " This install has been granted these writes by the user: " +
     writes.map((name) => `${name} (${WRITE_CAPABILITIES[name]})`).join('; ') +
-    ". Everything else is read-only, including all of OneNote. Never describe " +
-    "this server as read-only while any write is granted, and never write a " +
-    "value the notebook has not settled."
+    "." +
+    onenote +
+    " Never describe this server as read-only while any write is granted, and " +
+    "never write a value the notebook has not settled."
   );
 };
 
@@ -1343,7 +1354,8 @@ const createServer = async (
         "of these exact values; change any field and the token stops matching, " +
         "which means preview again and show the musician the new version. " +
         "Creating the same event twice is refused by Google rather than " +
-        "duplicated. OneNote is never written by anything. Never call this with " +
+        "duplicated. This tool never writes to OneNote — creating a page is a " +
+        "different tool, and it is absent unless granted. Never call this with " +
         "a value the musician chose in chat to break a tie between pages that " +
         "still disagree — the calendar is a derivative of the page, and a page " +
         "that contradicts itself has nothing to derive from yet.",
@@ -1386,7 +1398,7 @@ const createServer = async (
                   (link ? `\n${link}\n` : "") +
                   "\nTell the musician it is in the calendar and that they can " +
                   "delete it there if it is wrong. The page in OneNote was not " +
-                  "changed — nothing here writes to OneNote.",
+                  "changed — this tool does not write to OneNote.",
               },
             ],
           };
@@ -1521,7 +1533,7 @@ const createServer = async (
                   "Tell the musician it has moved, that the old one is in that " +
                   "calendar's bin for 30 days, and that any reminder they had set " +
                   "on it did not come across. The page in OneNote was not " +
-                  "changed — nothing here writes to OneNote.",
+                  "changed — this tool does not write to OneNote.",
               },
             ],
           };
@@ -1619,6 +1631,153 @@ const createServer = async (
       },
     );
   }
+
+  /**
+   * Creating a OneNote page: the first write to the knowledge base itself.
+   *
+   * The tool text below leans on something none of the calendar tools can say —
+   * that editing and deleting are impossible rather than merely not offered.
+   * That is worth stating plainly to a model, because a model that believes a
+   * mistake is repairable will create more freely than one that knows the page
+   * is permanent the moment it exists. See docs/decisions/0003-onenote-writes.md.
+   */
+  if (isGranted(grants, "onenote-create")) {
+    server.tool(
+      "preview_onenote_page",
+      "Call this before create_onenote_page — it is the only way to obtain the confirmation_token that one requires, and it is what puts the exact page in front of the musician. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. " +
+        "Renders a OneNote page exactly as it would be written and names the " +
+        "section it would land in, in words rather than as an id. Changes " +
+        "nothing. The page goes beside the page it was composed from, so pass " +
+        "source_page unless the musician named a section. A title the notebook " +
+        "has not settled (UNKNOWN, TBC, a disputed name) is refused here rather " +
+        "than written; the body may say a fee is still TBC, because that is the " +
+        "notebook recording an open question rather than this tool inventing an " +
+        "answer.",
+      {
+        title: z
+          .string()
+          .describe(
+            "The page title. This is the page's identity and what every later " +
+              "session sees in list_notes, so it must be settled",
+          ),
+        body: z
+          .string()
+          .describe(
+            "The page text, plain. A blank line starts a new paragraph and a single " +
+              "newline is a line break. Markdown and HTML are NOT interpreted — they " +
+              "would appear on the page as the characters you typed",
+          ),
+        source_page: z
+          .string()
+          .optional()
+          .describe(
+            "The page id from list_notes or read_note that this was composed from. " +
+              "It decides which section the new page lands in, and it is what traces " +
+              "the write back weeks later. The id, not the title",
+          ),
+        section_id: z
+          .string()
+          .optional()
+          .describe(
+            "Only when the musician named a different section. Otherwise omit it and " +
+              "let source_page place the page",
+          ),
+      },
+      async (params) => {
+        try {
+          const { preview, confirmation_token, section_name, section_id } = await call<{
+            preview: string;
+            confirmation_token: string;
+            section_name: string;
+            section_id: string;
+          }>("preview_onenote_page", params);
+
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `This would be created in ${section_name}:\n\n${preview}\n\n` +
+                  "Show this to the musician and wait for their yes. Say plainly " +
+                  "that this tool cannot undo it: once the page exists it cannot " +
+                  "edit or delete it, and removing it means doing so in OneNote " +
+                  "themselves. If they agree, call create_onenote_page with the " +
+                  "SAME title and body, and with both of these:\n" +
+                  // The id is only knowable from here. It is resolved from the
+                  // source page rather than supplied, so a create that had to
+                  // guess it would either fail or write to the wrong section.
+                  `  section_id: ${section_id}\n` +
+                  `  confirmation_token: ${confirmation_token}`,
+              },
+            ],
+          };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+
+    server.tool(
+      "create_onenote_page",
+      "Only call this after preview_onenote_page AND after the musician has said yes to what the preview showed. Never call it to find out whether it would work. " +
+        "Creates ONE new page in OneNote. It CANNOT edit or delete any page, " +
+        "including the ones it creates — that is the permission this install " +
+        "holds, not a policy it follows, so a page created by mistake stays " +
+        "until the musician removes it in OneNote themselves. There is no bulk " +
+        "form. It never changes an existing page, so it is not a way to add a " +
+        "line to one: paste that for the musician as always. Requires the " +
+        "confirmation_token from a preview of these exact values; change any " +
+        "field and the token stops matching, which means preview again and show " +
+        "the musician the new version. Never write a value the musician chose in " +
+        "chat to break a tie between pages that still disagree — a page is the " +
+        "record other sessions read back, and writing the tie-break makes it " +
+        "look settled when it is not.",
+      {
+        title: z.string().describe("Exactly what the preview showed"),
+        body: z.string().describe("Exactly what the preview showed"),
+        section_id: z
+          .string()
+          .describe("The section_id the preview returned, not one you chose yourself"),
+        source_page: z
+          .string()
+          .optional()
+          .describe(
+            "The page id this was composed from, so the write can be traced back " +
+              "weeks later. The id, not the title",
+          ),
+        confirmation_token: z
+          .string()
+          .describe("The token preview_onenote_page returned for these exact values"),
+      },
+      async (params) => {
+        try {
+          const { title, web_url } = await call<{
+            title: string;
+            page_id: string | null;
+            web_url: string | null;
+          }>("create_onenote_page", params);
+
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `Created the page "${title}".` +
+                  (web_url ? `\n\n${web_url}\n` : "") +
+                  "\nTell the musician the page is in their notebook, and that " +
+                  "this tool cannot change or remove it — if it is wrong, they " +
+                  "edit or delete it in OneNote themselves. No existing page was " +
+                  "touched.",
+              },
+            ],
+          };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+  }
+
 
   server.tool(
     "list_calendars",

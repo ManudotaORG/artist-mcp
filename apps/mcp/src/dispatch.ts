@@ -27,6 +27,7 @@ import {
 } from './calendar.js';
 import { listEmails, readEmail } from './mail.js';
 import { listNotes, mapNotes, readNote } from './notes.js';
+import { createPage, previewPage } from './onenote-write.js';
 import { accessTokenFor } from './oauth.js';
 import { type ProviderName, loadTokens } from './tokens.js';
 
@@ -74,6 +75,14 @@ export const OPERATIONS = {
   // and a separate grant would mean asking every hosted user to consent again
   // for permission they have already given.
   reschedule_calendar_event: { provider: 'google', effect: 'write' },
+  // Renders the page and resolves which section it would land in. A read, like
+  // the calendar previews: it changes nothing.
+  preview_onenote_page: { provider: 'microsoft', effect: 'read' },
+  // The first write to the knowledge base rather than to supporting evidence,
+  // and the only write row whose narrowness is not this table's doing:
+  // `Notes.Create` cannot express an edit or a delete, so there is no sibling
+  // row here to refuse. See docs/decisions/0003-onenote-writes.md.
+  create_onenote_page: { provider: 'microsoft', effect: 'write' },
 } as const satisfies Record<string, { provider: ProviderName; effect: 'read' | 'write' }>;
 
 export type Operation = keyof typeof OPERATIONS;
@@ -167,6 +176,10 @@ export const dispatchWith =
         return (await previewRescheduleEvent(token, params)) as T;
       case 'reschedule_calendar_event':
         return (await rescheduleEvent(token, params, record)) as T;
+      case 'preview_onenote_page':
+        return (await previewPage(token, params)) as T;
+      case 'create_onenote_page':
+        return (await createPage(token, params, record)) as T;
       case 'list_calendars':
         // No parameters by design: the whole value is knowing the full set, and
         // a filtered list of what exists is the reach problem again.

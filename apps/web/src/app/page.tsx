@@ -3,7 +3,7 @@ import { Typography } from '@/components/ui/Typography';
 import { getDeploymentMetadata } from '@/lib/deployment';
 import { getSiteUrl } from '@/lib/siteUrl';
 import { supabaseServer } from '@/lib/supabase/server';
-import { disconnect, setCalendarWrites, signOut } from './actions';
+import { disconnect, setWriteGrant, signOut } from './actions';
 import { writeGrantsFor } from '@/lib/write-grants';
 
 type HomeProps = {
@@ -354,7 +354,7 @@ type DashboardProps = {
   installChannel: InstallChannel;
   connections: Connection[];
   mcpUrl: string;
-  calendarWrites: boolean;
+  writesGranted: boolean;
 };
 
 const PROVIDER_LABEL: Record<string, string> = {
@@ -372,41 +372,49 @@ const PROVIDER_LABEL: Record<string, string> = {
  * this page to hold it even briefly.
  */
 /**
- * The one write this hosted account may be given.
+ * The writes this hosted account may be given, as one decision.
  *
  * Off by default and shown as off: a reader who has never thought about this
- * should be able to see that nothing can change their calendar without doing
- * anything. The reconnect is stated rather than implied, because a grant that
- * silently does nothing until an unrelated step is worse than no grant.
+ * should be able to see that nothing can change anything without their doing
+ * something. The reconnect is stated rather than implied, because a grant that
+ * silently does nothing until an unrelated step is worse than no grant — and
+ * there are two connections to renew now, which is exactly the sort of detail a
+ * user is entitled to be told rather than left to discover.
+ *
+ * Every limit named here is a real one and none of them is this page's to keep.
+ * A calendar event this tool did not create is unreachable because of the id
+ * prefix; a OneNote page cannot be edited or deleted by anything, including the
+ * tool that made it, because the permission cannot express it.
  */
-const CalendarWrites = ({
+const Writes = ({
   granted,
-  googleConnected,
+  connected,
 }: {
   granted: boolean;
-  googleConnected: boolean;
+  connected: Set<string>;
 }) => (
   <div className="mt-3 border border-foreground p-3">
     <Typography variant="small" color="cyan">
-      CALENDAR ENTRIES
+      WRITING ON YOUR BEHALF
     </Typography>
     <Typography variant="small" className="mt-2">
       {granted
-        ? 'ALLOWED — IT CAN ADD A CALENDAR EVENT, AND REMOVE ONE IT ADDED ITSELF. EVERY WRITE IS SHOWN TO YOU FIRST AND WAITS FOR YOUR YES. IT CANNOT TOUCH AN EVENT YOU MADE, CANNOT CHANGE AN EVENT, AND NEVER WRITES TO ONENOTE.'
-        : 'NOT ALLOWED — READ ONLY. NOTHING CAN CHANGE YOUR CALENDAR.'}
+        ? 'ALLOWED — IT CAN ADD A CALENDAR EVENT AND REMOVE ONE IT ADDED ITSELF, AND IT CAN ADD A NEW ONENOTE PAGE. EVERY WRITE IS SHOWN TO YOU FIRST AND WAITS FOR YOUR YES. IT CANNOT TOUCH AN EVENT YOU MADE, CANNOT CHANGE AN EVENT, AND CANNOT CHANGE OR DELETE ANY ONENOTE PAGE — INCLUDING THE ONES IT CREATES.'
+        : 'NOT ALLOWED — READ ONLY. NOTHING CAN CHANGE YOUR CALENDAR OR YOUR NOTES.'}
     </Typography>
 
-    {granted && googleConnected ? (
+    {granted && connected.size > 0 ? (
       <Typography variant="small" color="yellow" className="mt-2">
-        RECONNECT GOOGLE FOR THIS TO TAKE EFFECT. A CONNECTION CARRIES THE PERMISSIONS IT WAS MADE
-        WITH, SO AN EXISTING ONE CANNOT WRITE UNTIL IT IS RENEWED.
+        RECONNECT {[...connected].map((p) => p.toUpperCase()).join(' AND ')} FOR THIS TO TAKE
+        EFFECT. A CONNECTION CARRIES THE PERMISSIONS IT WAS MADE WITH, SO AN EXISTING ONE CANNOT
+        WRITE UNTIL IT IS RENEWED.
       </Typography>
     ) : null}
 
-    <form action={setCalendarWrites} className="mt-3">
+    <form action={setWriteGrant} className="mt-3">
       <input type="hidden" name="enabled" value={granted ? 'false' : 'true'} />
       <Button type="submit" variant="ghost">
-        {granted ? 'WITHDRAW' : 'ALLOW CALENDAR ENTRIES'}
+        {granted ? 'WITHDRAW' : 'ALLOW WRITES'}
       </Button>
     </form>
   </div>
@@ -415,11 +423,11 @@ const CalendarWrites = ({
 const Connections = ({
   connections,
   mcpUrl,
-  calendarWrites,
+  writesGranted,
 }: {
   connections: Connection[];
   mcpUrl: string;
-  calendarWrites: boolean;
+  writesGranted: boolean;
 }) => {
   const connected = new Map(connections.map((c) => [c.provider, c]));
 
@@ -471,7 +479,7 @@ const Connections = ({
         })}
       </div>
 
-      <CalendarWrites granted={calendarWrites} googleConnected={connected.has('google')} />
+      <Writes granted={writesGranted} connected={new Set(connected.keys())} />
 
       {connections.length > 0 ? (
         <>
@@ -502,7 +510,7 @@ const Dashboard = ({
   installChannel,
   connections,
   mcpUrl,
-  calendarWrites,
+  writesGranted,
 }: DashboardProps) => (
   <main className="grid gap-8 py-10">
     <div className="flex flex-wrap items-end justify-between gap-4">
@@ -528,7 +536,7 @@ const Dashboard = ({
     </div>
     {error ? <Typography color="red">ERROR: {error}</Typography> : null}
     {notice ? <Typography color="green">{notice}</Typography> : null}
-    <Connections connections={connections} mcpUrl={mcpUrl} calendarWrites={calendarWrites} />
+    <Connections connections={connections} mcpUrl={mcpUrl} writesGranted={writesGranted} />
     {/*
       A "MICROSOFT CONNECTED" banner lived here, set by a provider callback this
       app no longer has. Connecting a hosted account is done with a maintainer
@@ -590,14 +598,14 @@ const Home = async ({ searchParams }: HomeProps) => {
   // is revoked from `authenticated` on purpose: what an account may do must not
   // be readable with the key the browser holds. The user id comes from the
   // session, so this can only ever describe the caller.
-  const calendarWrites = user ? (await writeGrantsFor(user.id)).length > 0 : false;
+  const writesGranted = user ? (await writeGrantsFor(user.id)).length > 0 : false;
 
   const notice = connected
     ? `${connected.toUpperCase()} CONNECTED.`
     : disconnected
       ? `${disconnected.toUpperCase()} DISCONNECTED.`
       : writes === 'granted'
-        ? 'CALENDAR ENTRIES ALLOWED. RECONNECT GOOGLE FOR IT TO TAKE EFFECT.'
+        ? 'WRITES ALLOWED. RECONNECT YOUR ACCOUNTS FOR IT TO TAKE EFFECT.'
         : writes === 'withdrawn'
           ? 'CALENDAR ENTRIES WITHDRAWN. NOTHING CAN CHANGE YOUR CALENDAR.'
           : undefined;
@@ -619,7 +627,7 @@ const Home = async ({ searchParams }: HomeProps) => {
           installChannel={installChannel}
           connections={connections ?? []}
           mcpUrl={`${getSiteUrl()}/api/mcp`}
-          calendarWrites={calendarWrites}
+          writesGranted={writesGranted}
         />
       ) : (
         <PublicHome installChannel={installChannel} />
