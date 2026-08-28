@@ -1276,7 +1276,8 @@ const createServer = async (
       "preview_calendar_event",
       "Call this before create_calendar_event — it is the only way to obtain the confirmation_token that one requires, and it is what puts the exact event in front of the musician. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. " +
         "Renders a Google Calendar event exactly as it would be written, and " +
-        "lists what is already on that day in that calendar, so an event that " +
+        "lists what is already on the days it would occupy in that calendar, so an " +
+        "event that " +
         "is already there is visible before a second one is added. Changes " +
         "nothing. It searches ONE calendar — call list_calendars first if you " +
         "have not established which calendar this gig would live on. A value " +
@@ -1310,22 +1311,22 @@ const createServer = async (
       },
       async (params) => {
         try {
-          const { preview, confirmation_token, existing_that_day, calendar_searched } =
+          const { preview, confirmation_token, existing_in_range, calendar_searched } =
             await call<{
               preview: string;
               confirmation_token: string;
-              existing_that_day: EventSummary[];
+              existing_in_range: EventSummary[];
               calendar_searched: string;
             }>("preview_calendar_event", params);
 
           // The day comes first. A preview that leads with what would be added
           // invites exactly the question it is here to answer.
           const already =
-            existing_that_day.length === 0
-              ? `Nothing else is on that day in ${calendar_searched}. That is one ` +
+            existing_in_range.length === 0
+              ? `Nothing else is on those dates in ${calendar_searched}. That is one ` +
                 "calendar only — it does not show the day is free elsewhere."
-              : `Already on that day in ${calendar_searched}:\n` +
-                existing_that_day.map((e) => `- ${e.summary} — ${when(e)}`).join("\n");
+              : `Already on those dates in ${calendar_searched}:\n` +
+                existing_in_range.map((e) => `- ${e.summary} — ${when(e)}`).join("\n");
 
           return {
             content: [
@@ -1418,7 +1419,8 @@ const createServer = async (
       "preview_calendar_reschedule",
       "Call this before reschedule_calendar_event — it is the only way to obtain the confirmation_token that one requires. SHOW THE MUSICIAN BOTH HALVES AND WAIT FOR THEIR YES. " +
         "Shows the event as Google has it now and the values that would replace " +
-        "it, side by side, and lists what is already on the destination day. " +
+        "it, side by side, and lists what is already on the dates it would " +
+        "occupy. " +
         "Changes nothing. Only an event artist-mcp created can be rescheduled; " +
         "anything the musician made themselves, or that was shared onto their " +
         "calendar, is refused. Use it to move an event in time, to rename it, or " +
@@ -1454,19 +1456,19 @@ const createServer = async (
       },
       async (params) => {
         try {
-          const { before, after, confirmation_token, existing_that_day, calendar_searched } =
+          const { before, after, confirmation_token, existing_in_range, calendar_searched } =
             await call<{
               before: string;
               after: string;
               confirmation_token: string;
-              existing_that_day: unknown[];
+              existing_in_range: unknown[];
               calendar_searched: string;
             }>("preview_calendar_reschedule", params);
 
           const day =
-            existing_that_day.length === 0
-              ? `Nothing else is on that day in ${calendar_searched}. That is one calendar only — it does not show the day is free elsewhere.`
-              : `Already on that day in ${calendar_searched}:\n${JSON.stringify(existing_that_day, null, 2)}`;
+            existing_in_range.length === 0
+              ? `Nothing else is on those dates in ${calendar_searched}. That is one calendar only — it does not show they are free elsewhere.`
+              : `Already on those dates in ${calendar_searched}:\n${JSON.stringify(existing_in_range, null, 2)}`;
 
           return {
             content: [
