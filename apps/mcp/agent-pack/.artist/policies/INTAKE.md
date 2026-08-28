@@ -156,9 +156,16 @@ saying which shape it came from after the template has moved on. That is what
 makes "which of my pages predate my current template" answerable later without
 reading every page — the versions are in the openings a single map returns.
 
-Report the version because it is what the musician meant, and the page's
-modified date because it is what is true. A template they edited without bumping
-the line is not a liar; the line records intent and the date records change.
+Report the version because it is what the musician meant. Report the page's
+modified date too, but never as proof of anything: Microsoft is currently
+returning each page's *creation* date in that field on some accounts, so a page
+edited this morning can report a date from months ago. A template they edited
+without bumping the line is not a liar, and neither is the date — it simply may
+not be recording what its name says.
+
+So a page whose version line looks stale is a question to ask, never a finding
+to report. "This one still says v2" is true. "This one has not been touched
+since March" is not something either signal can support.
 
 ### Delivery
 

@@ -349,3 +349,57 @@ export const CALENDAR_LIST_NEED: ScopeNeed = {
   capability: 'see which calendars you have',
   optional: true,
 };
+
+/**
+ * Create one page in one OneNote section.
+ *
+ * As narrow as the calendar insert and for the same reason, though the reason
+ * carries less weight here: `Notes.Create` cannot express an edit or a delete,
+ * so unlike Google, Microsoft would refuse a misaimed write even if this helper
+ * let one through. Kept narrow anyway, because a `graphPost(path)` reachable
+ * from anywhere in the package would be a general write path the moment someone
+ * widens the scope for an unrelated reason.
+ *
+ * See docs/decisions/0003-onenote-writes.md.
+ */
+export const onenoteCreatePage = async (
+  sectionId: string,
+  xhtml: string,
+  token: string,
+): Promise<Response> => {
+  const url = `${GRAPH}/me/onenote/sections/${encodeURIComponent(sectionId)}/pages`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${token}`,
+      // Not application/json. OneNote takes the page as an XHTML document, and
+      // sending JSON is answered with a 400 that names neither problem.
+      'content-type': 'application/xhtml+xml',
+    },
+    body: xhtml,
+  });
+
+  // Not retried, exactly as the calendar insert is not: a repeated create makes
+  // a second page, and a 5xx does not say whether the first one landed. OneNote
+  // accepts no client-set id, so there is no collision to rely on either — which
+  // makes retrying strictly worse here than it is for an event.
+  if (res.ok) return res;
+
+  const detail = (await res.text().catch(() => '')).slice(0, 300);
+
+  // 40004 is the code the probe saw for a scope the token does not hold. An
+  // install granted onenote-create before connecting has a refresh token from
+  // the narrower consent screen, and every create would fail this way until it
+  // is renewed.
+  if ((res.status === 401 || res.status === 403) && /40004|scope/i.test(detail)) {
+    throw new ScopeError(
+      'This Microsoft connection cannot create OneNote pages. Reconnect with ' +
+        '`artist-mcp connect microsoft` — a refresh token carries the scopes it ' +
+        'was granted with, so an existing connection cannot write until renewed.',
+      'create OneNote pages',
+      false,
+    );
+  }
+
+  throw new GraphError(`OneNote refused to create the page (${res.status}). ${detail}`, false);
+};

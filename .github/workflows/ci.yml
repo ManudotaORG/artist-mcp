@@ -42,29 +42,3 @@ jobs:
       - name: Test
         run: pnpm test
 
-      # The edge function is Deno, not Node, so `pnpm test` cannot reach it.
-      # Without this step its tests exist but never run.
-      - name: Set up Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
-      # --node-modules-dir=none is not optional: run inside this repo without
-      # it and Deno misreads pnpm-workspace.yaml, then writes a "workspaces"
-      # key into the root package.json as a "migration".
-      #
-      # The dummy values satisfy module-level Deno.env.get calls at import.
-      # These tests are pure transformations that reach neither network nor
-      # database, so no real credential is involved.
-      - name: Test edge function
-        env:
-          MS_CLIENT_ID: unused
-          MS_CLIENT_SECRET: unused
-          GOOGLE_CLIENT_ID: unused
-          GOOGLE_CLIENT_SECRET: unused
-          TOKEN_ENCRYPTION_KEY: unused
-          SUPABASE_URL: http://localhost:54321
-          SUPABASE_SERVICE_ROLE_KEY: unused
-        run: >
-          deno test --node-modules-dir=none --allow-env --allow-net
-          supabase/functions/graph/index.test.ts

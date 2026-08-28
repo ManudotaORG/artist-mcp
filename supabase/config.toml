@@ -66,9 +66,3 @@ verify_enabled = true
 enable_confirmations = true
 max_frequency = "1m0s"
 otp_length = 8
-
-[functions.graph]
-# The caller presents a connection key, not a Supabase JWT, so the platform's
-# JWT gate would reject every request before our code ran. Authentication is
-# the sha256 key lookup against mcp_keys inside the function itself.
-verify_jwt = false

@@ -84,6 +84,29 @@ test('every capability has a description, since it is shown to the user', () => 
 });
 
 /**
+ * This test exists to fail when someone adds a capability — the same guard
+ * `test/operation-boundary` puts on the operation table, which this list had
+ * been missing. A new capability is a new thing this product can write to
+ * someone's account; it should not be possible to add one and watch the suite
+ * stay green.
+ *
+ * Written out by hand, deliberately. Deriving it from WRITE_CAPABILITIES would
+ * assert nothing at all.
+ *
+ * If this fails and the capability is intended: read the decision record that
+ * argued for it, then update the literal below in the same commit.
+ */
+const SANCTIONED = ['calendar-create', 'calendar-delete', 'onenote-create'];
+
+test('the capability list is exactly what was sanctioned', () => {
+  assert.deepEqual(
+    Object.keys(WRITE_CAPABILITIES).sort(),
+    [...SANCTIONED].sort(),
+    'A write capability was added or removed. This is a boundary change, not a feature.',
+  );
+});
+
+/**
  * The grant lives in the Claude Desktop entry's args, which is where a user can
  * see it and where the server it spawns reads it back.
  */

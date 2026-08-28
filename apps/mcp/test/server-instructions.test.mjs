@@ -104,12 +104,34 @@ test('a granted install names its writes in the handshake', async () => {
 });
 
 /**
+ * The handshake used to say "Everything else is read-only, including all of
+ * OneNote" for any grant, which was true of every capability that existed
+ * before onenote-create and became the opposite of the truth with it. A server
+ * stating a boundary wrongly about itself is worse than one stating it weakly.
+ */
+test('a OneNote grant stops the handshake calling OneNote read-only', async () => {
+  const { instructions } = await initialize(['--allow-writes', 'onenote-create']);
+  assert.match(instructions, /onenote-create/);
+  assert.doesNotMatch(instructions, /read-only, including all of OneNote/);
+  // What it says instead has to be the actual shape of the permission.
+  assert.match(instructions, /cannot change or delete any page/);
+});
+
+test('a calendar-only grant still says all of OneNote is read-only', async () => {
+  const { instructions } = await initialize(['--allow-writes', 'calendar-create']);
+  assert.match(instructions, /read-only, including all of OneNote/);
+});
+
+/**
  * The derived line grows with each capability, so it needs its own ceiling
  * rather than borrowing the rules-drift one — and it still needs a ceiling, or
  * a fourth capability turns the handshake into a document nobody reads.
  */
 test('the capability line stays a sentence, not a document', async () => {
-  const { instructions } = await initialize(['--allow-writes', 'calendar-create,calendar-delete']);
+  const { instructions } = await initialize([
+    '--allow-writes',
+    'calendar-create,calendar-delete,onenote-create',
+  ]);
   assert.ok(
     instructions.length < 1500,
     `instructions are ${instructions.length} chars with two grants; the capability ` +

@@ -220,7 +220,52 @@ What it deliberately cannot do:
 - Add more than one event per call. There is no "add all the gigs".
 - Write a value the notebook has not settled. `UNKNOWN`, `TBC` and a disputed
   date are refused, with a message saying which field and why.
-- Touch OneNote. Nothing in this package ever writes to a page.
+- Touch OneNote. Creating a page is a separate capability, below, and no
+  capability can change or delete a page.
+
+## Letting it add a OneNote page
+
+Off by default, opt-in per install, and a separate decision from the calendar:
+
+```bash
+npx @manudota/artist-mcp init --allow-writes onenote-create
+artist-mcp connect microsoft
+```
+
+The reconnect is not optional here either, and it is the Microsoft one — a
+refresh token carries the scopes it was granted with.
+
+This is the one capability whose limits are not this package's to keep. The
+scope it asks for is `Notes.Create`, which permits creating pages and **cannot
+express an edit or a delete**. A token holding it was tested against a real
+notebook and refused with 403 on both, against a page it had itself created
+seconds earlier. So "it cannot change your notes" is enforced by Microsoft
+rather than promised by this code — unlike the calendar, where Google offers no
+insert-only scope and the narrowing had to be written here.
+
+The consequence is worth stating plainly: **a page it creates is permanent as
+far as this tool is concerned.** There is no undo. If a created page is wrong,
+you delete it in OneNote yourself. That is the trade for the guarantee above.
+
+Creating adds two tools. `preview_onenote_page` renders the page and names the
+section it would land in; `create_onenote_page` writes it, and only accepts the
+confirmation token the preview returned for those exact values.
+
+The page goes beside the page it was composed from, so the section is resolved
+from `source_page` rather than chosen. The preview names it in words, and you
+can pass a section explicitly if that is not where it should go.
+
+What it deliberately cannot do:
+
+- Edit, append to or delete any page — including one it created. It is not a
+  way to add a line to an existing page; that stays something you paste.
+- Add more than one page per call.
+- Write a title the notebook has not settled. `TBC` as a *title* is refused,
+  because a title is the page's identity and every later session sees it. A
+  *body* may say a fee is still TBC — that is your notebook recording an open
+  question, not this tool inventing an answer.
+- Interpret Markdown or HTML in the body. A blank line starts a paragraph and a
+  single newline is a line break; everything else appears as typed.
 
 Every write appends a line to `~/.artist-mcp/writes.log` recording what was
 written, where, when, and from which page — so an event can be traced back and

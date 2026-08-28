@@ -15,7 +15,7 @@ import { access } from 'node:fs/promises';
 import { resolveRegistry, setLocalAgentRoot } from './agents.js';
 import { ENTRY_NAME, configPath, readConfig } from './config.js';
 import { parseGrants, type WriteCapability } from './grants.js';
-import { connect } from './oauth.js';
+import { WRITE_SCOPES, connect } from './oauth.js';
 import { PROVIDERS } from './oauth.js';
 import { type ProviderName, clearProvider, loadTokens, readProvider } from './tokens.js';
 
@@ -35,20 +35,32 @@ const PURPOSE: Record<ProviderName, string> = {
 
 export const runConnect = async (input?: string): Promise<void> => {
   const provider = parseProvider(input);
-  const grants = provider === 'google' ? await installedGrants() : [];
+
+  // Every grant, not Google's. This read `provider === 'google' ? ... : []`,
+  // which was right while Google was the only provider a grant could widen and
+  // would have left `artist-mcp connect microsoft` asking for the read-only
+  // scope regardless — every create then failing with a 403 that named a
+  // permission the user believed they had granted. `scopesFor` filters by
+  // provider, so passing all of them asks each provider for only its own.
+  const grants = await installedGrants();
+  const relevant = grants.filter((name) => WRITE_SCOPES[name]?.provider === provider);
 
   await connect(provider, grants);
 
   console.log(`\n${PROVIDERS[provider].label} connected — ${PURPOSE[provider]}.`);
-  if (grants.length === 0) {
+  if (relevant.length === 0) {
     console.log('Read-only. Nothing is ever written back to your account.');
   } else {
     // Named, because the consent screen the user just approved was wider than
     // the one every other install sees, and they should be able to tell why.
     console.log(
-      `This install was granted ${grants.join(', ')}, so consent included ` +
-        'creating calendar events. Nothing else is ever written back: not ' +
-        'OneNote, not mail, and no event is changed or deleted.',
+      `This install was granted ${relevant.join(', ')}, so consent included ` +
+        `${provider === 'microsoft' ? 'creating OneNote pages' : 'creating calendar events'}. ` +
+        (provider === 'microsoft'
+          ? 'No page can be changed or deleted by this tool, including the ones ' +
+            'it creates — the permission it holds cannot express that.'
+          : 'Nothing else is ever written back: not mail, and no event is ' +
+            'changed except by the reschedule you granted.'),
     );
   }
 

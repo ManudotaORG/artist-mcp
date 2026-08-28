@@ -6,7 +6,7 @@ import { WRITE_CAPABILITIES, isGranted, type WriteCapability } from "./grants.js
 import { listAgentWorkflows, loadAgentWorkflow, type ResolvedEntry } from "./agents.js";
 import { GraphError } from "./client.js";
 import { call as localCall, type Operation } from "./dispatch.js";
-import { narrowNotes } from "./notes.js";
+import { narrowNotes, narrowSections } from "./notes.js";
 
 /**
  * How a tool reaches the outside world. Injected rather than imported so the
@@ -27,6 +27,20 @@ type NoteSummary = {
   /** Absent from responses served by an older edge function. */
   notebook?: string | null;
   last_modified: string | null;
+};
+
+/**
+ * A section, which on some accounts is the only thing that reports change.
+ *
+ * Optional throughout, because a response served by an older edge function
+ * carries no sections at all — the same reason `notebook` above is optional.
+ */
+type SectionSummary = {
+  id: string;
+  name: string;
+  notebook: string | null;
+  last_modified: string | null;
+  pages: number;
 };
 
 type NoteSketch = NoteSummary & {
@@ -165,8 +179,24 @@ const selectNotebook = async (
   call: Dispatch,
   notebook: string | undefined,
   tool: string,
-): Promise<{ pages: NoteSummary[]; scope: string | null } | { message: string }> => {
-  const { notes } = await call<{ notes: NoteSummary[] }>("list_notes");
+): Promise<
+  | {
+      pages: NoteSummary[];
+      sections: SectionSummary[];
+      creationDates: boolean;
+      scope: string | null;
+    }
+  | { message: string }
+> => {
+  const {
+    notes,
+    sections = [],
+    page_dates_are_creation_dates = false,
+  } = await call<{
+    notes: NoteSummary[];
+    sections?: SectionSummary[];
+    page_dates_are_creation_dates?: boolean;
+  }>("list_notes");
   if (notes.length === 0) return { message: "No notes found." };
 
   const names = [...new Set(notes.map((n) => n.notebook ?? "(unnamed notebook)"))];
@@ -226,10 +256,88 @@ const selectNotebook = async (
         "one, do not infer it from anything outside this conversation — ask."
       : null;
 
-  return { pages, scope };
+  // Sections are narrowed to the chosen notebook the same way the pages are:
+  // a section list spanning notebooks would reintroduce exactly the scope bug
+  // the paragraph above describes.
+  const inScope = wanted
+    ? sections.filter((sec) => (sec.notebook ?? "").trim().toLowerCase() === wanted)
+    : sections;
+
+  return {
+    pages,
+    sections: inScope,
+    creationDates: page_dates_are_creation_dates,
+    scope,
+  };
 };
 
-const serverVersion = '1.6.0'; // x-release-please-version
+/**
+ * What "what changed since X" looks like when only sections can answer it.
+ *
+ * Leads with the limitation rather than appending it. A caveat after a list is
+ * read as a footnote on a result already believed; the same sentence first is
+ * read as the terms the result comes on — and this result needs to be read on
+ * its terms, because "these sections changed" and "these pages changed" are
+ * different claims and only one of them is supported.
+ */
+const renderChangedSections = (
+  chosen: { sections: SectionSummary[]; scope: string | null },
+  notebook: string | undefined,
+  since: string,
+): string => {
+  const { sections: changed, undated } = narrowSections(chosen.sections, since);
+  const where = notebook ? `"${notebook}"` : "this account";
+
+  const preamble =
+    "OneNote is not reporting page modification times on this account — " +
+    "Microsoft returns each page's creation date in that field — so this " +
+    "answers at section level, which does report change correctly.";
+
+  if (changed.length === 0) {
+    return (
+      `${preamble}\n\nNo section in ${where} changed on or after ${since}. ` +
+      "Nothing in the notebook was edited in that window." +
+      (undated > 0
+        ? ` ${undated} section${undated === 1 ? " has" : "s have"} no date recorded ` +
+          "and were left out rather than assumed recent."
+        : "")
+    );
+  }
+
+  const lines = changed.map((sec) => {
+    const where2 = sec.notebook ? `${sec.notebook} / ` : "";
+    return (
+      `- ${where2}${sec.name} — changed ${sec.last_modified ?? "unknown"}` +
+      `\n  ${sec.pages} page${sec.pages === 1 ? "" : "s"} in this section`
+    );
+  });
+
+  const caveats = [
+    "Tell the musician WHICH SECTIONS changed. Do not name pages as changed — " +
+      "OneNote cannot say which page it was, and a section holds several. " +
+      "To look inside one, call list_notes with that notebook and no `since`, " +
+      "then read the pages of that section.",
+    "\"Changed\" includes a page being added, removed or moved, not only edited.",
+    "A section shows only its most recent change, so an older edit in a section " +
+      "that changed again later cannot be seen separately.",
+  ];
+  if (chosen.scope) caveats.unshift(chosen.scope);
+  if (undated > 0) {
+    caveats.push(
+      `${undated} section${undated === 1 ? "" : "s"} with no date recorded ` +
+        `${undated === 1 ? "is" : "are"} not in this window.`,
+    );
+  }
+
+  return [
+    preamble,
+    `Sections in ${where} that changed on or after ${since}:`,
+    lines.join("\n"),
+    caveats.join("\n\n"),
+  ].join("\n\n");
+};
+
+const serverVersion = '1.7.0'; // x-release-please-version
 
 const errorResult = (err: unknown) => {
   const message =
@@ -407,12 +515,23 @@ const capabilityLine = (writes: readonly WriteCapability[]): string => {
       "anything in OneNote, Gmail or Google Calendar, and must never offer to."
     );
   }
+  // "including all of OneNote" was true of every grant that existed until
+  // onenote-create, and stating it unconditionally would have made the
+  // handshake assert the opposite of what the install could do. Derived, so it
+  // cannot drift again.
+  const onenote = writes.includes('onenote-create')
+    ? " In OneNote it can add new pages and nothing else: it cannot change or " +
+      "delete any page, including ones it created, because the permission it " +
+      "holds cannot express that."
+    : " Everything else is read-only, including all of OneNote.";
+
   return (
     " This install has been granted these writes by the user: " +
     writes.map((name) => `${name} (${WRITE_CAPABILITIES[name]})`).join('; ') +
-    ". Everything else is read-only, including all of OneNote. Never describe " +
-    "this server as read-only while any write is granted, and never write a " +
-    "value the notebook has not settled."
+    "." +
+    onenote +
+    " Never describe this server as read-only while any write is granted, and " +
+    "never write a value the notebook has not settled."
   );
 };
 
@@ -523,7 +642,7 @@ const createServer = async (
   server.tool(
     "list_notes",
     "List the user's OneNote pages, with title, notebook, section and last " +
-      "modified date. Takes an optional notebook name. When the account holds " +
+      "date. Takes an optional notebook name. When the account holds " +
       "more than one notebook and none is given, this returns the list of " +
       "notebooks instead of any pages, so the user can say which one to work " +
       "in.",
@@ -544,9 +663,14 @@ const createServer = async (
         .string()
         .optional()
         .describe(
-          "Only pages modified on or after this date, as an ISO date such as " +
-            "2026-08-10. Use it for 'what moved this week'. Pages the account " +
-            "records no modified date for are left out rather than guessed at.",
+          "What changed on or after this date, as an ISO date such as " +
+            "2026-08-10. Use it for 'what moved this week'. On accounts where " +
+            "OneNote reports page modification times, this returns PAGES. On " +
+            "accounts where it does not — Microsoft returns the creation date " +
+            "in that field on some of them — it returns the SECTIONS that " +
+            "changed instead, because which page changed is genuinely unknown " +
+            "there. The reply says which of the two it gave you. Never report " +
+            "a section as a changed page.",
         ),
       limit: z
         .number()
@@ -567,6 +691,26 @@ const createServer = async (
         }
         const selected = chosen.pages;
 
+        // When page dates carry no modification information, a `since` question
+        // is answered about SECTIONS instead — and answers with sections, not
+        // with their pages.
+        //
+        // Returning the pages of a changed section would be the same lie in a
+        // new place: four page titles under "changed since Monday" reads as
+        // four changed pages, and we know only that one of them is. The section
+        // is the whole of what is known, so it is the whole of what is said.
+        //
+        // Nothing is lost from the answer itself. A section's timestamp moves
+        // for any single page edit inside it, tested with a control, so no
+        // change escapes this. What is surrendered is which page. See #122.
+        if (since !== undefined && chosen.creationDates) {
+          return {
+            content: [
+              { type: "text", text: renderChangedSections(chosen, notebook, since) },
+            ],
+          };
+        }
+
         // Narrowed only after the notebook is settled, so a `since` window can
         // never be what makes a notebook look empty enough to skip choosing.
         const { notes: shown, matched, undated } = narrowNotes(selected, { since, limit });
@@ -578,9 +722,11 @@ const createServer = async (
               {
                 type: "text",
                 text:
-                  `No pages in ${scope} modified on or after ${since}.` +
+                  `No pages in ${scope} dated on or after ${since}. This is not ` +
+                  `evidence that nothing changed: the date OneNote reports may be ` +
+                  `when a page was created rather than when it was last edited.` +
                   (undated > 0
-                    ? ` ${undated} page${undated === 1 ? " has" : "s have"} no modified date ` +
+                    ? ` ${undated} page${undated === 1 ? " has" : "s have"} no date ` +
                       "recorded and were left out of the window rather than assumed recent; " +
                       "list without `since` to see them."
                     : ""),
@@ -591,7 +737,11 @@ const createServer = async (
 
         const lines = shown.map((n) => {
           const location = [n.notebook, n.section].filter(Boolean).join(" / ");
-          return `- ${n.title}${location ? ` (${location})` : ""} — modified ${
+          // "dated", not "modified". The field behind it is currently the
+          // creation date on some accounts, and a line that says "modified" is
+          // read as proof of when someone last worked — the one claim it
+          // cannot support. See #122.
+          return `- ${n.title}${location ? ` (${location})` : ""} — dated ${
             n.last_modified ?? "unknown"
           }\n  id: ${n.id}`;
         });
@@ -602,13 +752,13 @@ const createServer = async (
         if (chosen.scope) caveats.push(chosen.scope);
         if (shown.length < matched) {
           caveats.push(
-            `Showing the ${shown.length} most recently modified of ${matched} matching ` +
+            `Showing the ${shown.length} newest by date of ${matched} matching ` +
               "pages. Raise `limit` or narrow with `since` for the rest.",
           );
         }
         if (undated > 0) {
           caveats.push(
-            `${undated} page${undated === 1 ? "" : "s"} with no modified date recorded ` +
+            `${undated} page${undated === 1 ? "" : "s"} with no date recorded ` +
               `${undated === 1 ? "is" : "are"} not in this window. That is unrecorded, ` +
               "not old — list without `since` to see them.",
           );
@@ -647,7 +797,11 @@ const createServer = async (
       since: z
         .string()
         .optional()
-        .describe("Only sketch pages modified on or after this ISO date."),
+        .describe(
+          "Only sketch pages changed on or after this ISO date. Refused on " +
+            "accounts where OneNote does not report page modification times — " +
+            "use list_notes with `since` there, which answers at section level.",
+        ),
       limit: z
         .number()
         .int()
@@ -664,6 +818,34 @@ const createServer = async (
           return { content: [{ type: "text", text: chosen.message }] };
         }
 
+        // `since` cannot be honoured here when page dates are creation dates,
+        // and unlike list_notes there is no honest substitute: this tool
+        // sketches page CONTENT, so answering with sections would not be a
+        // coarser version of the same answer, it would be a different one.
+        //
+        // Refused rather than silently narrowed. Sketching the pages created
+        // since a date, labelled as the pages that changed, is the failure this
+        // whole change exists to remove — and it would be expensive as well as
+        // wrong, since every sketch is a request. See #122.
+        if (since !== undefined && chosen.creationDates) {
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  "Cannot map by change on this account: OneNote is not " +
+                  "reporting page modification times — Microsoft returns each " +
+                  "page's creation date in that field — so `since` here would " +
+                  "sketch the pages CREATED since then, which is a different " +
+                  "set and would be reported as the wrong answer.\n\n" +
+                  "Call list_notes with `since` instead: it reports which " +
+                  "SECTIONS changed, which does work. Then map that notebook " +
+                  "without `since` and read the pages of the sections it named.",
+              },
+            ],
+          };
+        }
+
         // A default cap, because this is one call per page: a notebook of two
         // hundred pages should not become two hundred requests because nobody
         // said a number. It reports itself, as every other truncation does.
@@ -675,7 +857,16 @@ const createServer = async (
         if (pages.length === 0) {
           return {
             content: [
-              { type: "text", text: `No pages to map${since ? ` modified on or after ${since}` : ""}.` },
+              {
+                type: "text",
+                text:
+                  `No pages to map${since ? ` dated on or after ${since}` : ""}.` +
+                  (since
+                    ? " The date OneNote reports may be when a page was created" +
+                      " rather than when it was last edited, so this is not" +
+                      " evidence that nothing changed."
+                    : ""),
+              },
             ],
           };
         }
@@ -688,7 +879,7 @@ const createServer = async (
         const blocks = sketches.map((s) => {
           const location = [s.notebook, s.section].filter(Boolean).join(" / ");
           const head =
-            `## ${s.title}${location ? ` (${location})` : ""} — modified ${s.last_modified ?? "unknown"}` +
+            `## ${s.title}${location ? ` (${location})` : ""} — dated ${s.last_modified ?? "unknown"}` +
             `\nid: ${s.id}`;
           if (s.sketch === null) {
             // Named as a gap. A page missing from a survey reads as a page
@@ -723,13 +914,13 @@ const createServer = async (
         }
         if (pages.length < matched) {
           caveats.push(
-            `Sketched the ${pages.length} most recently modified of ${matched} pages. ` +
+            `Sketched the ${pages.length} newest by date of ${matched} pages. ` +
               "Raise `limit` or narrow with `since` for the rest.",
           );
         }
         if (undated > 0) {
           caveats.push(
-            `${undated} page${undated === 1 ? "" : "s"} with no modified date recorded ` +
+            `${undated} page${undated === 1 ? "" : "s"} with no date recorded ` +
               `${undated === 1 ? "is" : "are"} not in this window.`,
           );
         }
@@ -1163,7 +1354,8 @@ const createServer = async (
         "of these exact values; change any field and the token stops matching, " +
         "which means preview again and show the musician the new version. " +
         "Creating the same event twice is refused by Google rather than " +
-        "duplicated. OneNote is never written by anything. Never call this with " +
+        "duplicated. This tool never writes to OneNote — creating a page is a " +
+        "different tool, and it is absent unless granted. Never call this with " +
         "a value the musician chose in chat to break a tie between pages that " +
         "still disagree — the calendar is a derivative of the page, and a page " +
         "that contradicts itself has nothing to derive from yet.",
@@ -1206,7 +1398,142 @@ const createServer = async (
                   (link ? `\n${link}\n` : "") +
                   "\nTell the musician it is in the calendar and that they can " +
                   "delete it there if it is wrong. The page in OneNote was not " +
-                  "changed — nothing here writes to OneNote.",
+                  "changed — this tool does not write to OneNote.",
+              },
+            ],
+          };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+  }
+
+  // Both grants, not a third one. A reschedule is exactly a create and a delete,
+  // so an install holding both has already consented to everything it does —
+  // and inventing `calendar-update` would make every hosted user re-consent for
+  // permission they already gave. Absent either grant, the tools are absent.
+  if (isGranted(grants, "calendar-create") && isGranted(grants, "calendar-delete")) {
+    server.tool(
+      "preview_calendar_reschedule",
+      "Call this before reschedule_calendar_event — it is the only way to obtain the confirmation_token that one requires. SHOW THE MUSICIAN BOTH HALVES AND WAIT FOR THEIR YES. " +
+        "Shows the event as Google has it now and the values that would replace " +
+        "it, side by side, and lists what is already on the destination day. " +
+        "Changes nothing. Only an event artist-mcp created can be rescheduled; " +
+        "anything the musician made themselves, or that was shared onto their " +
+        "calendar, is refused. Use it to move an event in time, to rename it, or " +
+        "to move it to another calendar with to_calendar_id — those are one " +
+        "operation. A value the notebook has not settled (UNKNOWN, TBC, a " +
+        "disputed date) is refused here rather than written, and a new date the " +
+        "musician did not give you is not settled: a deadline that slipped is " +
+        "not a reason to invent the next one.",
+      {
+        event_id: z.string().describe("The id of the event to replace"),
+        calendar_id: z
+          .string()
+          .optional()
+          .describe("Which calendar it is on now. Defaults to the primary one."),
+        to_calendar_id: z
+          .string()
+          .optional()
+          .describe("Move it to this calendar. Defaults to the one it is already on."),
+        summary: z.string().describe("The title it should have, as the page words it"),
+        start: z
+          .string()
+          .describe(
+            "YYYY-MM-DD for an all-day event, or an RFC3339 date-time such as 2026-10-16T20:00:00",
+          ),
+        end: z
+          .string()
+          .describe(
+            "The same kind as start: both dates, or both date-times. For an all-day event Google reads this as EXCLUSIVE, so a task due on 2026-10-30 is start 2026-10-30, end 2026-10-31",
+          ),
+        time_zone: z.string().optional(),
+        location: z.string().optional(),
+        description: z.string().optional(),
+      },
+      async (params) => {
+        try {
+          const { before, after, confirmation_token, existing_that_day, calendar_searched } =
+            await call<{
+              before: string;
+              after: string;
+              confirmation_token: string;
+              existing_that_day: unknown[];
+              calendar_searched: string;
+            }>("preview_calendar_reschedule", params);
+
+          const day =
+            existing_that_day.length === 0
+              ? `Nothing else is on that day in ${calendar_searched}. That is one calendar only — it does not show the day is free elsewhere.`
+              : `Already on that day in ${calendar_searched}:\n${JSON.stringify(existing_that_day, null, 2)}`;
+
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `${day}\n\nThis event would be replaced:\n\n${before}\n\n` +
+                  `by this one:\n\n${after}\n\n` +
+                  "The replacement is a new event: reminders set on the old one, " +
+                  "and notifications other people arranged for it, do not come " +
+                  "across. Say so, show the musician both halves, and wait for " +
+                  "their yes. If they agree, call reschedule_calendar_event with " +
+                  `the SAME values and confirmation_token: ${confirmation_token}`,
+              },
+            ],
+          };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+
+    server.tool(
+      "reschedule_calendar_event",
+      "Only call this after preview_calendar_reschedule AND after the musician has said yes to what the preview showed. " +
+        "Replaces ONE event that artist-mcp itself created: it writes the new " +
+        "event first and removes the old one after, so an interruption leaves a " +
+        "visible duplicate rather than a gap. It is not an update — the " +
+        "replacement has its own id, and reminders or notifications on the old " +
+        "event are lost. There is no bulk form. Google keeps the removed event " +
+        "in that calendar's bin for 30 days.",
+      {
+        event_id: z.string().describe("Exactly what the preview showed"),
+        calendar_id: z.string().optional().describe("Exactly what the preview showed"),
+        to_calendar_id: z.string().optional().describe("Exactly what the preview showed"),
+        summary: z.string().describe("Exactly what the preview showed"),
+        start: z.string().describe("Exactly what the preview showed"),
+        end: z.string().describe("Exactly what the preview showed"),
+        time_zone: z.string().optional(),
+        location: z.string().optional(),
+        description: z.string().optional(),
+        confirmation_token: z
+          .string()
+          .describe("The token preview_calendar_reschedule returned for these exact values"),
+        source_page: z.string().optional(),
+      },
+      async (params) => {
+        try {
+          const { removed, written, link, calendar_id } = await call<{
+            removed: string;
+            written: string;
+            link: string | null;
+            calendar_id: string;
+          }>("reschedule_calendar_event", params);
+
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `Rescheduled in ${calendar_id}.\n\nRemoved:\n\n${removed}\n\n` +
+                  `Created:\n\n${written}\n\n` +
+                  (link ? `${link}\n\n` : "") +
+                  "Tell the musician it has moved, that the old one is in that " +
+                  "calendar's bin for 30 days, and that any reminder they had set " +
+                  "on it did not come across. The page in OneNote was not " +
+                  "changed — this tool does not write to OneNote.",
               },
             ],
           };
@@ -1304,6 +1631,153 @@ const createServer = async (
       },
     );
   }
+
+  /**
+   * Creating a OneNote page: the first write to the knowledge base itself.
+   *
+   * The tool text below leans on something none of the calendar tools can say —
+   * that editing and deleting are impossible rather than merely not offered.
+   * That is worth stating plainly to a model, because a model that believes a
+   * mistake is repairable will create more freely than one that knows the page
+   * is permanent the moment it exists. See docs/decisions/0003-onenote-writes.md.
+   */
+  if (isGranted(grants, "onenote-create")) {
+    server.tool(
+      "preview_onenote_page",
+      "Call this before create_onenote_page — it is the only way to obtain the confirmation_token that one requires, and it is what puts the exact page in front of the musician. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. " +
+        "Renders a OneNote page exactly as it would be written and names the " +
+        "section it would land in, in words rather than as an id. Changes " +
+        "nothing. The page goes beside the page it was composed from, so pass " +
+        "source_page unless the musician named a section. A title the notebook " +
+        "has not settled (UNKNOWN, TBC, a disputed name) is refused here rather " +
+        "than written; the body may say a fee is still TBC, because that is the " +
+        "notebook recording an open question rather than this tool inventing an " +
+        "answer.",
+      {
+        title: z
+          .string()
+          .describe(
+            "The page title. This is the page's identity and what every later " +
+              "session sees in list_notes, so it must be settled",
+          ),
+        body: z
+          .string()
+          .describe(
+            "The page text, plain. A blank line starts a new paragraph and a single " +
+              "newline is a line break. Markdown and HTML are NOT interpreted — they " +
+              "would appear on the page as the characters you typed",
+          ),
+        source_page: z
+          .string()
+          .optional()
+          .describe(
+            "The page id from list_notes or read_note that this was composed from. " +
+              "It decides which section the new page lands in, and it is what traces " +
+              "the write back weeks later. The id, not the title",
+          ),
+        section_id: z
+          .string()
+          .optional()
+          .describe(
+            "Only when the musician named a different section. Otherwise omit it and " +
+              "let source_page place the page",
+          ),
+      },
+      async (params) => {
+        try {
+          const { preview, confirmation_token, section_name, section_id } = await call<{
+            preview: string;
+            confirmation_token: string;
+            section_name: string;
+            section_id: string;
+          }>("preview_onenote_page", params);
+
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `This would be created in ${section_name}:\n\n${preview}\n\n` +
+                  "Show this to the musician and wait for their yes. Say plainly " +
+                  "that this tool cannot undo it: once the page exists it cannot " +
+                  "edit or delete it, and removing it means doing so in OneNote " +
+                  "themselves. If they agree, call create_onenote_page with the " +
+                  "SAME title and body, and with both of these:\n" +
+                  // The id is only knowable from here. It is resolved from the
+                  // source page rather than supplied, so a create that had to
+                  // guess it would either fail or write to the wrong section.
+                  `  section_id: ${section_id}\n` +
+                  `  confirmation_token: ${confirmation_token}`,
+              },
+            ],
+          };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+
+    server.tool(
+      "create_onenote_page",
+      "Only call this after preview_onenote_page AND after the musician has said yes to what the preview showed. Never call it to find out whether it would work. " +
+        "Creates ONE new page in OneNote. It CANNOT edit or delete any page, " +
+        "including the ones it creates — that is the permission this install " +
+        "holds, not a policy it follows, so a page created by mistake stays " +
+        "until the musician removes it in OneNote themselves. There is no bulk " +
+        "form. It never changes an existing page, so it is not a way to add a " +
+        "line to one: paste that for the musician as always. Requires the " +
+        "confirmation_token from a preview of these exact values; change any " +
+        "field and the token stops matching, which means preview again and show " +
+        "the musician the new version. Never write a value the musician chose in " +
+        "chat to break a tie between pages that still disagree — a page is the " +
+        "record other sessions read back, and writing the tie-break makes it " +
+        "look settled when it is not.",
+      {
+        title: z.string().describe("Exactly what the preview showed"),
+        body: z.string().describe("Exactly what the preview showed"),
+        section_id: z
+          .string()
+          .describe("The section_id the preview returned, not one you chose yourself"),
+        source_page: z
+          .string()
+          .optional()
+          .describe(
+            "The page id this was composed from, so the write can be traced back " +
+              "weeks later. The id, not the title",
+          ),
+        confirmation_token: z
+          .string()
+          .describe("The token preview_onenote_page returned for these exact values"),
+      },
+      async (params) => {
+        try {
+          const { title, web_url } = await call<{
+            title: string;
+            page_id: string | null;
+            web_url: string | null;
+          }>("create_onenote_page", params);
+
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `Created the page "${title}".` +
+                  (web_url ? `\n\n${web_url}\n` : "") +
+                  "\nTell the musician the page is in their notebook, and that " +
+                  "this tool cannot change or remove it — if it is wrong, they " +
+                  "edit or delete it in OneNote themselves. No existing page was " +
+                  "touched.",
+              },
+            ],
+          };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+  }
+
 
   server.tool(
     "list_calendars",

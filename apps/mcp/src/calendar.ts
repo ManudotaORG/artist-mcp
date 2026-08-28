@@ -590,6 +590,20 @@ const describeDuplicate = async (
   );
 };
 
+/** The Google payload for a draft, id included. Shared so a create and a
+ * reschedule cannot drift into writing different shapes for the same values. */
+const eventBody = async (draft: EventDraft) => {
+  const allDay = draft.time_zone === null;
+  return {
+    id: await idempotencyId(draft),
+    summary: draft.summary,
+    start: allDay ? { date: draft.start } : { dateTime: draft.start, timeZone: draft.time_zone },
+    end: allDay ? { date: draft.end } : { dateTime: draft.end, timeZone: draft.time_zone },
+    ...(draft.location ? { location: draft.location } : {}),
+    ...(draft.description ? { description: draft.description } : {}),
+  };
+};
+
 /**
  * Create the event, if the token matches the payload.
  *
@@ -620,15 +634,7 @@ export async function createEvent(
     );
   }
 
-  const allDay = draft.time_zone === null;
-  const body = {
-    id: await idempotencyId(draft),
-    summary: draft.summary,
-    start: allDay ? { date: draft.start } : { dateTime: draft.start, timeZone: draft.time_zone },
-    end: allDay ? { date: draft.end } : { dateTime: draft.end, timeZone: draft.time_zone },
-    ...(draft.location ? { location: draft.location } : {}),
-    ...(draft.description ? { description: draft.description } : {}),
-  };
+  const body = await eventBody(draft);
 
   let res: Response;
   try {
@@ -676,7 +682,12 @@ export async function createEvent(
  * This is the one place the confirmation is stricter than it is for a create:
  * the payload being hashed came from Google, not from the caller.
  */
-const fetchForDeletion = async (token: string, calendarId: string, eventId: string) => {
+const fetchForDeletion = async (
+  token: string,
+  calendarId: string,
+  eventId: string,
+  verb = 'deleted',
+) => {
   if (!EVENT_ID.test(eventId)) throw failure('event_id is malformed.');
   if (!CALENDAR_ID.test(calendarId)) throw failure('calendar_id is malformed.');
 
@@ -686,8 +697,8 @@ const fetchForDeletion = async (token: string, calendarId: string, eventId: stri
   // refusal does not depend on the event being readable.
   if (!eventId.startsWith(ARTIST_ID_PREFIX)) {
     throw failure(
-      'That event was not created by artist-mcp, so it cannot be deleted here. ' +
-        'Only events this tool created can be removed by it — anything else is ' +
+      `That event was not created by artist-mcp, so it cannot be ${verb} here. ` +
+        'Only events this tool created can be touched by it — anything else is ' +
         "the musician's own, and belongs to them to change in Google Calendar.",
     );
   }
@@ -815,4 +826,201 @@ export async function deleteEvent(
   });
 
   return { deleted: written, calendar_id: calendarId, event_id: eventId };
+}
+
+
+// ---------------------------------------------------- rescheduling an event
+
+/**
+ * Moving an event is a create and a delete, not an update.
+ *
+ * Google will happily patch an event in place, and this deliberately does not.
+ * `idempotencyId` is a hash of every field, so identity here *is* content: patch
+ * the date and the event keeps an id that no longer describes it, the
+ * double-book guard stops matching, and the next create of the same task lands
+ * a second copy nobody asked for. Deriving the id is what makes a retry safe and
+ * what makes deleting safe to offer, and neither survives an in-place edit.
+ *
+ * So the pair below writes the new event first and removes the old one after.
+ * That order is the whole design: interrupted between the two, it leaves a
+ * visible duplicate that anyone can see and clean up. The other order leaves a
+ * gap, and nobody notices absence.
+ *
+ * The cost, which callers must say out loud before offering this: the new event
+ * is a new event. Reminders set on the old one, and notifications other people
+ * on a shared calendar arranged for it, do not come across.
+ */
+
+/**
+ * A token over both halves — the event as Google has it, and the values that
+ * would replace it. Bound together so a confirmed reschedule cannot be replayed
+ * against a different destination, or a different source.
+ */
+const rescheduleToken = async (
+  existing: CalendarEvent,
+  fromCalendarId: string,
+  draft: EventDraft,
+): Promise<string> => {
+  const data = new TextEncoder().encode(
+    `reschedule ${fromCalendarId} ${existing.id ?? ''} ${existing.summary ?? ''} ` +
+      `${eventTime(existing.start).value ?? ''} ${eventTime(existing.end).value ?? ''}` +
+      ` :: ${canonical(draft)}`,
+  );
+  return base32hex(new Uint8Array(await crypto.subtle.digest('SHA-256', data)));
+};
+
+/**
+ * The source event and the destination draft.
+ *
+ * `to_calendar_id` defaults to the calendar the event is already on, so moving
+ * between calendars and moving in time are the same operation — which they are,
+ * mechanically, and splitting them would mean two tools that do one thing each
+ * and a third case nobody built for doing both at once.
+ */
+const rescheduleFrom = (params: Record<string, unknown>) => {
+  const fromCalendarId =
+    typeof params.calendar_id === 'string' && params.calendar_id.trim()
+      ? params.calendar_id.trim()
+      : 'primary';
+  const eventId = typeof params.event_id === 'string' ? params.event_id.trim() : '';
+  const toCalendarId =
+    typeof params.to_calendar_id === 'string' && params.to_calendar_id.trim()
+      ? params.to_calendar_id.trim()
+      : fromCalendarId;
+
+  const draft = draftFrom({ ...params, calendar_id: toCalendarId });
+  return { fromCalendarId, eventId, draft };
+};
+
+/** Refuse a reschedule that would not change anything. */
+const refuseUnchanged = async (eventId: string, draft: EventDraft): Promise<void> => {
+  if ((await idempotencyId(draft)) === eventId) {
+    throw failure(
+      'Those are the values the event already has, so there is nothing to ' +
+        'reschedule. Change the date, the title or the calendar, or leave the ' +
+        'event alone.',
+    );
+  }
+};
+
+/**
+ * Show the move as a before and an after, and hand back the token that permits
+ * it.
+ *
+ * Both halves are rendered because a preview showing only the new values asks
+ * the musician to remember what it is replacing, and the thing most worth
+ * catching here is a move away from a date they meant to keep.
+ */
+export async function previewRescheduleEvent(token: string, params: Record<string, unknown>) {
+  const { fromCalendarId, eventId, draft } = rescheduleFrom(params);
+  const existing = await fetchForDeletion(token, fromCalendarId, eventId, 'rescheduled');
+
+  refuseUnsettled(draft);
+  await refuseUnchanged(eventId, draft);
+
+  // The destination day, for the same reason a create previews it: an event
+  // already sitting there is the thing a move most often collides with.
+  const day = draft.start.slice(0, 10);
+  const { events } = await listEvents(
+    token,
+    draft.calendar_id,
+    undefined,
+    `${day}T00:00:00Z`,
+    `${day}T23:59:59Z`,
+  );
+
+  return {
+    before: renderExisting(existing, fromCalendarId),
+    after: renderDraft(draft),
+    confirmation_token: await rescheduleToken(existing, fromCalendarId, draft),
+    existing_that_day: events,
+    calendar_searched: draft.calendar_id,
+  };
+}
+
+/**
+ * Write the new event, then remove the old one.
+ *
+ * Each half is audited separately and under its own operation name, because the
+ * audit has to remain readable as a list of what actually reached Google. A
+ * reschedule that half-completed is two rows saying so, not one row implying a
+ * move that did not finish.
+ */
+export async function rescheduleEvent(
+  token: string,
+  params: Record<string, unknown>,
+  record: RecordWrite = recordWrite,
+) {
+  const { fromCalendarId, eventId, draft } = rescheduleFrom(params);
+  const existing = await fetchForDeletion(token, fromCalendarId, eventId, 'rescheduled');
+
+  refuseUnsettled(draft);
+  await refuseUnchanged(eventId, draft);
+
+  const supplied = typeof params.confirmation_token === 'string' ? params.confirmation_token : '';
+  const expected = await rescheduleToken(existing, fromCalendarId, draft);
+  if (supplied !== expected) {
+    throw failure(
+      supplied === ''
+        ? 'No confirmation_token. Call preview_calendar_reschedule first and show ' +
+            'the musician both the event as it stands and what would replace it.'
+        : 'The confirmation_token does not match. Either the event changed since ' +
+            'the preview or the new values did, so preview again and show the ' +
+            'musician the current version of both.',
+    );
+  }
+
+  const removed = renderExisting(existing, fromCalendarId);
+  const body = await eventBody(draft);
+
+  // New first. Interrupted here, nothing has been lost.
+  let res: Response;
+  try {
+    res = await calendarInsertEvent(draft.calendar_id, body, token);
+  } catch (err) {
+    if (err instanceof DuplicateEventError) {
+      throw await describeDuplicate(token, draft.calendar_id, body.id);
+    }
+    throw err;
+  }
+  const created = (await res.json()) as CalendarEvent;
+
+  await record({
+    operation: 'create_calendar_event',
+    summary: renderDraft(draft),
+    target: `${draft.calendar_id}/${created.id ?? 'unknown'}`,
+    source_page: typeof params.source_page === 'string' ? params.source_page : null,
+  });
+
+  // The old one goes second, and a failure here is reported rather than
+  // swallowed: the musician is now looking at two events and has to be told
+  // which one to remove, by hand, rather than discovering it later.
+  try {
+    await calendarDeleteEvent(fromCalendarId, eventId, token);
+  } catch (err) {
+    throw failure(
+      'The new event was created, but the old one could not be removed, so both ' +
+        `are now on the calendar. Remove "${existing.summary ?? '(no title)'}" ` +
+        `(${eventId}) in ${fromCalendarId} by hand, or call ` +
+        'preview_calendar_delete and delete_calendar_event for it. The ' +
+        `underlying error was: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  await record({
+    operation: 'delete_calendar_event',
+    summary: removed,
+    target: `${fromCalendarId}/${eventId}`,
+    source_page: typeof params.source_page === 'string' ? params.source_page : null,
+  });
+
+  return {
+    removed,
+    written: renderDraft(draft),
+    created: shapeEvent(created),
+    link: created.htmlLink ?? null,
+    from_calendar_id: fromCalendarId,
+    calendar_id: draft.calendar_id,
+    old_event_id: eventId,
+  };
 }

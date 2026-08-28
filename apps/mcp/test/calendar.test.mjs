@@ -4,7 +4,8 @@ import test from 'node:test';
 import { eventTime, shapeEvent, thinRecurring } from '../dist/calendar.js';
 
 /**
- * Ported from supabase/functions/graph/index.test.ts with the code they cover.
+ * Ported from the edge function that served pre-1.0 installs, with the code
+ * they cover. That function has since been removed.
  * Both normalisations here fail silently when they fail: an all-day event reads
  * as no event at all, and an unthinned weekly series fills a page so nothing
  * else that week is visible.
