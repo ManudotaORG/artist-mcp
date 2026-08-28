@@ -386,13 +386,7 @@ const PROVIDER_LABEL: Record<string, string> = {
  * prefix; a OneNote page cannot be edited or deleted by anything, including the
  * tool that made it, because the permission cannot express it.
  */
-const Writes = ({
-  granted,
-  connected,
-}: {
-  granted: boolean;
-  connected: Set<string>;
-}) => (
+const Writes = ({ granted, connected }: { granted: boolean; connected: Set<string> }) => (
   <div className="mt-3 border border-foreground p-3">
     <Typography variant="small" color="cyan">
       WRITING ON YOUR BEHALF
