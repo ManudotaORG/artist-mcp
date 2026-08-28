@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { resolve } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
@@ -108,4 +109,35 @@ test('no OneNote tool edits or deletes, under any grant', async () => {
     `A OneNote tool that modifies a page exists: ${forbidden.join(', ')}. ` +
       'Notes.Create cannot express that — see docs/decisions/0003-onenote-writes.md.',
   );
+});
+
+/**
+ * Every value `create_onenote_page` requires must be obtainable from the
+ * preview, and the preview's TEXT is the only part a model reads.
+ *
+ * This is not hypothetical. `section_id` is required by the create and is
+ * resolved from the source page rather than supplied by the caller, so until
+ * the preview printed it there was no way to obtain it — the create was
+ * unreachable except by inventing an id. Every unit test passed throughout,
+ * because each half was correct on its own.
+ */
+test('the preview text carries every value the create requires', async () => {
+  const server = await readFile(
+    resolve(dirname(fileURLToPath(import.meta.url)), '../src/server.ts'),
+    'utf8',
+  );
+  const preview = server.slice(
+    server.indexOf('"preview_onenote_page"'),
+    server.indexOf('"create_onenote_page"'),
+  );
+  assert.ok(preview.length > 0, 'the preview tool was not found in server.ts');
+
+  for (const field of ['section_id', 'confirmation_token']) {
+    assert.match(
+      preview,
+      new RegExp(`\\$\\{${field}\\}`),
+      `The preview never prints ${field}, which create_onenote_page requires. ` +
+        'A model has no way to obtain it.',
+    );
+  }
 });

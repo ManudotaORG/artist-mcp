@@ -1505,10 +1505,11 @@ const createServer = async (
       },
       async (params) => {
         try {
-          const { preview, confirmation_token, section_name } = await call<{
+          const { preview, confirmation_token, section_name, section_id } = await call<{
             preview: string;
             confirmation_token: string;
             section_name: string;
+            section_id: string;
           }>("preview_onenote_page", params);
 
           return {
@@ -1521,7 +1522,12 @@ const createServer = async (
                   "that this tool cannot undo it: once the page exists it cannot " +
                   "edit or delete it, and removing it means doing so in OneNote " +
                   "themselves. If they agree, call create_onenote_page with the " +
-                  `SAME values and confirmation_token: ${confirmation_token}`,
+                  "SAME title and body, and with both of these:\n" +
+                  // The id is only knowable from here. It is resolved from the
+                  // source page rather than supplied, so a create that had to
+                  // guess it would either fail or write to the wrong section.
+                  `  section_id: ${section_id}\n` +
+                  `  confirmation_token: ${confirmation_token}`,
               },
             ],
           };
