@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 import { getSiteUrl } from '@/lib/siteUrl';
 import { supabaseServer } from '@/lib/supabase/server';
+import { WRITE_CAPABILITIES, type WriteCapability } from '@manudota/artist-mcp/grants';
 
 export const signIn = async (_prev: unknown, formData: FormData) => {
   const email = String(formData.get('email') ?? '').trim();
@@ -74,20 +75,30 @@ export const disconnect = async (formData: FormData) => {
  */
 
 /**
- * Turn calendar writes on or off for this account.
+ * Turn writes on or off for this account: all of them, as one decision.
  *
- * One switch rather than a capability each. The local install names them
- * individually because someone typing a flag can be precise; a person deciding
- * on a web page is answering "may it manage my calendar entries", and splitting
- * that into two questions makes the answer harder without making it better.
- * Splitting it later is additive.
+ * One switch rather than a capability each, and deliberately not one per
+ * provider either. The local install names capabilities individually because
+ * someone typing a flag can be precise; a person on a web page is answering
+ * "may this thing write on my behalf", and the honest version of that question
+ * is asked once. A row of switches makes the answer longer without making it
+ * better informed.
+ *
+ * The cost is real and accepted rather than overlooked: a capability added
+ * later is covered by a switch the user already flipped, so it would arrive
+ * without a fresh decision. What keeps that honest is clearing existing grants
+ * whenever the set this switch covers grows — done for onenote-create in
+ * 20260828_reset_write_grants.sql, and required of anything added after it.
+ *
+ * Derived from WRITE_CAPABILITIES rather than listed, so the switch cannot come
+ * to mean less than it says.
  *
  * The service role, not the signed-in session: `set_write_grants` is revoked
  * from `authenticated` on purpose, because what an account is allowed to do
  * must not be settable with the key the browser holds. The user id comes from
  * the session, so this can only ever change the caller's own row.
  */
-export const setCalendarWrites = async (formData: FormData) => {
+export const setWriteGrant = async (formData: FormData) => {
   const wanted = String(formData.get('enabled') ?? '') === 'true';
 
   const supabase = await supabaseServer();
@@ -104,12 +115,13 @@ export const setCalendarWrites = async (formData: FormData) => {
 
   const { error } = await admin.rpc('set_write_grants', {
     p_user_id: user.id,
-    p_capabilities: wanted ? ['calendar-create', 'calendar-delete'] : [],
+    p_capabilities: wanted ? (Object.keys(WRITE_CAPABILITIES) as WriteCapability[]) : [],
   });
 
   if (error) redirect(`/?error=${encodeURIComponent(error.message)}`);
-  // Granting changes nothing until the connection is renewed: a refresh token
-  // carries the scopes it was granted with. Withdrawing takes effect at once,
-  // because the tools stop being registered whatever the token can do.
+  // Granting changes nothing until the connections are renewed: a refresh token
+  // carries the scopes it was granted with, and there are two providers to
+  // renew now rather than one. Withdrawing takes effect at once, because the
+  // tools stop being registered whatever the tokens can do.
   redirect(wanted ? '/?writes=granted' : '/?writes=withdrawn');
 };
