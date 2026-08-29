@@ -200,11 +200,12 @@ test('the preview shows both halves and does not write', async () => {
   assert.equal(calls.filter((c) => !c.startsWith('GET')).length, 0);
 });
 
-test('the preview enumerates the destination day, not the day it is leaving', async () => {
+test('the preview enumerates the destination, not the dates it is leaving', async () => {
   const { fetchImpl, calls } = stubCalendar();
   await withFetch(fetchImpl, () => previewRescheduleEvent('t', move));
   const listing = calls.find((c) => c.includes('timeMin'));
   assert.ok(listing?.includes('2026-11-24'), `listed the wrong day: ${listing}`);
+  assert.ok(!listing?.includes('2026-11-17'), `listed the day it is leaving: ${listing}`);
 });
 
 // --------------------------------------------------------------- the writes
@@ -281,4 +282,32 @@ test('both writes are recorded, under their own operation names', async () => {
     }),
   );
   assert.deepEqual(recorded, ['create_calendar_event', 'delete_calendar_event']);
+});
+
+// ------------------------------------------------ what the preview looks at
+
+/**
+ * The start day alone was enough while every event was one day long. A span
+ * written straight through an occupied week answered "nothing else is on that
+ * day" — true about the one day it looked at, and misleading exactly where it
+ * mattered. The window is now the event's whole range.
+ */
+test('the preview enumerates every day the event would occupy, not just the first', async () => {
+  const { fetchImpl, calls } = stubCalendar();
+  await withFetch(fetchImpl, () =>
+    previewRescheduleEvent('t', { ...move, start: '2026-11-24', end: '2026-12-01' }),
+  );
+
+  const listing = calls.find((c) => c.includes('timeMin'));
+  assert.ok(listing?.includes('2026-11-24'), `wrong window start: ${listing}`);
+  assert.ok(listing?.includes('2026-12-01'), `window stopped short of the end: ${listing}`);
+});
+
+test('a single-day event still asks about its own day', async () => {
+  const { fetchImpl, calls } = stubCalendar();
+  await withFetch(fetchImpl, () => previewRescheduleEvent('t', move));
+
+  const listing = calls.find((c) => c.includes('timeMin'));
+  assert.ok(listing?.includes('2026-11-24'), `wrong window start: ${listing}`);
+  assert.ok(listing?.includes('2026-11-25'), `wrong window end: ${listing}`);
 });
