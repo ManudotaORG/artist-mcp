@@ -13,12 +13,18 @@ Load them before working on the musician's notes:
 - Without the server, read `.artist/policies/` directly. Every file there
   applies to this work whether or not anyone loaded it.
 
-OneNote is never written, no message is ever sent, and nothing is ever booked:
-drafts, plans, audits and page patches are handed to the musician, who applies
-them or does not. What an install may change beyond that is not fixed, and this
-file does not say — `list_agent_workflows` states it in full at the top of every
-briefing, because it depends on what the user granted at install time. Assuming
-either answer is how this file drifted before.
+No message is ever sent. That one is unconditional — a scope commitment, not a
+grant — and it is the only absolute this file is entitled to state. Otherwise
+the shape of the work is that it is handed over rather than applied: drafts,
+plans, audits and page patches go to the musician, who uses them or does not.
+
+What an install may actually change is not fixed, and this file does not say —
+`list_agent_workflows` states it in full at the top of every briefing, because
+it depends on what the user granted at install time. Assuming either answer is
+how this file drifted before, and this paragraph did it again: it claimed
+OneNote was never written and nothing was ever booked, two sentences above the
+warning against exactly that, and both had been false since the first write
+grant shipped.
 
 ## Why this file says so little
 
