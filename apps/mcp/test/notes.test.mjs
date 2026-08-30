@@ -461,3 +461,18 @@ test('a to-do among other tags is still a to-do, and a non-to-do tag is not', ()
 
   assert.equal(text, '[x] Foto geschickt\nGage 10.000 €');
 });
+
+test('an embedded-object anchor becomes a space, so the words around it survive', () => {
+  // U+FFFC arrives inline from OneNote wherever an object was anchored. It
+  // falls between two words here, which is why it cannot simply be deleted.
+  assert.equal(
+    htmlToText('<p>This is a test line￼this is a second test line</p>'),
+    'This is a test line this is a second test line',
+  );
+});
+
+test('an anchor is not named, because it cannot be tied to a listed attachment', () => {
+  const text = htmlToText('<p>Stage plan￼</p>');
+  assert.doesNotMatch(text, /object|attachment|image/i);
+  assert.equal(text, 'Stage plan');
+});

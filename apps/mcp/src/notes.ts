@@ -111,6 +111,13 @@ export const htmlToText = (html: string): string =>
     .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
     .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
     .replace(/&nbsp;/g, ' ')
+    // U+FFFC marks where OneNote anchored an embedded object. A space, not a
+    // name: the character says only that something sat here, and the page it
+    // was found on has the anchor in one paragraph and the image itself well
+    // below, so naming it would invite a link to an entry in `attachments`
+    // that cannot be verified. Not deleted either -- it falls between two
+    // words, and dropping it runs them together. See issue #70.
+    .replace(/\uFFFC/g, ' ')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
