@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.8.1](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.8.0...artist-mcp-v1.8.1) (2026-08-29)
+
+
+### Bug Fixes
+
+* **calendar:** preview every date an event would occupy ([34d1196](https://github.com/ManudotaORG/artist-mcp/commit/34d11964c5a42dc28969fd6ebf2f29fd73780e3c))
+* **calendar:** preview every date an event would occupy ([5debbb7](https://github.com/ManudotaORG/artist-mcp/commit/5debbb7b654943daa98dcbf34506d85f60d45ec1))
+
+## [1.8.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.7.0...artist-mcp-v1.8.0) (2026-08-28)
+
+
+### Features
+
+* add the OneNote page draft, preview and create path ([b3971a5](https://github.com/ManudotaORG/artist-mcp/commit/b3971a5dd5deb41a6a80b0d1ed7187f48c9eff75)), closes [#117](https://github.com/ManudotaORG/artist-mcp/issues/117)
+* add the onenote-create grant and its Notes.Create scope ([2a4d789](https://github.com/ManudotaORG/artist-mcp/commit/2a4d789c1a5d6ab35661fc801b87b7b8e6e187b6)), closes [#117](https://github.com/ManudotaORG/artist-mcp/issues/117)
+* **calendar:** reschedule an event as a confirmed create and delete ([57b72e7](https://github.com/ManudotaORG/artist-mcp/commit/57b72e77d15b8a7d8add2a9831b55b0a2ed916f8))
+* OneNote page creation, where the provider keeps the boundary ([100a843](https://github.com/ManudotaORG/artist-mcp/commit/100a8432e3fb0e70e00828ce030b471d1f9e5b46))
+* register the OneNote page tools behind the grant ([cac0610](https://github.com/ManudotaORG/artist-mcp/commit/cac06106ce28cde24005d9d53167424c80330139)), closes [#117](https://github.com/ManudotaORG/artist-mcp/issues/117)
+
+
+### Bug Fixes
+
+* actually request the field the detector reads ([2a77e82](https://github.com/ManudotaORG/artist-mcp/commit/2a77e820e5a023666405af8561eb7524649135be)), closes [#122](https://github.com/ManudotaORG/artist-mcp/issues/122)
+* answer "what changed" with sections when page dates cannot ([a71d755](https://github.com/ManudotaORG/artist-mcp/commit/a71d755fb9ebc4b4d2fc4a62d2b0ddec8a697f9f))
+* answer "what changed" with sections when page dates cannot ([b1625f2](https://github.com/ManudotaORG/artist-mcp/commit/b1625f20acab99d652be6035e321a4396996c768)), closes [#122](https://github.com/ManudotaORG/artist-mcp/issues/122)
+* print the section_id the create requires in the preview ([fec7e24](https://github.com/ManudotaORG/artist-mcp/commit/fec7e246e07058f501506a0d2b36981ed8be0313)), closes [#117](https://github.com/ManudotaORG/artist-mcp/issues/117)
+* stop calling a OneNote page date a modified date ([369cc2b](https://github.com/ManudotaORG/artist-mcp/commit/369cc2b84576e807658dbb5565b307a0be7d9a42))
+* stop calling a OneNote page date a modified date ([a463b4b](https://github.com/ManudotaORG/artist-mcp/commit/a463b4b6f6211a5f18ae51055034c3f010bdcbf7)), closes [#122](https://github.com/ManudotaORG/artist-mcp/issues/122)
+
 ## [1.7.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.6.0...artist-mcp-v1.7.0) (2026-08-27)
 
 
