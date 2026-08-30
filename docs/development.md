@@ -64,6 +64,7 @@ Set every variable:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser/server | Public Supabase API key             |
 | `NEXT_PUBLIC_SITE_URL`          | Browser/server | Absolute base for magic-link redirects |
 | `GOOGLE_DESKTOP_CLIENT_SECRET`  | Server only    | Served by `/api/client-config`      |
+| `GOOGLE_REFRESH_TOKEN_DAYS`     | Server only    | Refresh-token lifetime, served alongside it |
 | `DEPLOY_ENV`                    | Server only    | Optional; `staging` shows staging metadata |
 
 Only the first two may use the `NEXT_PUBLIC_` prefix. Never commit `.env.local`
@@ -75,6 +76,19 @@ user's account. `GOOGLE_DESKTOP_CLIENT_SECRET` is the exception and is not
 really a secret — it is served to anyone who asks, because every install needs
 it and PKCE is what makes it harmless. Without it, `/api/client-config` returns
 503 and `artist-mcp connect google` cannot complete.
+
+`GOOGLE_REFRESH_TOKEN_DAYS` is served from the same endpoint and is set to `7`
+while the Google OAuth consent screen is in **Testing** publishing status:
+Google expires refresh tokens issued by an app in that state after seven days,
+and an installed copy cannot read a console setting. The install records the
+resulting date with the connection, so `artist-mcp status` can warn before it
+lapses and a failed refresh can say whether it expired on schedule or was
+withdrawn — the two look identical in Google's own `invalid_grant`.
+
+Clear it when the app is verified. It is served rather than compiled in
+precisely so that is one environment change rather than a release every install
+has to take. Existing connections keep the date they were given, which stays
+correct: a token issued under Testing still dies on day seven. See #94.
 
 The MCP package reads three optional overrides during development:
 `ARTIST_MCP_TOKENS` to point the token store somewhere other than

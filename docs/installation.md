@@ -146,10 +146,10 @@ needs a separate Google connection:
   plus a list of what is attached by name, type and size, each with a short id
   such as `2` or `1.2` giving its position in the message. Attachment contents
   are not read.
-- `map_attachment` — accepts an attachment id from `read_email` and returns what
+- `map_gmail_attachment` — accepts an attachment id from `read_email` and returns what
   is on each page of a PDF — length, an apparent heading, and whether the page is
   a picture — without reading it. Use it to choose pages before reading them.
-- `read_attachment` — accepts an attachment id from `read_email`. Images (JPEG,
+- `read_gmail_attachment` — accepts an attachment id from `read_email`. Images (JPEG,
   PNG, GIF, WebP) come back as pictures to look at, passed through untouched.
   PDFs are text-extracted. Word `.docx` files are read as text — they have no
   pages, so a long one is returned in parts and the answer says so. Diagrams such as stage plans come back as images to look
