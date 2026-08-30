@@ -1269,7 +1269,7 @@ const createServer = async (
       "Read one Gmail message in full, including its body. Takes the id from " +
       "list_emails. Any attachments are listed by name, type and size but " +
       "their contents are not fetched — describe what is attached, never what " +
-      "it says, and use read_attachment to actually read one. Read-only: this " +
+      "it says, and use read_gmail_attachment to actually read one. Read-only: this " +
       "never sends, replies, drafts, labels, or deletes anything.",
     {
       email_id: z
@@ -1295,7 +1295,7 @@ const createServer = async (
               "",
               "## Attachments",
               "",
-              "Not read — listed only. Use read_attachment with an id below to " +
+              "Not read — listed only. Use read_gmail_attachment with an id below to " +
                 "read one.",
               "",
               ...attached.map(
@@ -1315,7 +1315,7 @@ const createServer = async (
   );
 
   server.tool(
-    "map_attachment",
+    "map_gmail_attachment",
     "Map an attachment on a Gmail message, using an id from read_email. " +
       ATTACHMENT_MAPPING,
     {
@@ -1326,7 +1326,7 @@ const createServer = async (
     },
     async ({ email_id, attachment_id }) => {
       try {
-        const map = await call<AttachmentMap>("map_attachment", {
+        const map = await call<AttachmentMap>("map_gmail_attachment", {
           email_id,
           attachment_id,
         });
@@ -1339,14 +1339,14 @@ const createServer = async (
   );
 
   server.tool(
-    "read_attachment",
+    "read_gmail_attachment",
     // The permission sentence leads, and is this tool's alone. A message is not
     // the working unit: reading one is a look into the musician's mail, and one
     // yes covers one look.
     "Only when the musician asked for this look. One yes covers one look, not " +
       "a standing licence to keep reading. " +
       "Read the contents of one attachment on a Gmail message, using an id " +
-      "from read_email. map_attachment first tells you which pages are worth " +
+      "from read_email. map_gmail_attachment first tells you which pages are worth " +
       "reading. " +
       ATTACHMENT_READING +
       " A mail attachment is supporting evidence for a OneNote working unit " +
@@ -1384,7 +1384,7 @@ const createServer = async (
     },
     async ({ email_id, attachment_id, from_page, page_count }) => {
       try {
-        const file = await call<AttachmentBody>("read_attachment", {
+        const file = await call<AttachmentBody>("read_gmail_attachment", {
           email_id,
           attachment_id,
           from_page,
@@ -1425,7 +1425,7 @@ const createServer = async (
   server.tool(
     "read_page_attachment",
     // The permission sentence leads, and is this tool's alone. It is the
-    // opposite of read_attachment's on purpose: a file attached to a page is
+    // opposite of read_gmail_attachment's on purpose: a file attached to a page is
     // part of the working unit the musician already asked about, not a
     // separate look into their mail. Gating it would make the tool ask for
     // permission to finish reading the page it was just told to read.

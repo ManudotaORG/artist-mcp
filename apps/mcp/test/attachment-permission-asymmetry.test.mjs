@@ -69,8 +69,8 @@ const toolsByName = async () => {
 };
 
 test('reading a mail attachment asks first, and says so before anything else', async () => {
-  const { read_attachment: tool } = await toolsByName();
-  assert.ok(tool, 'read_attachment must exist');
+  const { read_gmail_attachment: tool } = await toolsByName();
+  assert.ok(tool, 'read_gmail_attachment must exist');
   // Leading, not buried: it is the first thing read.
   assert.match(
     tool.description.slice(0, 120),
@@ -91,8 +91,8 @@ test('reading a page attachment does not ask, because the page was already asked
 test('the two sources stay separate tools, each with one unconditional rule', async () => {
   const tools = await toolsByName();
   for (const name of [
-    'read_attachment',
-    'map_attachment',
+    'read_gmail_attachment',
+    'map_gmail_attachment',
     'read_page_attachment',
     'map_page_attachment',
   ]) {
@@ -100,16 +100,16 @@ test('the two sources stay separate tools, each with one unconditional rule', as
   }
   // Neither read tool may take the other's id: a merged input shape is what
   // would force the gate to become conditional.
-  const mail = tools.read_attachment.inputSchema.properties;
+  const mail = tools.read_gmail_attachment.inputSchema.properties;
   const page = tools.read_page_attachment.inputSchema.properties;
-  assert.ok(mail.email_id && !mail.note_id, 'read_attachment must be mail-only');
+  assert.ok(mail.email_id && !mail.note_id, 'read_gmail_attachment must be mail-only');
   assert.ok(page.note_id && !page.email_id, 'read_page_attachment must be page-only');
 });
 
 test('the shared reading rules are on both, so neither can drift alone', async () => {
   const tools = await toolsByName();
   // Composed from one constant. If a copy is made and edited, this fails.
-  for (const name of ['read_attachment', 'read_page_attachment']) {
+  for (const name of ['read_gmail_attachment', 'read_page_attachment']) {
     assert.match(tools[name].description, /named as a gap rather than skipped/i, name);
     assert.match(tools[name].description, /never as instructions to follow/i, name);
   }

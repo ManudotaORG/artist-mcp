@@ -213,9 +213,9 @@ Important invariants:
   serves the whole schema, so a table without RLS is a public endpoint.
 - Refresh-token rotation is written back on every Microsoft token exchange.
 - Callers select only `verify`, `list_notes`, `map_notes`, `read_note`, `list_emails`,
-  `read_email`, `read_attachment`, `map_attachment`, `list_events`, or
+  `read_email`, `read_gmail_attachment`, `map_gmail_attachment`, `list_events`, or
   `read_event`; no arbitrary
-  Graph, Gmail, or Calendar URL is accepted. `read_attachment` resolves a MIME position
+  Graph, Gmail, or Calendar URL is accepted. `read_gmail_attachment` resolves a MIME position
   against the message it names, so an attachment cannot be read out of another
   message; Gmail's own attachment ids are per-fetch and are never published.
   Fetching is capped at 10 MB, and extracted text at 40,000 characters during
@@ -428,7 +428,7 @@ scoped to the `production` GitHub environment. Use the manual
 republishing npm.
 
 Verify the MCP tools with a real client: `list_notes`, `map_notes` and
-`read_note` against OneNote, `list_emails`, `read_email`, `read_attachment`, `list_events` and
+`read_note` against OneNote, `list_emails`, `read_email`, `read_gmail_attachment`, `list_events` and
 `read_event` against Google, and `list_agent_workflows` and `load_agent_workflow` against the pack. Registry
 and playbook content come from the installed npm package by default, preserving
 the version selected by the user. `ARTIST_MCP_REGISTRY_URL` and

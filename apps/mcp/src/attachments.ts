@@ -1071,7 +1071,15 @@ function tooLargeResult(meta: AttachmentMeta) {
  * page one. This costs one text pass and returns a few hundred bytes, so a
  * caller can name the pages worth reading and then read only those.
  */
-export async function mapAttachment(load: AttachmentLoader) {
+export async function mapAttachment(
+  load: AttachmentLoader,
+  /**
+   * The read tool to point at. Passed in rather than hardcoded: the map is
+   * source-neutral, and naming the mail tool while mapping a page attachment
+   * sends the model to a tool that cannot open it. See issue #70.
+   */
+  readTool: string,
+) {
   const loaded = await load();
   if (loaded.oversized) return tooLargeResult(loaded.meta);
   const { meta, bytes } = loaded;
@@ -1093,7 +1101,7 @@ export async function mapAttachment(load: AttachmentLoader) {
           (doc.parts_total > 1 ? ` in ${doc.parts_total} parts` : "") +
           `. There is no page map to give: a .docx records no pages, and its ` +
           `heading styles are not dependable enough to divide it honestly. ` +
-          `Read it with read_attachment.`
+          `Read it with ${readTool}.`
         : `${meta.filename} could not be opened as a Word document.`,
     };
   }
@@ -1134,8 +1142,8 @@ export async function mapAttachment(load: AttachmentLoader) {
         : `Every page of this ${map.pages_total}-page file is a picture, so ` +
           `there is nothing to map. `) +
         `A scan cannot be searched without reading the pages themselves — ask ` +
-        `read_attachment for them.`
-      : `${map.pages_total} pages. Use read_attachment with from_page and ` +
+        `${readTool} for them.`
+      : `${map.pages_total} pages. Use ${readTool} with from_page and ` +
         `page_count to read the ones that matter, rather than reading it all.`,
   };
 }

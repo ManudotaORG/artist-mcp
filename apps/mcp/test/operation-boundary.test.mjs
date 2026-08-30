@@ -30,8 +30,8 @@ const SANCTIONED = {
   read_note: 'read',
   list_emails: 'read',
   read_email: 'read',
-  read_attachment: 'read',
-  map_attachment: 'read',
+  read_gmail_attachment: 'read',
+  map_gmail_attachment: 'read',
   // The same two reads against a OneNote page rather than a mail message.
   // Separate rows because the provider is resolved from this table before the
   // call runs, so a single row cannot serve both a Google and a Microsoft

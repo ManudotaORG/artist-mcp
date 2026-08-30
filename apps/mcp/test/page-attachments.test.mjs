@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { mapAttachment } from '../dist/attachments.js';
+import { minimalPdf, page } from './helpers/pdf.mjs';
 import { oneNoteLoader, pageResources } from '../dist/page-attachments.js';
 
 /**
@@ -162,4 +164,16 @@ test('a malformed id is refused before anything is fetched', () => {
   globalThis.fetch = async () => assert.fail('nothing should be fetched');
   assert.throws(() => oneNoteLoader('token', 'p1', 'not a valid id'), /attachment_id/);
   assert.throws(() => oneNoteLoader('token', '', PDF_ID), /note_id/);
+});
+
+test('a page map points at the page read tool, not the mail one', async () => {
+  // The map text is shared between sources. Naming the Gmail tool while
+  // mapping a page attachment sends the model to a tool that cannot open it.
+  stubGraph({ '/content': FIXTURE, '/resources/': minimalPdf([page('Fee: EUR 2400 net')]) });
+  const map = await mapAttachment(
+    oneNoteLoader('token', 'p1', PDF_ID),
+    'read_page_attachment',
+  );
+  assert.match(map.note, /read_page_attachment/);
+  assert.doesNotMatch(map.note, /read_gmail_attachment/);
 });

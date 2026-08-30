@@ -55,8 +55,8 @@ export const OPERATIONS = {
   read_note: { provider: 'microsoft', effect: 'read' },
   list_emails: { provider: 'google', effect: 'read' },
   read_email: { provider: 'google', effect: 'read' },
-  read_attachment: { provider: 'google', effect: 'read' },
-  map_attachment: { provider: 'google', effect: 'read' },
+  read_gmail_attachment: { provider: 'google', effect: 'read' },
+  map_gmail_attachment: { provider: 'google', effect: 'read' },
   // Separate rows rather than a source parameter on the two above. The token is
   // resolved from this table before the call is made, so one operation cannot
   // span two providers without breaking the rule that a Gmail call never spends
@@ -151,11 +151,12 @@ export const dispatchWith =
         return (await listEmails(token, params.query)) as T;
       case 'read_email':
         return (await readEmail(token, params.email_id)) as T;
-      case 'map_attachment':
+      case 'map_gmail_attachment':
         return (await mapAttachment(
           gmailLoader(token, params.email_id, params.attachment_id),
+          'read_gmail_attachment',
         )) as T;
-      case 'read_attachment':
+      case 'read_gmail_attachment':
         return (await readAttachment(
           gmailLoader(token, params.email_id, params.attachment_id),
           params.from_page,
@@ -164,6 +165,7 @@ export const dispatchWith =
       case 'map_page_attachment':
         return (await mapAttachment(
           oneNoteLoader(token, params.note_id, params.attachment_id),
+          'read_page_attachment',
         )) as T;
       case 'read_page_attachment':
         return (await readAttachment(
