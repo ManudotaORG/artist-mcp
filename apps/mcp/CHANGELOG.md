@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.1](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.8.0...artist-mcp-v1.8.1) (2026-08-29)
+
+
+### Bug Fixes
+
+* **calendar:** preview every date an event would occupy ([34d1196](https://github.com/ManudotaORG/artist-mcp/commit/34d11964c5a42dc28969fd6ebf2f29fd73780e3c))
+* **calendar:** preview every date an event would occupy ([5debbb7](https://github.com/ManudotaORG/artist-mcp/commit/5debbb7b654943daa98dcbf34506d85f60d45ec1))
+
 ## [1.8.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.7.0...artist-mcp-v1.8.0) (2026-08-28)
 
 
