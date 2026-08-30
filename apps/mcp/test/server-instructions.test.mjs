@@ -51,10 +51,62 @@ const initialize = async (args = []) => {
 };
 
 /**
+ * The tool list as the client receives it, for the descriptions that carry a
+ * rule. `initialize` alone cannot see these, and they are where the playbook
+ * gate has to survive.
+ */
+const toolList = async (args = []) => {
+  const server = spawn(process.execPath, [entry, ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const send = (message) => server.stdin.write(`${JSON.stringify(message)}\n`);
+  try {
+    send({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'test', version: '1' },
+      },
+    });
+    let buffered = '';
+    for await (const chunk of server.stdout) {
+      buffered += chunk;
+      const lines = buffered.split('\n');
+      buffered = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let message;
+        try {
+          message = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (message.id === 1) {
+          send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+          send({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
+        }
+        if (message.id === 2) {
+          return new Map(message.result.tools.map((tool) => [tool.name, tool.description ?? '']));
+        }
+      }
+    }
+    throw new Error('The server closed without answering tools/list.');
+  } finally {
+    server.kill();
+  }
+};
+
+/**
  * A client with no repository — Claude Desktop, which is what `init` configures
- * — sees `AGENTS.md` never, so the handshake is the only place the pack can be
- * announced. Without it `list_agent_workflows` is a tool nothing calls, and a
- * session answers from tool descriptions with no policy in force at all.
+ * — sees `AGENTS.md` never, so the handshake is where the pack is announced.
+ *
+ * This asserts that the server SENDS it, and that is all it can assert. It said
+ * "the only place the pack can be announced" until #99, which read as more than
+ * it proved: Claude Desktop does not deliver this field to the model at all — a
+ * live session asked to quote it back reported the tool list and no preamble.
+ * Claude Code does deliver it verbatim, which is why the field stays. The
+ * channel that reaches a Desktop session is guarded further down this file.
  */
 test('the handshake tells the client to load the playbooks', async () => {
   const { instructions } = await initialize();
@@ -138,3 +190,38 @@ test('the capability line stays a sentence, not a document', async () => {
       'line is turning into prose. Shorten the descriptions in WRITE_CAPABILITIES.',
   );
 });
+
+/**
+ * The channel that actually reaches a Claude Desktop session.
+ *
+ * #99: two Desktop sessions answered about the user's notes with no playbook
+ * loaded, because the handshake instruction never arrived. A tool description
+ * does arrive — `preview_calendar_event`'s refusal clause sits roughly 650
+ * characters into its description and a Desktop session acted on it — so the
+ * gate lives on the note-reading tools as well as in the handshake.
+ *
+ * It is asserted at the START of the description because a client may render
+ * the tool list clipped to a single line, and because the opening is what is
+ * read most often.
+ *
+ * All three entry points carry it, because any of them can be the first touch:
+ * a session may triage a notebook with map_notes before listing anything, and
+ * an id remembered from earlier reaches read_note without list_notes.
+ */
+for (const name of ['list_notes', 'map_notes', 'read_note']) {
+  test(`${name} tells the session to load the playbooks first`, async () => {
+    const description = (await toolList()).get(name);
+    assert.ok(description, `${name} is not in the tool list`);
+    // Anchored to the start, and to the imperative. Naming the tool is not
+    // enough — a description that merely mentions `list_agent_workflows`
+    // somewhere is what this file already had, and it is what #99 is about.
+    assert.match(
+      description,
+      /^Call `list_agent_workflows` first/,
+      `${name} must OPEN by telling the session to load the playbooks, or the ` +
+        'rule does not survive a client that clips the tool list to one line',
+    );
+    // "In force", not "available to consult": the same distinction as above.
+    assert.match(description, /no policy is in force/);
+  });
+}
