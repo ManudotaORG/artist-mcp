@@ -508,6 +508,25 @@ const renderWorkflowBriefing = async (
  * Derived, never restated. An install with no grant says so too — that line is
  * the one that keeps a read-only install describing itself correctly.
  */
+/**
+ * The sentence that puts the playbooks in force on a client that never sees the
+ * handshake.
+ *
+ * Claude Desktop does not deliver the `instructions` field to the model at all,
+ * so on the one client `init` configures a tool description is the only thing
+ * that reaches a session before it answers. It opens every note-reading tool's
+ * description: a client may clip the tool list to one line, and the opening is
+ * what is read most often.
+ *
+ * One constant, not three literals. Three copies of a rule is how `AGENTS.md`
+ * drifted from the pack it restated. See #99.
+ */
+const PLAYBOOK_GATE =
+  "Call `list_agent_workflows` first if you have not already this session — " +
+  "the playbooks it returns govern how pages are surveyed, what is stated " +
+  "and how firmly, and how anything is handed over. Without them no policy " +
+  "is in force. ";
+
 const capabilityLine = (writes: readonly WriteCapability[]): string => {
   if (writes.length === 0) {
     return (
@@ -662,7 +681,7 @@ const createServer = async (
     //
     // It opens the description because a client may render the listing clipped
     // to one line, and because the first paragraph is what is read most often.
-    "Call `list_agent_workflows` first if you have not already this session — the playbooks it returns govern how pages are surveyed, what is stated and how firmly, and how anything is handed over. Without them no policy is in force. " +
+    PLAYBOOK_GATE +
       "List the user's OneNote pages, with title, notebook, section and last " +
       "date. Takes an optional notebook name. When the account holds " +
       "more than one notebook and none is given, this returns the list of " +
@@ -799,7 +818,11 @@ const createServer = async (
 
   server.tool(
     "map_notes",
-    "Sketch every page in one notebook without reading them, so a notebook can " +
+    // A third entry point, and often the first: a session may triage a notebook
+    // before it lists anything, so gating list_notes alone leaves the survey
+    // itself running with no policy in force. See #99.
+    PLAYBOOK_GATE +
+      "Sketch every page in one notebook without reading them, so a notebook can " +
       "be triaged before any page is read in full. Returns the opening of each " +
       "page — for a well-kept page that is its headline facts. Use it to decide " +
       "which pages are worth read_note. What it returns is the TOP of a page, " +
@@ -960,7 +983,7 @@ const createServer = async (
     "read_note",
     // Both entry points carry it: an id can be remembered from earlier in a
     // session, so read_note is not always reached through list_notes. See #99.
-    "Call `list_agent_workflows` first if you have not already this session — the playbooks it returns govern how pages are surveyed, what is stated and how firmly, and how anything is handed over. Without them no policy is in force. " +
+    PLAYBOOK_GATE +
       "Read the text content of one OneNote page. Takes the id from list_notes. " +
       "A page too long for one answer comes back in parts, and the answer says " +
       "so and how to continue — a page is never truncated silently.",

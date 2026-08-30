@@ -203,8 +203,12 @@ test('the capability line stays a sentence, not a document', async () => {
  * It is asserted at the START of the description because a client may render
  * the tool list clipped to a single line, and because the opening is what is
  * read most often.
+ *
+ * All three entry points carry it, because any of them can be the first touch:
+ * a session may triage a notebook with map_notes before listing anything, and
+ * an id remembered from earlier reaches read_note without list_notes.
  */
-for (const name of ['list_notes', 'read_note']) {
+for (const name of ['list_notes', 'map_notes', 'read_note']) {
   test(`${name} tells the session to load the playbooks first`, async () => {
     const description = (await toolList()).get(name);
     assert.ok(description, `${name} is not in the tool list`);
