@@ -1047,7 +1047,10 @@ function tooLargeResult(meta: AttachmentMeta) {
   return {
     filename: meta.filename,
     mime_type: meta.mime_type,
-    size: meta.size ?? 0,
+    // Null, not 0. A size nobody measured must not arrive as a number: the
+    // renderer shows no size line at all rather than "0 B" beside a note
+    // saying the file is at least the limit. See issue #70.
+    size: meta.size,
     kind: "too_large" as const,
     text: "",
     note: meta.size === null

@@ -52,13 +52,30 @@ const RESOURCE_ID = /^[A-Za-z0-9!._~-]{1,300}$/;
 const resourceId = (url: string): string | null => {
   const match = /\/onenote\/resources\/([^/]+)\/\$value/i.exec(url);
   if (!match) return null;
-  const id = decodeURIComponent(match[1]);
+  let id: string;
+  try {
+    id = decodeURIComponent(match[1]);
+  } catch {
+    // decodeURIComponent throws URIError on a malformed percent sequence. This
+    // runs over every page read, not only attachment reads, so letting it
+    // escape would make one odd URL turn a readable page into an error. An
+    // unparseable id is a resource that cannot be addressed: skipped here, and
+    // it was never in the list to begin with.
+    return null;
+  }
   return RESOURCE_ID.test(id) ? id : null;
 };
 
-/** Read one attribute off a single tag's source text. */
+/**
+ * Read one attribute off a single tag's source text.
+ *
+ * The name is anchored to the whitespace before it rather than to a word
+ * boundary. `\bsrc="` also matches inside `data-fullres-src="`, because the
+ * hyphen is not a word character -- so the pattern would return whichever of
+ * the two came first in the tag, which is the provider's choice and not ours.
+ */
 const attr = (tag: string, name: string): string | null => {
-  const match = new RegExp(`\\b${name}="([^"]*)"`, 'i').exec(tag);
+  const match = new RegExp(`\\s${name}="([^"]*)"`, 'i').exec(tag);
   return match ? match[1] : null;
 };
 

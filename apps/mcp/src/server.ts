@@ -72,7 +72,8 @@ type Attachment = {
 type AttachmentBody = {
   filename: string;
   mime_type: string;
-  size: number;
+  /** Null when it was never knowable -- a page resource refused at the cap. */
+  size: number | null;
   /** What we managed to make of it, which the note explains in words. */
   kind: "text" | "scan" | "image" | "unsupported" | "unreadable" | "too_large";
   text: string;
@@ -105,7 +106,8 @@ type AttachmentBody = {
 type AttachmentMap = {
   filename: string;
   mime_type: string;
-  size: number;
+  /** Null when it was never knowable -- a page resource refused at the cap. */
+  size: number | null;
   kind: "text" | "scan" | "image" | "unsupported" | "unreadable" | "too_large";
   pages_total?: number;
   pages: { page: number; chars: number; heading: string | null; image_only: boolean }[];
@@ -592,7 +594,8 @@ export const renderAttachmentMap = (map: AttachmentMap) => {
         `# ${map.filename}`,
         "",
         `Type: ${map.mime_type}`,
-        `Size: ${describeSize(map.size)}`,
+        // Omitted rather than zeroed: see tooLargeResult.
+        ...(map.size === null ? [] : [`Size: ${describeSize(map.size)}`]),
       ].join("\n");
 
       // A table rather than prose: the point is to compare pages at a glance
@@ -618,7 +621,7 @@ export const renderAttachment = (file: AttachmentBody) => {
         `# ${file.filename}`,
         "",
         `Type: ${file.mime_type}`,
-        `Size: ${describeSize(file.size)}`,
+        ...(file.size === null ? [] : [`Size: ${describeSize(file.size)}`]),
         ...(file.unit === "part"
           ? [
             `Length: ${file.chars_total?.toLocaleString() ?? "?"} characters` +

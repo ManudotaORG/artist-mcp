@@ -168,3 +168,36 @@ test('a map with no pages is note only, not an empty table', () => {
   assert.doesNotMatch(text, /\| Page \|/);
   assert.match(text, /no page map to give/);
 });
+
+test('a file whose size was never knowable shows no size, not zero', () => {
+  // A page resource refused at the cap: the stream was stopped early, so the
+  // size is null. "Size: 0 B" beside "at least the 10 MB limit" is a concrete
+  // false number contradicting the note next to it.
+  const text = textOf(
+    renderAttachment({
+      filename: 'big.pdf',
+      mime_type: 'application/pdf',
+      size: null,
+      kind: 'too_large',
+      text: '',
+      note: 'This file is at least the 10 MB limit for reading in chat.',
+    }),
+  );
+  assert.doesNotMatch(text, /Size:/);
+  assert.doesNotMatch(text, /0 B/);
+  assert.match(text, /at least the 10 MB limit/);
+});
+
+test('a map with no knowable size omits the line too', () => {
+  const text = textOf(
+    renderAttachmentMap({
+      filename: 'big.pdf',
+      mime_type: 'application/pdf',
+      size: null,
+      kind: 'too_large',
+      pages: [],
+      note: 'This file is at least the 10 MB limit for reading in chat.',
+    }),
+  );
+  assert.doesNotMatch(text, /Size:/);
+});

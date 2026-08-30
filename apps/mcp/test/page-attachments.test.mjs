@@ -177,3 +177,26 @@ test('a page map points at the page read tool, not the mail one', async () => {
   assert.match(map.note, /read_page_attachment/);
   assert.doesNotMatch(map.note, /read_gmail_attachment/);
 });
+
+test('a malformed resource URL is skipped, not thrown over the whole page', () => {
+  // decodeURIComponent throws URIError on a bad percent sequence. pageResources
+  // runs on every page read, so letting it escape would turn one odd URL into
+  // an unreadable page.
+  const html =
+    '<p>Venue: Staatsoper</p>' +
+    '<img src="https://graph.microsoft.com/v1.0/me/onenote/resources/abc%ZZ/$value" ' +
+    'data-src-type="image/png" />';
+  assert.deepEqual(pageResources(html), []);
+});
+
+test('an attribute is not confused with one whose name ends the same way', () => {
+  // \bsrc=" also matches inside data-fullres-src=", because the hyphen is not
+  // a word character. Order in the tag must not decide which one is read.
+  const html =
+    '<img data-fullres-src="https://graph.microsoft.com/v1.0/me/onenote/resources/' +
+    'FULLRES-AE14106C4F7C7DCC/$value" ' +
+    'src="https://graph.microsoft.com/v1.0/me/onenote/resources/REAL-AE14106C4F7C7DCC/$value" ' +
+    'data-src-type="image/png" />';
+  const [image] = pageResources(html);
+  assert.equal(image.id, 'REAL-AE14106C4F7C7DCC');
+});
