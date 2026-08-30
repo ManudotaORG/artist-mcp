@@ -31,6 +31,20 @@ export type StoredTokens = {
   /** ISO 8601. Only for showing the user how old a connection is. */
   connectedAt: string;
   /**
+   * ISO 8601. When the provider will stop honouring this refresh token, if it
+   * said so — Google expires tokens issued by an app in Testing status after
+   * seven days, and Microsoft has no equivalent rule (#94).
+   *
+   * Absolute rather than a lifetime, because it is a property of this
+   * connection and must not move when the published policy changes: a token
+   * issued under Testing still dies on day seven after the app is verified.
+   * Absent means no limit was stated, and nothing warns.
+   *
+   * Not reset by a refresh. Google reuses the refresh token rather than
+   * reissuing it, so the seven days run from consent and refreshing buys none.
+   */
+  expiresAt?: string;
+  /**
    * Google only, and not a secret despite the name — see oauth.ts. Google
    * demands it on every refresh, so it is cached beside the token it belongs
    * to: a refresh must not depend on our web app being reachable, and it should

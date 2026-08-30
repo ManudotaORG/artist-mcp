@@ -38,6 +38,7 @@ import { platform } from 'node:os';
 import { type WriteCapability } from './grants.js';
 
 import { GraphError, isStagingVersion, packageVersion } from './client.js';
+import { explainRefreshFailure } from './expiry.js';
 import {
   type ProviderName,
   readProvider,
@@ -101,12 +102,25 @@ const configEndpoint = (): string => {
   return `${site}/api/client-config`;
 };
 
+type GoogleClientConfig = {
+  secret: string;
+  /**
+   * Days a refresh token lives, when the deployment states a limit. Absent
+   * means it states none, which is what a verified app should say (#94).
+   */
+  refreshTokenDays?: number;
+};
+
 /**
  * Fetched once and cached beside the tokens, because Google demands the secret
  * on every refresh — a connection that only works while our web app is up would
  * be a worse dependency than the one this whole change removes.
+ *
+ * The token lifetime rides along on the same request rather than a second one:
+ * it is published for the same reason the secret is, and it is only ever wanted
+ * at the moment the secret already is.
  */
-const fetchGoogleClientSecret = async (): Promise<string> => {
+const fetchGoogleClientConfig = async (): Promise<GoogleClientConfig> => {
   let res: Response;
   try {
     res = await fetch(configEndpoint());
@@ -116,6 +130,7 @@ const fetchGoogleClientSecret = async (): Promise<string> => {
 
   const body = (await res.json().catch(() => ({}))) as {
     google_client_secret?: string;
+    google_refresh_token_days?: unknown;
     error?: string;
   };
 
@@ -126,7 +141,42 @@ const fetchGoogleClientSecret = async (): Promise<string> => {
     );
   }
 
-  return body.google_client_secret;
+  const days = body.google_refresh_token_days;
+  return {
+    secret: body.google_client_secret,
+    // Validated here as well as at the endpoint, because this is what decides
+    // whether a date is written into the token file. A value that is not a
+    // usable number is treated as no limit stated, never as zero days.
+    refreshTokenDays: typeof days === 'number' && Number.isFinite(days) && days > 0 ? days : undefined,
+  };
+};
+
+const fetchGoogleClientSecret = async (): Promise<string> =>
+  (await fetchGoogleClientConfig()).secret;
+
+/**
+ * When a connection made now will stop being honoured, if the deployment says
+ * a limit applies.
+ *
+ * Best-effort on purpose. The expiry warning is an extra, and a deployment that
+ * cannot be reached must not stop someone connecting — so a failure here
+ * records no expiry, which warns about nothing, rather than refusing consent.
+ */
+const statedExpiry = async (
+  provider: ProviderName,
+  known?: GoogleClientConfig,
+): Promise<string | undefined> => {
+  if (provider !== 'google') return undefined;
+
+  let days: number | undefined;
+  try {
+    days = (known ?? (await fetchGoogleClientConfig())).refreshTokenDays;
+  } catch {
+    return undefined;
+  }
+
+  if (days === undefined) return undefined;
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 };
 
 /**
@@ -369,6 +419,15 @@ export type TokenResponse = {
  * reimplementing: which failures mean reconnect and which do not is a
  * distinction that took a while to get right.
  */
+/**
+ * Appended by `postToken` to a failure the user can fix, and stripped again by
+ * `accessTokenFor` when it has something better to say than "reconnect".
+ *
+ * One constant used by both, rather than each spelling the sentence out: the
+ * stripping is only safe while the two cannot drift apart.
+ */
+export const RECONNECT_SUFFIX = '. Reconnect needed.';
+
 export const postToken = async (
   config: ProviderConfig,
   form: Record<string, string>,
@@ -399,7 +458,7 @@ export const postToken = async (
     const reconnect = parsed.error === 'invalid_grant';
     throw new GraphError(
       `${config.label} rejected the sign-in: ${parsed.error_description ?? parsed.error ?? res.status}` +
-        (reconnect ? '. Reconnect needed.' : ''),
+        (reconnect ? RECONNECT_SUFFIX : ''),
       reconnect,
     );
   }
@@ -410,19 +469,33 @@ export const postToken = async (
 /**
  * Run consent for one provider and store what comes back. Resolves once the
  * connection is usable, so a caller can report success without a second check.
+ *
+ * Resolves to when the connection will lapse, where the provider states a
+ * limit, so the caller can say so in the same breath as reporting success —
+ * which is the only moment the user is definitely reading (#94).
  */
 export const connect = async (
   provider: ProviderName,
   grants: readonly WriteCapability[] = [],
-): Promise<void> => {
+): Promise<string | undefined> => {
   const config = PROVIDERS[provider];
   const scope = scopesFor(provider, grants);
 
   // Before the browser opens, so a configuration problem is reported while the
   // user is still in the terminal rather than after they have consented.
-  const clientSecret = config.needsClientSecret
-    ? (process.env.ARTIST_MCP_GOOGLE_CLIENT_SECRET ?? (await fetchGoogleClientSecret()))
-    : undefined;
+  //
+  // One fetch, whose result is carried to `statedExpiry` below. An override in
+  // the environment skips it, so the lifetime is looked up separately in that
+  // case — and only there, rather than making every connect pay for two calls.
+  let fetched: GoogleClientConfig | undefined;
+  let clientSecret: string | undefined;
+  if (config.needsClientSecret) {
+    clientSecret = process.env.ARTIST_MCP_GOOGLE_CLIENT_SECRET;
+    if (clientSecret === undefined) {
+      fetched = await fetchGoogleClientConfig();
+      clientSecret = fetched.secret;
+    }
+  }
 
   const { verifier, challenge } = pkcePair();
   const state = randomBytes(16).toString('base64url');
@@ -468,12 +541,20 @@ export const connect = async (
     );
   }
 
+  // After the exchange, not before it. A consent the user abandons must leave
+  // no trace, and an expiry measured from the moment the browser opened would
+  // be wrong by however long they spent on the consent screen.
+  const expiresAt = await statedExpiry(provider, fetched);
+
   await saveProvider(provider, {
     refreshToken: tokens.refresh_token,
     scope: tokens.scope ?? scope,
     connectedAt: new Date().toISOString(),
+    ...(expiresAt === undefined ? {} : { expiresAt }),
     ...(clientSecret === undefined ? {} : { clientSecret }),
   });
+
+  return expiresAt;
 };
 
 /**
@@ -509,20 +590,39 @@ export const accessTokenFor = async (provider: ProviderName): Promise<string> =>
     }
   }
 
-  const tokens = await postToken(
-    config,
-    {
-      grant_type: 'refresh_token',
-      refresh_token: stored.refreshToken,
-      // What this connection actually carries, not what the current build would
-      // ask for. A refresh requesting more than the grant carries is rejected,
-      // so using config.scope here breaks every existing connection the moment
-      // a scope is added to the product — an hour later, in a session, far from
-      // the change that caused it.
-      scope: stored.scope,
-    },
-    clientSecret,
-  );
+  let tokens: TokenResponse;
+  try {
+    tokens = await postToken(
+      config,
+      {
+        grant_type: 'refresh_token',
+        refresh_token: stored.refreshToken,
+        // What this connection actually carries, not what the current build would
+        // ask for. A refresh requesting more than the grant carries is rejected,
+        // so using config.scope here breaks every existing connection the moment
+        // a scope is added to the product — an hour later, in a session, far from
+        // the change that caused it.
+        scope: stored.scope,
+      },
+      clientSecret,
+    );
+  } catch (err) {
+    // Only the reconnect case is worth explaining, and only here. postToken is
+    // shared with the hosted server and knows nothing about this machine's
+    // token file, so the sentence that needs the connection's own age is added
+    // where the connection is, rather than by widening that signature.
+    if (err instanceof GraphError && err.reconnectNeeded) {
+      // The generic advice is dropped, not added to. What follows says the same
+      // thing with the connection's own dates in it, and "Reconnect needed."
+      // immediately ahead of "Reconnect with:" reads like a stutter in the one
+      // message this whole change exists to make legible.
+      const reported = err.message.endsWith(RECONNECT_SUFFIX)
+        ? err.message.slice(0, -RECONNECT_SUFFIX.length)
+        : err.message;
+      throw new GraphError(`${reported}. ${explainRefreshFailure(provider, stored)}`, true);
+    }
+    throw err;
+  }
 
   if (tokens.refresh_token !== undefined && tokens.refresh_token !== stored.refreshToken) {
     await updateRefreshToken(provider, tokens.refresh_token);

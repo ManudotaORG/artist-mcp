@@ -17,6 +17,7 @@ import { ENTRY_NAME, configPath, readConfig } from './config.js';
 import { parseGrants, type WriteCapability } from './grants.js';
 import { WRITE_SCOPES, connect } from './oauth.js';
 import { PROVIDERS } from './oauth.js';
+import { expiryAtConnect, expiryNotice, expiryState } from './expiry.js';
 import { type ProviderName, clearProvider, loadTokens, readProvider } from './tokens.js';
 
 const PROVIDER_NAMES = Object.keys(PROVIDERS) as ProviderName[];
@@ -45,7 +46,7 @@ export const runConnect = async (input?: string): Promise<void> => {
   const grants = await installedGrants();
   const relevant = grants.filter((name) => WRITE_SCOPES[name]?.provider === provider);
 
-  await connect(provider, grants);
+  const expiresAt = await connect(provider, grants);
 
   console.log(`\n${PROVIDERS[provider].label} connected — ${PURPOSE[provider]}.`);
   if (relevant.length === 0) {
@@ -64,8 +65,43 @@ export const runConnect = async (input?: string): Promise<void> => {
     );
   }
 
+  // Said at the one moment the user is certainly reading, which is the whole
+  // point: #94 describes a connection that dies weekly, an error that correctly
+  // advises a reconnect, and a cause nobody could see from either.
+  const lapses = expiryAtConnect(provider, expiresAt);
+  if (lapses !== undefined) console.log(`\n${lapses}`);
+
   if (provider === 'microsoft' && (await readProvider('google')) === undefined) {
     console.log('\nTo add Gmail and Calendar as evidence: artist-mcp connect google');
+  }
+};
+
+/**
+ * Reconnect whatever has lapsed, without the user having to work out which.
+ *
+ * The reconnect was always one command; knowing that it was needed, and for
+ * which provider, was the part that cost people a session. This closes that
+ * gap — and refuses to do anything when nothing has lapsed, so it can be run on
+ * a hunch without silently sending someone through a consent screen they did
+ * not need.
+ */
+export const runReconnect = async (): Promise<void> => {
+  const { providers } = await loadTokens();
+  const lapsed = PROVIDER_NAMES.filter((name) => {
+    const entry = providers[name];
+    return entry !== undefined && expiryState(entry).kind === 'lapsed';
+  });
+
+  if (lapsed.length === 0) {
+    console.log('Nothing has lapsed. Run `artist-mcp status` to see what is connected.');
+    // Not an error: "nothing to do" is the answer, and exiting non-zero would
+    // make a scheduled check look like a failure every time it worked.
+    return;
+  }
+
+  for (const provider of lapsed) {
+    console.log(`\n${PROVIDERS[provider].label} lapsed — reconnecting.`);
+    await runConnect(provider);
   }
 };
 
@@ -264,13 +300,30 @@ export const runStatus = async (): Promise<void> => {
     return;
   }
 
+  let anyLapsed = false;
+
   for (const name of PROVIDER_NAMES) {
     const entry = providers[name];
     const label = PROVIDERS[name].label.padEnd(10);
-    console.log(
-      entry === undefined
-        ? `${label} not connected`
-        : `${label} connected ${entry.connectedAt.slice(0, 10)} — ${entry.scope}`,
-    );
+
+    if (entry === undefined) {
+      console.log(`${label} not connected`);
+      continue;
+    }
+
+    console.log(`${label} connected ${entry.connectedAt.slice(0, 10)} — ${entry.scope}`);
+
+    // On its own line and only when there is something to say. A connection
+    // with a week left says nothing, so the day it does say something the line
+    // is new rather than furniture.
+    const notice = expiryNotice(name, entry);
+    if (notice !== undefined) {
+      console.log(`${' '.repeat(11)}${notice}`);
+      if (expiryState(entry).kind === 'lapsed') anyLapsed = true;
+    }
+  }
+
+  if (anyLapsed) {
+    console.log('\nOr reconnect everything that lapsed at once: artist-mcp reconnect');
   }
 };
