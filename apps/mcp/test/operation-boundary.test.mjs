@@ -32,6 +32,12 @@ const SANCTIONED = {
   read_email: 'read',
   read_attachment: 'read',
   map_attachment: 'read',
+  // The same two reads against a OneNote page rather than a mail message.
+  // Separate rows because the provider is resolved from this table before the
+  // call runs, so a single row cannot serve both a Google and a Microsoft
+  // token. Reads only: nothing here writes to a page. See issue #70.
+  read_page_attachment: 'read',
+  map_page_attachment: 'read',
   list_events: 'read',
   read_event: 'read',
   list_calendars: 'read',

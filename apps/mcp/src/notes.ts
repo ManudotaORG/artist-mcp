@@ -10,6 +10,7 @@
 import { MAX_TEXT_CHARS } from './attachments.js';
 import { GraphError } from './client.js';
 import { graphGet } from './api.js';
+import { pageResources, type PageResource } from './page-attachments.js';
 
 /** Graph ids are opaque, but they are concatenated into URLs, so they are checked like any other value. */
 const ONENOTE_ID = /^[A-Za-z0-9!._~-]{1,300}$/;
@@ -438,9 +439,19 @@ export const mapNotes = async (
   return { sketches, read_in_full: sketches.filter((s) => s.source === 'page').length };
 };
 
+/** A page attachment as `read_note` reports it: named, never read. */
+export type PageAttachment = Omit<PageResource, 'position'>;
+
 export type NoteContent = {
   title: string;
   text: string;
+  /**
+   * What is attached to the page. Listed, never read: the text alone used to
+   * come back with no sign that a stage plan or a rider was sitting on the
+   * page, and a reader who cannot see it reports the page as missing something
+   * it actually records. See issue #70.
+   */
+  attachments: PageAttachment[];
   chars_total: number;
   parts_total: number;
   part: number;
@@ -483,7 +494,9 @@ export const readNote = async (
   const { title } = (await meta.json()) as { title?: string };
 
   const content = await graphGet(`/me/onenote/pages/${id}/content`, token);
-  const text = htmlToText(await content.text());
+  const html = await content.text();
+  const text = htmlToText(html);
+  const attachments = pageResources(html).map(({ position: _position, ...rest }) => rest);
 
   const requested = typeof fromPart === 'number' ? fromPart : Number(fromPart ?? 1);
   const parts = Math.max(1, Math.ceil(text.length / MAX_TEXT_CHARS));
@@ -494,6 +507,9 @@ export const readNote = async (
 
   return {
     title: title ?? '(untitled)',
+    // On every part, not only the first. A caller reading part 3 of a long page
+    // is as entitled to know what is attached as one reading part 1.
+    attachments,
     text: text.slice((part - 1) * MAX_TEXT_CHARS, part * MAX_TEXT_CHARS),
     chars_total: text.length,
     parts_total: parts,

@@ -14,6 +14,7 @@
 import { GraphError } from './client.js';
 import { recordWrite, type RecordWrite } from './audit.js';
 import { gmailLoader, mapAttachment, readAttachment } from './attachments.js';
+import { oneNoteLoader } from './page-attachments.js';
 import {
   createEvent,
   deleteEvent,
@@ -56,6 +57,12 @@ export const OPERATIONS = {
   read_email: { provider: 'google', effect: 'read' },
   read_attachment: { provider: 'google', effect: 'read' },
   map_attachment: { provider: 'google', effect: 'read' },
+  // Separate rows rather than a source parameter on the two above. The token is
+  // resolved from this table before the call is made, so one operation cannot
+  // span two providers without breaking the rule that a Gmail call never spends
+  // a Microsoft token. The model still sees two tools; see issue #70.
+  read_page_attachment: { provider: 'microsoft', effect: 'read' },
+  map_page_attachment: { provider: 'microsoft', effect: 'read' },
   list_events: { provider: 'google', effect: 'read' },
   read_event: { provider: 'google', effect: 'read' },
   list_calendars: { provider: 'google', effect: 'read' },
@@ -151,6 +158,16 @@ export const dispatchWith =
       case 'read_attachment':
         return (await readAttachment(
           gmailLoader(token, params.email_id, params.attachment_id),
+          params.from_page,
+          params.page_count,
+        )) as T;
+      case 'map_page_attachment':
+        return (await mapAttachment(
+          oneNoteLoader(token, params.note_id, params.attachment_id),
+        )) as T;
+      case 'read_page_attachment':
+        return (await readAttachment(
+          oneNoteLoader(token, params.note_id, params.attachment_id),
           params.from_page,
           params.page_count,
         )) as T;

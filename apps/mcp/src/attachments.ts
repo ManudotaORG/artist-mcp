@@ -37,7 +37,7 @@ const failure = (message: string): GraphError => new GraphError(message, false);
  * The byte cap is the cruder guard, on what is fetched at all. Contracts and
  * riders sit far below it — a real 7-page rider was 0.6 MB.
  */
-const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 /**
  * Exported because `read_note` holds itself to the same number. One policy on
  * how much text may arrive in a single answer, in one place, rather than two
@@ -1027,7 +1027,20 @@ export function gmailLoader(
   };
 }
 
-export type AttachmentMeta = ReturnType<typeof extractAttachments>[number];
+/**
+ * What is known about a file before it is read, whatever it came from.
+ *
+ * Written out rather than derived from the Gmail entry it used to be, because a
+ * page resource has no Gmail id and `size` is genuinely unknown until the bytes
+ * arrive: OneNote offers no size ahead of the fetch at all. Gmail's own entries
+ * satisfy this structurally and carry their extra field along untouched.
+ */
+export type AttachmentMeta = {
+  id: string;
+  filename: string;
+  mime_type: string;
+  size: number | null;
+};
 
 /** The refusal, worded once so reading and mapping cannot drift apart. */
 function tooLargeResult(meta: AttachmentMeta) {
@@ -1037,12 +1050,17 @@ function tooLargeResult(meta: AttachmentMeta) {
     size: meta.size ?? 0,
     kind: "too_large" as const,
     text: "",
-    note:
+    note: meta.size === null
+      // No size was ever available -- a OneNote resource reports none, and the
+      // fetch was stopped at the limit rather than run to the end. "At least"
+      // is all that can be said, so it is all that is said.
+      ? `This file is at least the ${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB ` +
+        `limit for reading in chat, so it was not read to the end.`
       // One decimal: rounding 13.8 to "14" overstates a file sitting near
       // the limit, and near the limit is exactly when the number is read.
-      `This file is ${((meta.size ?? 0) / (1024 * 1024)).toFixed(1)} MB, above the ` +
-      `${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB limit for reading in chat. ` +
-      `It was not fetched.`,
+      : `This file is ${(meta.size / (1024 * 1024)).toFixed(1)} MB, above the ` +
+        `${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB limit for reading in chat. ` +
+        `It was not fetched.`,
   };
 }
 

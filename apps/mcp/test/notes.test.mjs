@@ -165,8 +165,12 @@ test('a note is returned as text, not markup', async () => {
   });
 
   // A normal page is unaffected, byte for byte, and reports itself as whole.
+  // It now says so about its attachments too: an empty list is the honest
+  // answer for a page with none, and it is what distinguishes "nothing is
+  // attached" from the silence this used to return either way. See issue #70.
   assert.deepEqual(await readNote('token', 'p1'), {
     title: 'Soundcheck',
+    attachments: [],
     text: 'Line one\nLine two',
     chars_total: 17,
     parts_total: 1,
