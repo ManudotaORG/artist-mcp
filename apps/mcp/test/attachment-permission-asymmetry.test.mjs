@@ -123,3 +123,32 @@ test('read_note says an attachment it listed is recorded, not missing', async ()
   assert.doesNotMatch(tool.description, /name, type and size/i);
   assert.match(tool.description, /never report it as missing/i);
 });
+
+test('mapping a mail attachment asks too, because mapping is the same fetch', async () => {
+  const { map_gmail_attachment: tool } = await toolsByName();
+  assert.ok(tool, 'map_gmail_attachment must exist');
+  // Mapping downloads the file and extracts it; only the size of the answer
+  // differs from reading. An ungated map is a way to the same bytes without
+  // the yes. See issue #139.
+  assert.match(
+    tool.description.slice(0, 120),
+    /only when the musician asked/i,
+    'the permission gate must lead the description',
+  );
+});
+
+test('mapping a page attachment still asks nothing', async () => {
+  const { map_page_attachment: tool } = await toolsByName();
+  assert.ok(tool, 'map_page_attachment must exist');
+  assert.doesNotMatch(tool.description, /only when the musician asked/i);
+});
+
+test('the gate is on both Gmail tools and neither page tool', async () => {
+  const tools = await toolsByName();
+  for (const name of ['read_gmail_attachment', 'map_gmail_attachment']) {
+    assert.match(tools[name].description, /only when the musician asked/i, name);
+  }
+  for (const name of ['read_page_attachment', 'map_page_attachment']) {
+    assert.doesNotMatch(tools[name].description, /only when the musician asked/i, name);
+  }
+});

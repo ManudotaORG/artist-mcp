@@ -528,6 +528,18 @@ const PLAYBOOK_GATE =
   "is in force. ";
 
 /**
+ * The evidence gate, worded once.
+ *
+ * Every tool that reaches outside the OneNote working unit -- into the
+ * musician's mail or their calendar -- leads with this. It is one sentence
+ * because it is one rule, and three copies of it are three things to keep in
+ * step when it is reworded. See issue #139.
+ */
+const EVIDENCE_GATE =
+  "Only when the musician asked for this look. One yes covers one look, not " +
+  "a standing licence to keep reading. ";
+
+/**
  * What is true of reading any attachment, wherever it came from.
  *
  * Written once and composed into all four attachment tools. The rules below
@@ -1264,8 +1276,7 @@ const createServer = async (
 
   server.tool(
     "read_email",
-    "Only when the musician asked for this look. One yes covers one look, not " +
-      "a standing licence to keep reading. " +
+    EVIDENCE_GATE +
       "Read one Gmail message in full, including its body. Takes the id from " +
       "list_emails. Any attachments are listed by name, type and size but " +
       "their contents are not fetched — describe what is attached, never what " +
@@ -1316,7 +1327,13 @@ const createServer = async (
 
   server.tool(
     "map_gmail_attachment",
-    "Map an attachment on a Gmail message, using an id from read_email. " +
+    // Gated, and for the same reason reading is. Mapping is not a cheaper look
+    // from further away: it downloads the file and runs the extractor over all
+    // of it, then returns a summary. What differs is how much comes back, not
+    // what was opened -- and the headings it returns are text lifted from the
+    // document itself. See issue #139.
+    EVIDENCE_GATE +
+      "Map an attachment on a Gmail message, using an id from read_email. " +
       ATTACHMENT_MAPPING,
     {
       email_id: z.string().describe("The id of the message the attachment belongs to"),
@@ -1343,8 +1360,7 @@ const createServer = async (
     // The permission sentence leads, and is this tool's alone. A message is not
     // the working unit: reading one is a look into the musician's mail, and one
     // yes covers one look.
-    "Only when the musician asked for this look. One yes covers one look, not " +
-      "a standing licence to keep reading. " +
+    EVIDENCE_GATE +
       "Read the contents of one attachment on a Gmail message, using an id " +
       "from read_email. map_gmail_attachment first tells you which pages are worth " +
       "reading. " +
@@ -2126,8 +2142,7 @@ const createServer = async (
 
   server.tool(
     "read_event",
-    "Only when the musician asked for this look. One yes covers one look, not " +
-      "a standing licence to keep reading. " +
+    EVIDENCE_GATE +
       "Read one Google Calendar event in full, including description and " +
       "attendees. Takes the id from list_events. Read-only: this never creates, " +
       "edits, moves, or responds to anything.",
