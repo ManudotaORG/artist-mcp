@@ -165,8 +165,12 @@ test('a note is returned as text, not markup', async () => {
   });
 
   // A normal page is unaffected, byte for byte, and reports itself as whole.
+  // It now says so about its attachments too: an empty list is the honest
+  // answer for a page with none, and it is what distinguishes "nothing is
+  // attached" from the silence this used to return either way. See issue #70.
   assert.deepEqual(await readNote('token', 'p1'), {
     title: 'Soundcheck',
+    attachments: [],
     text: 'Line one\nLine two',
     chars_total: 17,
     parts_total: 1,
@@ -456,4 +460,19 @@ test('a to-do among other tags is still a to-do, and a non-to-do tag is not', ()
   );
 
   assert.equal(text, '[x] Foto geschickt\nGage 10.000 €');
+});
+
+test('an embedded-object anchor becomes a space, so the words around it survive', () => {
+  // U+FFFC arrives inline from OneNote wherever an object was anchored. It
+  // falls between two words here, which is why it cannot simply be deleted.
+  assert.equal(
+    htmlToText('<p>This is a test line￼this is a second test line</p>'),
+    'This is a test line this is a second test line',
+  );
+});
+
+test('an anchor is not named, because it cannot be tied to a listed attachment', () => {
+  const text = htmlToText('<p>Stage plan￼</p>');
+  assert.doesNotMatch(text, /object|attachment|image/i);
+  assert.equal(text, 'Stage plan');
 });

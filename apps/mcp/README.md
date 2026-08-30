@@ -74,8 +74,8 @@ Google is supporting evidence, and needs the separate Google connection:
 | --- | --- |
 | `list_emails` | Gmail search results — subject, sender, date, snippet |
 | `read_email` | Message body, plus what is attached by name, type, and size |
-| `map_attachment` | What is on each page of a PDF, without reading it |
-| `read_attachment` | Images as pictures; PDFs and `.docx` as text, in page ranges |
+| `map_gmail_attachment` | What is on each page of a PDF, without reading it |
+| `read_gmail_attachment` | Images as pictures; PDFs and `.docx` as text, in page ranges |
 | `list_events` | Calendar events in a window, recurrences expanded and flagged |
 | `read_event` | Description and attendees for one event |
 

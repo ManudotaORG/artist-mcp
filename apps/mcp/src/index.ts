@@ -3,7 +3,7 @@
 import { runInit, runUninstall } from './init.js';
 import { runServer } from './server.js';
 import { installAgentPack, runAgentsStatus, setLocalAgentRoot } from './agents.js';
-import { runConnect, runDisconnect, runStatus } from './connect.js';
+import { runConnect, runDisconnect, runReconnect, runStatus } from './connect.js';
 import { isWriteCapability, parseGrants } from './grants.js';
 
 const argv = process.argv.slice(2);
@@ -28,7 +28,7 @@ const takeOption = (name: string): string | undefined => {
 };
 
 /** The commands, so a flag missing its value cannot swallow one. */
-const COMMANDS = ['init', 'connect', 'disconnect', 'status', 'uninstall', 'agents'];
+const COMMANDS = ['init', 'connect', 'disconnect', 'reconnect', 'status', 'uninstall', 'agents'];
 
 // Parsed inside the error handler below: a bad flag is a user error like any
 // other, and it printed a stack trace when it threw at module scope.
@@ -90,6 +90,9 @@ try {
     case 'disconnect':
       await runDisconnect(argv[1]);
       break;
+    case 'reconnect':
+      await runReconnect();
+      break;
     case 'status':
       await runStatus();
       break;
@@ -131,6 +134,8 @@ try {
           '                       sign in to a provider in your browser\n' +
           '  artist-mcp disconnect [microsoft|google]\n' +
           '                       remove a connection from this machine\n' +
+          '  artist-mcp reconnect  sign in again to whatever has lapsed, and\n' +
+          '                       nothing else\n' +
           '  artist-mcp status     check this install and what it is connected to\n' +
           '  artist-mcp agents status [directory]\n' +
           '                       show which playbooks are in force\n' +

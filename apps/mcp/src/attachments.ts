@@ -37,7 +37,7 @@ const failure = (message: string): GraphError => new GraphError(message, false);
  * The byte cap is the cruder guard, on what is fetched at all. Contracts and
  * riders sit far below it — a real 7-page rider was 0.6 MB.
  */
-const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 /**
  * Exported because `read_note` holds itself to the same number. One policy on
  * how much text may arrive in a single answer, in one place, rather than two
@@ -965,14 +965,29 @@ export function unsupportedNote(mimeType: string, filename: string): string {
     `${filename} have not been read.`;
 }
 
-async function loadAttachment(
+/**
+ * How bytes arrive. Everything below this line works on the result and has no
+ * idea where it came from, which is what lets one PDF/image/.docx path serve
+ * both a mail message and a OneNote page. See issue #70.
+ */
+export type AttachmentLoader = () => Promise<
+  | { oversized: true; meta: AttachmentMeta }
+  | { oversized: false; meta: AttachmentMeta; bytes: Uint8Array }
+>;
+
+/**
+ * The Gmail loader: the only part of this file that knows about messages.
+ *
+ * The ids are validated here, when the loader is built, rather than inside the
+ * closure. A malformed id is a caller mistake and should be reported before any
+ * other argument is looked at, which is where it was reported before the loader
+ * became a parameter.
+ */
+export function gmailLoader(
   token: string,
   emailId: unknown,
   attachmentId: unknown,
-): Promise<
-  | { oversized: true; meta: AttachmentMeta }
-  | { oversized: false; meta: AttachmentMeta; bytes: Uint8Array }
-> {
+): AttachmentLoader {
   if (typeof emailId !== "string" || !GMAIL_ID.test(emailId)) {
     throw failure("email_id is missing or malformed.");
   }
@@ -981,51 +996,74 @@ async function loadAttachment(
   }
   const id = encodeURIComponent(emailId);
 
-  const msgRes = await gmailGet(`/users/me/messages/${id}?format=full`, token);
-  const msg = (await msgRes.json()) as GmailMessage;
-  const attachments = extractAttachments(msg.payload);
-  const meta = attachments.find((a) => a.id === attachmentId);
-  if (!meta) {
-    // Name what is there. A bare "not found" invites the caller to retry with
-    // the same id, and this is the one error a caller can actually act on.
-    const available = attachments.length
-      ? attachments.map((a) => `${a.id} (${a.filename})`).join(", ")
-      : "none";
-    throw failure(`That message has no attachment ${attachmentId}. Available: ${available}.`,
+  return async () => {
+    const msgRes = await gmailGet(`/users/me/messages/${id}?format=full`, token);
+    const msg = (await msgRes.json()) as GmailMessage;
+    const attachments = extractAttachments(msg.payload);
+    const meta = attachments.find((a) => a.id === attachmentId);
+    if (!meta) {
+      // Name what is there. A bare "not found" invites the caller to retry with
+      // the same id, and this is the one error a caller can actually act on.
+      const available = attachments.length
+        ? attachments.map((a) => `${a.id} (${a.filename})`).join(", ")
+        : "none";
+      throw failure(`That message has no attachment ${attachmentId}. Available: ${available}.`,
+      );
+    }
+
+    if (meta.size !== null && meta.size > MAX_ATTACHMENT_BYTES) {
+      return { oversized: true, meta };
+    }
+
+    const attRes = await gmailGet(
+      `/users/me/messages/${id}/attachments/${encodeURIComponent(meta.gmail_id)}`,
+      token,
     );
-  }
-
-  if (meta.size !== null && meta.size > MAX_ATTACHMENT_BYTES) {
-    return { oversized: true, meta };
-  }
-
-  const attRes = await gmailGet(
-    `/users/me/messages/${id}/attachments/${encodeURIComponent(meta.gmail_id)}`,
-    token,
-  );
-  const payload = (await attRes.json()) as { data?: string; size?: number };
-  if (typeof payload.data !== "string") {
-    throw failure("Gmail returned no data for that attachment.");
-  }
-  return { oversized: false, meta, bytes: decodeBytes(payload.data) };
+    const payload = (await attRes.json()) as { data?: string; size?: number };
+    if (typeof payload.data !== "string") {
+      throw failure("Gmail returned no data for that attachment.");
+    }
+    return { oversized: false, meta, bytes: decodeBytes(payload.data) };
+  };
 }
 
-type AttachmentMeta = ReturnType<typeof extractAttachments>[number];
+/**
+ * What is known about a file before it is read, whatever it came from.
+ *
+ * Written out rather than derived from the Gmail entry it used to be, because a
+ * page resource has no Gmail id and `size` is genuinely unknown until the bytes
+ * arrive: OneNote offers no size ahead of the fetch at all. Gmail's own entries
+ * satisfy this structurally and carry their extra field along untouched.
+ */
+export type AttachmentMeta = {
+  id: string;
+  filename: string;
+  mime_type: string;
+  size: number | null;
+};
 
 /** The refusal, worded once so reading and mapping cannot drift apart. */
 function tooLargeResult(meta: AttachmentMeta) {
   return {
     filename: meta.filename,
     mime_type: meta.mime_type,
-    size: meta.size ?? 0,
+    // Null, not 0. A size nobody measured must not arrive as a number: the
+    // renderer shows no size line at all rather than "0 B" beside a note
+    // saying the file is at least the limit. See issue #70.
+    size: meta.size,
     kind: "too_large" as const,
     text: "",
-    note:
+    note: meta.size === null
+      // No size was ever available -- a OneNote resource reports none, and the
+      // fetch was stopped at the limit rather than run to the end. "At least"
+      // is all that can be said, so it is all that is said.
+      ? `This file is at least the ${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB ` +
+        `limit for reading in chat, so it was not read to the end.`
       // One decimal: rounding 13.8 to "14" overstates a file sitting near
       // the limit, and near the limit is exactly when the number is read.
-      `This file is ${((meta.size ?? 0) / (1024 * 1024)).toFixed(1)} MB, above the ` +
-      `${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB limit for reading in chat. ` +
-      `It was not fetched.`,
+      : `This file is ${(meta.size / (1024 * 1024)).toFixed(1)} MB, above the ` +
+        `${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB limit for reading in chat. ` +
+        `It was not fetched.`,
   };
 }
 
@@ -1037,11 +1075,15 @@ function tooLargeResult(meta: AttachmentMeta) {
  * caller can name the pages worth reading and then read only those.
  */
 export async function mapAttachment(
-  token: string,
-  emailId: unknown,
-  attachmentId: unknown,
+  load: AttachmentLoader,
+  /**
+   * The read tool to point at. Passed in rather than hardcoded: the map is
+   * source-neutral, and naming the mail tool while mapping a page attachment
+   * sends the model to a tool that cannot open it. See issue #70.
+   */
+  readTool: string,
 ) {
-  const loaded = await loadAttachment(token, emailId, attachmentId);
+  const loaded = await load();
   if (loaded.oversized) return tooLargeResult(loaded.meta);
   const { meta, bytes } = loaded;
 
@@ -1062,7 +1104,7 @@ export async function mapAttachment(
           (doc.parts_total > 1 ? ` in ${doc.parts_total} parts` : "") +
           `. There is no page map to give: a .docx records no pages, and its ` +
           `heading styles are not dependable enough to divide it honestly. ` +
-          `Read it with read_attachment.`
+          `Read it with ${readTool}.`
         : `${meta.filename} could not be opened as a Word document.`,
     };
   }
@@ -1103,25 +1145,17 @@ export async function mapAttachment(
         : `Every page of this ${map.pages_total}-page file is a picture, so ` +
           `there is nothing to map. `) +
         `A scan cannot be searched without reading the pages themselves — ask ` +
-        `read_attachment for them.`
-      : `${map.pages_total} pages. Use read_attachment with from_page and ` +
+        `${readTool} for them.`
+      : `${map.pages_total} pages. Use ${readTool} with from_page and ` +
         `page_count to read the ones that matter, rather than reading it all.`,
   };
 }
 
 export async function readAttachment(
-  token: string,
-  emailId: unknown,
-  attachmentId: unknown,
+  load: AttachmentLoader,
   fromPage: unknown,
   pageCount: unknown,
 ) {
-  if (typeof emailId !== "string" || !GMAIL_ID.test(emailId)) {
-    throw failure("email_id is missing or malformed.");
-  }
-  if (typeof attachmentId !== "string" || !ATTACHMENT_ID.test(attachmentId)) {
-    throw failure("attachment_id is missing or malformed.");
-  }
   if (
     fromPage !== undefined && fromPage !== null &&
     (typeof fromPage !== "number" || !Number.isFinite(fromPage) || fromPage < 1)
@@ -1134,7 +1168,7 @@ export async function readAttachment(
   ) {
     throw failure("page_count must be a number of pages, 1 or greater.");
   }
-  const loaded = await loadAttachment(token, emailId, attachmentId);
+  const loaded = await load();
   if (loaded.oversized) return tooLargeResult(loaded.meta);
   const { meta, bytes } = loaded;
 
