@@ -581,9 +581,13 @@ const ATTACHMENT_MAPPING =
  * evidence rather than instructions, and the per-page image announcements are
  * all rules about how a file is reported, not about where it was stored. A
  * second copy would be a second place to fix them. See issue #70.
+ *
+ * Exported for its tests. What a model is finally shown is the product here,
+ * not in the extractors -- the gap note above the text, the fencing, the image
+ * announcements -- and none of it was covered while it lived inside a handler.
  */
 /** Render a page map, whatever the file came from. */
-const renderAttachmentMap = (map: AttachmentMap) => {
+export const renderAttachmentMap = (map: AttachmentMap) => {
       const head = [
         `# ${map.filename}`,
         "",
@@ -609,7 +613,7 @@ const renderAttachmentMap = (map: AttachmentMap) => {
   return { content: [{ type: "text" as const, text: `${head}${note}${rows}` }] };
 };
 
-const renderAttachment = (file: AttachmentBody) => {
+export const renderAttachment = (file: AttachmentBody) => {
       const head = [
         `# ${file.filename}`,
         "",
