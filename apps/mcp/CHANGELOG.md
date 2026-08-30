@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.8.2](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.8.1...artist-mcp-v1.8.2) (2026-08-30)
+
+
+### Bug Fixes
+
+* **agent-pack:** stop AGENTS.md asserting absolutes two grants make false ([4079ee7](https://github.com/ManudotaORG/artist-mcp/commit/4079ee7569d93d698156189a07641f8d7e785025)), closes [#135](https://github.com/ManudotaORG/artist-mcp/issues/135)
+* **mcp:** gate map_notes too, and share one gate constant ([bb99a2d](https://github.com/ManudotaORG/artist-mcp/commit/bb99a2dbaabd607efd94178727c12379b4edb311)), closes [#99](https://github.com/ManudotaORG/artist-mcp/issues/99)
+* **mcp:** open the note tools with the playbook gate ([96e51c0](https://github.com/ManudotaORG/artist-mcp/commit/96e51c0eb8a9e3e75dedadb089c21c4b4cdc8764)), closes [#99](https://github.com/ManudotaORG/artist-mcp/issues/99)
+
 ## [1.8.1](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.8.0...artist-mcp-v1.8.1) (2026-08-29)
 
 
