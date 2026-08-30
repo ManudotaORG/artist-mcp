@@ -965,14 +965,29 @@ export function unsupportedNote(mimeType: string, filename: string): string {
     `${filename} have not been read.`;
 }
 
-async function loadAttachment(
+/**
+ * How bytes arrive. Everything below this line works on the result and has no
+ * idea where it came from, which is what lets one PDF/image/.docx path serve
+ * both a mail message and a OneNote page. See issue #70.
+ */
+export type AttachmentLoader = () => Promise<
+  | { oversized: true; meta: AttachmentMeta }
+  | { oversized: false; meta: AttachmentMeta; bytes: Uint8Array }
+>;
+
+/**
+ * The Gmail loader: the only part of this file that knows about messages.
+ *
+ * The ids are validated here, when the loader is built, rather than inside the
+ * closure. A malformed id is a caller mistake and should be reported before any
+ * other argument is looked at, which is where it was reported before the loader
+ * became a parameter.
+ */
+export function gmailLoader(
   token: string,
   emailId: unknown,
   attachmentId: unknown,
-): Promise<
-  | { oversized: true; meta: AttachmentMeta }
-  | { oversized: false; meta: AttachmentMeta; bytes: Uint8Array }
-> {
+): AttachmentLoader {
   if (typeof emailId !== "string" || !GMAIL_ID.test(emailId)) {
     throw failure("email_id is missing or malformed.");
   }
@@ -981,36 +996,38 @@ async function loadAttachment(
   }
   const id = encodeURIComponent(emailId);
 
-  const msgRes = await gmailGet(`/users/me/messages/${id}?format=full`, token);
-  const msg = (await msgRes.json()) as GmailMessage;
-  const attachments = extractAttachments(msg.payload);
-  const meta = attachments.find((a) => a.id === attachmentId);
-  if (!meta) {
-    // Name what is there. A bare "not found" invites the caller to retry with
-    // the same id, and this is the one error a caller can actually act on.
-    const available = attachments.length
-      ? attachments.map((a) => `${a.id} (${a.filename})`).join(", ")
-      : "none";
-    throw failure(`That message has no attachment ${attachmentId}. Available: ${available}.`,
+  return async () => {
+    const msgRes = await gmailGet(`/users/me/messages/${id}?format=full`, token);
+    const msg = (await msgRes.json()) as GmailMessage;
+    const attachments = extractAttachments(msg.payload);
+    const meta = attachments.find((a) => a.id === attachmentId);
+    if (!meta) {
+      // Name what is there. A bare "not found" invites the caller to retry with
+      // the same id, and this is the one error a caller can actually act on.
+      const available = attachments.length
+        ? attachments.map((a) => `${a.id} (${a.filename})`).join(", ")
+        : "none";
+      throw failure(`That message has no attachment ${attachmentId}. Available: ${available}.`,
+      );
+    }
+
+    if (meta.size !== null && meta.size > MAX_ATTACHMENT_BYTES) {
+      return { oversized: true, meta };
+    }
+
+    const attRes = await gmailGet(
+      `/users/me/messages/${id}/attachments/${encodeURIComponent(meta.gmail_id)}`,
+      token,
     );
-  }
-
-  if (meta.size !== null && meta.size > MAX_ATTACHMENT_BYTES) {
-    return { oversized: true, meta };
-  }
-
-  const attRes = await gmailGet(
-    `/users/me/messages/${id}/attachments/${encodeURIComponent(meta.gmail_id)}`,
-    token,
-  );
-  const payload = (await attRes.json()) as { data?: string; size?: number };
-  if (typeof payload.data !== "string") {
-    throw failure("Gmail returned no data for that attachment.");
-  }
-  return { oversized: false, meta, bytes: decodeBytes(payload.data) };
+    const payload = (await attRes.json()) as { data?: string; size?: number };
+    if (typeof payload.data !== "string") {
+      throw failure("Gmail returned no data for that attachment.");
+    }
+    return { oversized: false, meta, bytes: decodeBytes(payload.data) };
+  };
 }
 
-type AttachmentMeta = ReturnType<typeof extractAttachments>[number];
+export type AttachmentMeta = ReturnType<typeof extractAttachments>[number];
 
 /** The refusal, worded once so reading and mapping cannot drift apart. */
 function tooLargeResult(meta: AttachmentMeta) {
@@ -1036,12 +1053,8 @@ function tooLargeResult(meta: AttachmentMeta) {
  * page one. This costs one text pass and returns a few hundred bytes, so a
  * caller can name the pages worth reading and then read only those.
  */
-export async function mapAttachment(
-  token: string,
-  emailId: unknown,
-  attachmentId: unknown,
-) {
-  const loaded = await loadAttachment(token, emailId, attachmentId);
+export async function mapAttachment(load: AttachmentLoader) {
+  const loaded = await load();
   if (loaded.oversized) return tooLargeResult(loaded.meta);
   const { meta, bytes } = loaded;
 
@@ -1110,18 +1123,10 @@ export async function mapAttachment(
 }
 
 export async function readAttachment(
-  token: string,
-  emailId: unknown,
-  attachmentId: unknown,
+  load: AttachmentLoader,
   fromPage: unknown,
   pageCount: unknown,
 ) {
-  if (typeof emailId !== "string" || !GMAIL_ID.test(emailId)) {
-    throw failure("email_id is missing or malformed.");
-  }
-  if (typeof attachmentId !== "string" || !ATTACHMENT_ID.test(attachmentId)) {
-    throw failure("attachment_id is missing or malformed.");
-  }
   if (
     fromPage !== undefined && fromPage !== null &&
     (typeof fromPage !== "number" || !Number.isFinite(fromPage) || fromPage < 1)
@@ -1134,7 +1139,7 @@ export async function readAttachment(
   ) {
     throw failure("page_count must be a number of pages, 1 or greater.");
   }
-  const loaded = await loadAttachment(token, emailId, attachmentId);
+  const loaded = await load();
   if (loaded.oversized) return tooLargeResult(loaded.meta);
   const { meta, bytes } = loaded;
 

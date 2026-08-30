@@ -13,7 +13,7 @@
 
 import { GraphError } from './client.js';
 import { recordWrite, type RecordWrite } from './audit.js';
-import { mapAttachment, readAttachment } from './attachments.js';
+import { gmailLoader, mapAttachment, readAttachment } from './attachments.js';
 import {
   createEvent,
   deleteEvent,
@@ -145,12 +145,12 @@ export const dispatchWith =
       case 'read_email':
         return (await readEmail(token, params.email_id)) as T;
       case 'map_attachment':
-        return (await mapAttachment(token, params.email_id, params.attachment_id)) as T;
+        return (await mapAttachment(
+          gmailLoader(token, params.email_id, params.attachment_id),
+        )) as T;
       case 'read_attachment':
         return (await readAttachment(
-          token,
-          params.email_id,
-          params.attachment_id,
+          gmailLoader(token, params.email_id, params.attachment_id),
           params.from_page,
           params.page_count,
         )) as T;
