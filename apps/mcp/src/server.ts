@@ -552,6 +552,18 @@ const createServer = async (
   // alone with no policy in force. That is the "a rule in a role is not in
   // force" failure one level up: the briefing was correct and never arrived.
   //
+  // Kept, but do not mistake it for the channel that binds. Claude Desktop —
+  // the client `init` configures — does not deliver this field to the model at
+  // all: a live Desktop session, asked to quote it back, reported the tool list
+  // and no preamble of any kind. Claude Code does deliver it verbatim, and a
+  // Code session called `list_agent_workflows` unprompted, which is why this
+  // stays. The rule a Desktop session actually reads is the one on `list_notes`
+  // and `read_note`, and #99 is why it is there as well as here.
+  //
+  // The capability line below is subject to the same limit. A Desktop session
+  // that described its writes correctly did so from its own tool list, since
+  // write tools are registered only when granted — not from this sentence.
+  //
   // It deliberately carries no rules of its own. `AGENTS.md` restated the pack
   // for repository clients and drifted from it — it still announces three
   // always-loaded policies, and still uses the winner-picking phrasing that
@@ -641,7 +653,17 @@ const createServer = async (
 
   server.tool(
     "list_notes",
-    "List the user's OneNote pages, with title, notebook, section and last " +
+    // The playbook gate lives here, not only in the handshake. Claude Desktop
+    // does not deliver the `instructions` field to the model at all — verified
+    // against a live session, which reported the tool list and no preamble —
+    // so on the one client `init` configures, the handshake reaches nothing.
+    // A description does reach it: `preview_calendar_event`'s refusal clause
+    // sits ~650 characters in and a Desktop session acted on it. See #99.
+    //
+    // It opens the description because a client may render the listing clipped
+    // to one line, and because the first paragraph is what is read most often.
+    "Call `list_agent_workflows` first if you have not already this session — the playbooks it returns govern how pages are surveyed, what is stated and how firmly, and how anything is handed over. Without them no policy is in force. " +
+      "List the user's OneNote pages, with title, notebook, section and last " +
       "date. Takes an optional notebook name. When the account holds " +
       "more than one notebook and none is given, this returns the list of " +
       "notebooks instead of any pages, so the user can say which one to work " +
@@ -936,7 +958,10 @@ const createServer = async (
 
   server.tool(
     "read_note",
-    "Read the text content of one OneNote page. Takes the id from list_notes. " +
+    // Both entry points carry it: an id can be remembered from earlier in a
+    // session, so read_note is not always reached through list_notes. See #99.
+    "Call `list_agent_workflows` first if you have not already this session — the playbooks it returns govern how pages are surveyed, what is stated and how firmly, and how anything is handed over. Without them no policy is in force. " +
+      "Read the text content of one OneNote page. Takes the id from list_notes. " +
       "A page too long for one answer comes back in parts, and the answer says " +
       "so and how to continue — a page is never truncated silently.",
     {
