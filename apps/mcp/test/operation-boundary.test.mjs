@@ -96,12 +96,14 @@ test('the HTTP layer sends exactly one non-GET, and it is the sanctioned one', a
   const api = await readFile(resolve(srcRoot, 'api.ts'), 'utf8');
   const methods = [...api.matchAll(/method\s*:\s*['"`](\w+)['"`]/g)].map((m) => m[1].toUpperCase());
   const nonGet = methods.filter((m) => m !== 'GET');
-  // Two POSTs and one DELETE: calendarInsertEvent, calendarDeleteEvent and
-  // onenoteCreatePage. Not "no writes" any more, but still a counted set — each
-  // one had to be argued for here before it could ship.
+  // Two POSTs, one DELETE and one PATCH: calendarInsertEvent,
+  // calendarDeleteEvent, onenoteCreatePage and onenotePatchPage. Not "no
+  // writes" any more, but still a counted set — each one had to be argued for
+  // here before it could ship, and the PATCH took a decision record and a probe
+  // against a real notebook.
   assert.deepEqual(
     nonGet,
-    ['POST', 'DELETE', 'POST'],
+    ['POST', 'DELETE', 'POST', 'PATCH'],
     `api.ts sends ${nonGet.join(', ') || 'nothing but GET'}. Any change here is a boundary change.`,
   );
 });
@@ -122,39 +124,58 @@ test('the HTTP layer sends exactly one non-GET, and it is the sanctioned one', a
  * docs/decisions/0001-opt-in-calendar-writes.md.
  */
 /**
- * The OneNote half of the same rule, and it needs stating separately because
- * the reasoning inverts. Google grants PATCH with the scope we already hold, so
- * only this repository refuses it. Microsoft refuses it for us — `Notes.Create`
- * cannot express an edit, verified as a 403 against a page the token had just
- * created itself.
+ * The OneNote half of the same rule. It used to read "nothing can edit or
+ * delete a OneNote page", and half of that is no longer true:
+ * docs/decisions/0004-onenote-page-maintenance.md permits editing a page this
+ * tool created, on `Notes.ReadWrite.CreatedByApp`, which Microsoft enforces
+ * against *this* application rather than merely against some application.
  *
- * That makes this assertion cheap insurance rather than the boundary: if a
- * PATCH against a page ever appears here, someone has widened the scope to
- * `Notes.ReadWrite`, and at that moment the boundary silently becomes ours
- * again — which is precisely the position 0003 exists to avoid returning to.
+ * What has not changed, and what this now guards:
+ *
+ *   - **No DELETE, ever.** A deleted page is not in the notebook recycle bin.
+ *     There is no pre-image to capture and nothing to restore from, so it stays
+ *     out on the same recoverability grounds that once covered replacing.
+ *   - **Not bare `Notes.ReadWrite`.** That grants edit and delete over every
+ *     page and puts the boundary back in our code, which is the position 0003
+ *     exists to avoid returning to. The `.CreatedByApp` suffix is the whole
+ *     difference, so it is checked for rather than matched loosely.
  */
-test('nothing can edit or delete a OneNote page', async () => {
+test('a OneNote page can be edited but never deleted', async () => {
   const api = await readFile(resolve(srcRoot, 'api.ts'), 'utf8');
   assert.doesNotMatch(
     api,
-    /onenote\/pages\/[^`'"]*`?,?\s*\{[^}]*method\s*:\s*['"`](PATCH|DELETE|PUT)/i,
-    'api.ts can modify a OneNote page. Only Notes.Create keeps that impossible.',
+    /onenote\/pages\/[^`'"]*`?,?\s*\{[^}]*method\s*:\s*['"`](DELETE|PUT)/i,
+    'api.ts can delete or overwrite a OneNote page. A Graph delete leaves ' +
+      'nothing in the recycle bin, so there is no undo to build on — see 0004.',
   );
-  assert.doesNotMatch(
-    api,
-    /Notes\.ReadWrite/,
-    'Notes.ReadWrite appears in api.ts. It grants edit and delete over every ' +
-      'page, which puts the boundary back in our code — see 0003.',
+
+  const readWrite = [...api.matchAll(/Notes\.ReadWrite(?:\.\w+)?/g)].map((m) => m[0]);
+  assert.deepEqual(
+    readWrite.filter((scope) => scope !== 'Notes.ReadWrite.CreatedByApp'),
+    [],
+    'Bare Notes.ReadWrite appears in api.ts. It grants edit and delete over ' +
+      'every page in the notebook, which makes the boundary ours again.',
   );
 });
 
 test('nothing can update an event', async () => {
   const api = await readFile(resolve(srcRoot, 'api.ts'), 'utf8');
+
+  // api.ts now contains exactly one PATCH, and it belongs to OneNote. Cutting
+  // that helper out and asserting over the remainder keeps this rule absolute
+  // for Calendar rather than weakening it to "no PATCH except somewhere":
+  // rescheduling still creates and deletes, precisely so that an event id can
+  // go on being a hash of the event's own contents.
+  const at = api.indexOf('export const onenotePatchPage');
+  assert.notEqual(at, -1, 'the sanctioned OneNote PATCH helper was renamed or removed');
+  const beforeOnenotePatch = api.slice(0, at);
+
   for (const method of ['PATCH', 'PUT']) {
     assert.doesNotMatch(
-      api,
+      beforeOnenotePatch,
       new RegExp(`method\\s*:\\s*['"\`]${method}`, 'i'),
-      `api.ts can send ${method}. calendar.events grants it; only this repository refuses it.`,
+      `api.ts can send ${method} outside the OneNote patch helper. calendar.events ` +
+        'grants it; only this repository refuses it.',
     );
   }
 });
@@ -197,6 +218,7 @@ test('no module outside the sanctioned list exports a write-shaped helper', asyn
     'notes.ts',
     'attachments.ts',
     'onenote-write.ts',
+    'onenote-patch.ts',
   ];
   // The sanctioned write path, named in full. Anything else matching the shape
   // is a boundary change and fails here.
@@ -224,6 +246,19 @@ test('no module outside the sanctioned list exports a write-shaped helper', asyn
     // the page and resolves its section, the other shapes and escapes it.
     'onenote-write.ts:previewPage',
     'onenote-write.ts:draftFrom',
+    // The editing path, in full. Unlike the create rows, the scope behind this
+    // one *can* express an edit — Microsoft narrows it to pages this app
+    // created, and nothing narrows it further. So the risk here is the one this
+    // guard is actually for: a second patch path appearing without anyone
+    // reading 0004.
+    'api.ts:onenotePatchPage',
+    // Command builders and the pre-image. They send nothing; they are named
+    // because the pattern matches `patch` and `replace` and cannot tell a
+    // string builder from a request. `preImage` is what makes a replace
+    // permissible at all, so it is deliberately visible in this list.
+    'onenote-patch.ts:replaceCommand',
+    'onenote-patch.ts:appendCommand',
+    'onenote-patch.ts:preImage',
   ];
   const found = [];
   for (const file of files) {
