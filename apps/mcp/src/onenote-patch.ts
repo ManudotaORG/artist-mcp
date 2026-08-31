@@ -136,8 +136,10 @@ export const preImage = (html: string, generatedId: string): string => {
 
 export type PatchCommand = {
   target: string;
-  action: 'append' | 'replace';
+  action: 'append' | 'replace' | 'insert';
   content: string;
+  /** Only an insert has one. Graph ignores it elsewhere rather than refusing. */
+  position?: 'before' | 'after';
 };
 
 /**
@@ -179,6 +181,34 @@ export const replaceCommand = (generatedId: string, contentHtml: string): PatchC
 };
 
 /**
+ * Put a new element beside an existing one.
+ *
+ * Graph lists `insert` for a `table` with a `position` of `before` or `after`,
+ * and this is the only way a new block reaches the middle of a page: `append`
+ * can only reach the end of the body, so without a sibling insert a section
+ * added to a template lands after everything, which for these pages is after
+ * the signature block rather than where it belongs.
+ *
+ * The anchor is named by its generated id for the same reason a replace is —
+ * `data-id` targets resolve for `append` and not for this, and the failure is
+ * a `20134` that reads as though the element could not be edited.
+ */
+export const insertCommand = (
+  generatedId: string,
+  position: 'before' | 'after',
+  contentHtml: string,
+): PatchCommand => {
+  if (!isGeneratedId(generatedId)) {
+    throw failure(
+      `An insert must name the generated id of the element to sit beside, not ` +
+        `"${generatedId}". Read the page again and use the id it reports.`,
+    );
+  }
+
+  return { target: generatedId, action: 'insert', position, content: contentHtml };
+};
+
+/**
  * XHTML entities, as in onenote-write.ts and for the same reason: a model
  * composing a correction from an email is passing through text it did not
  * author, and unescaped markup would let that text decide what the page says.
@@ -205,19 +235,280 @@ export const paragraph = (text: string): string => {
   return `<p>${escapeXml(trimmed).replace(/\n/g, '<br/>')}</p>`;
 };
 
+/**
+ * The markup a caller may send, and nothing else.
+ *
+ * A table cannot be written as plain text — that is the whole reason this
+ * exists — so the escaping that protects `paragraph()` is not available here,
+ * and something else has to stand in its place. What stands in its place is
+ * refusal: every tag, every attribute and every style is checked against these
+ * sets, and anything outside them stops the write rather than being quietly
+ * stripped.
+ *
+ * Refusal rather than sanitising, because the two fail in opposite directions.
+ * A stripped attribute produces a page that was written and is subtly not what
+ * was previewed; a refusal produces no page change at all. OneNote keeps no
+ * version and no bin, so the second is recoverable and the first is not.
+ */
+const ALLOWED_TAGS = new Set([
+  'table',
+  'thead',
+  'tbody',
+  'tr',
+  'td',
+  'th',
+  'p',
+  'br',
+  'b',
+  'strong',
+  'i',
+  'em',
+  'u',
+  'sub',
+  'sup',
+  'span',
+  'div',
+  'ul',
+  'ol',
+  'li',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'a',
+]);
+
+/** `br` is the only empty element allowed; `img` and `object` are not content a caller composes. */
+const VOID_TAGS = new Set(['br']);
+
+const GLOBAL_ATTRS = new Set(['data-id', 'lang', 'style']);
+
+const ATTRS_BY_TAG: Record<string, Set<string>> = {
+  table: new Set(['border', 'width', 'cellpadding', 'cellspacing']),
+  td: new Set(['colspan', 'rowspan', 'align', 'valign', 'width']),
+  th: new Set(['colspan', 'rowspan', 'align', 'valign', 'width']),
+  a: new Set(['href']),
+};
+
+/**
+ * What may appear in a `style`, which OneNote's own tables lean on heavily for
+ * borders and widths — so forbidding it outright would mean every replaced
+ * table came back unstyled.
+ *
+ * Brackets and quotes are out, which removes `url(...)`, `expression(...)` and
+ * anything that could carry a second value inside the first. Colours, widths
+ * and border shorthands all survive that.
+ */
+const SAFE_STYLE = /^[-a-zA-Z0-9 _.,:;%#/]*$/;
+
+/** Only what a musician's own note would contain. No `javascript:`, no `data:`. */
+const SAFE_HREF = /^https?:\/\/[^\s"'<>]+$/;
+
+/** Which parents a structural tag may sit under, so a malformed table is caught here. */
+const REQUIRED_PARENT: Record<string, string[]> = {
+  tr: ['table', 'thead', 'tbody'],
+  td: ['tr'],
+  th: ['tr'],
+  thead: ['table'],
+  tbody: ['table'],
+  li: ['ul', 'ol'],
+};
+
+const ATTR = /([a-zA-Z-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
+
+const checkAttributes = (tag: string, raw: string): void => {
+  ATTR.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = ATTR.exec(raw)) !== null) {
+    const name = match[1].toLowerCase();
+    const value = match[2] ?? match[3] ?? match[4] ?? '';
+
+    if (name.startsWith('on')) {
+      throw failure(`<${tag}> carries "${name}", which is a script handler. Nothing was written.`);
+    }
+
+    const allowed = GLOBAL_ATTRS.has(name) || (ATTRS_BY_TAG[tag]?.has(name) ?? false);
+    if (!allowed) {
+      throw failure(
+        `<${tag}> carries the attribute "${name}", which this tool will not send to ` +
+          'OneNote. Nothing was written. Keep the markup to tables, rows, cells, ' +
+          'paragraphs, lists and simple emphasis.',
+      );
+    }
+
+    if (name === 'style' && !SAFE_STYLE.test(value)) {
+      throw failure(
+        `The style on <${tag}> contains something this tool will not send: ` +
+          `"${value}". Nothing was written. Plain declarations such as ` +
+          '"border:1pt solid #a3a3a3" are fine; brackets and quotes are not.',
+      );
+    }
+
+    if (name === 'href' && !SAFE_HREF.test(value)) {
+      throw failure(`The link "${value}" is not an http(s) address. Nothing was written.`);
+    }
+  }
+};
+
+/**
+ * Well-formed, allowed, and balanced — or nothing is sent.
+ *
+ * Returns the markup unchanged on success. It is deliberately not a normaliser:
+ * what goes to Graph is byte-for-byte what was hashed into the confirmation
+ * token and shown in the preview, so there is no room for a rewrite between
+ * the musician's yes and the write.
+ */
+export const validateFragment = (html: string): string => {
+  const trimmed = html.trim();
+  if (trimmed === '') throw failure('There is no content to write.');
+
+  const stack: string[] = [];
+  const step = /<(\/?)\s*([a-zA-Z][a-zA-Z0-9]*)((?:[^<>"']|"[^"]*"|'[^']*')*?)(\/?)\s*>/g;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = step.exec(trimmed)) !== null) {
+    const between = trimmed.slice(cursor, match.index);
+    if (between.includes('<')) {
+      throw failure(
+        'That markup has a stray "<" in it, so it is not well-formed and OneNote ' +
+          'would either refuse it or write something other than what was previewed. ' +
+          'Nothing was written. Write a literal less-than as &lt;.',
+      );
+    }
+    cursor = match.index + match[0].length;
+
+    const closing = match[1] === '/';
+    const tag = match[2].toLowerCase();
+    const selfClosing = match[4] === '/';
+
+    if (!ALLOWED_TAGS.has(tag)) {
+      throw failure(
+        `<${tag}> is not a tag this tool will send to OneNote. Nothing was written. ` +
+          'Tables, rows, cells, paragraphs, headings, lists and simple emphasis are ' +
+          'what a page is made of here.',
+      );
+    }
+
+    if (closing) {
+      const open = stack.pop();
+      if (open !== tag) {
+        throw failure(
+          `That markup closes </${tag}> where <${open ?? 'nothing'}> was open. Malformed ` +
+            'HTML in a patch can corrupt the page, and OneNote keeps no version of ' +
+            'one, so nothing was written.',
+        );
+      }
+      continue;
+    }
+
+    checkAttributes(tag, match[3]);
+
+    const parents = REQUIRED_PARENT[tag];
+    if (parents !== undefined && !parents.includes(stack[stack.length - 1] ?? '')) {
+      throw failure(
+        `<${tag}> has to sit inside ${parents.map((t) => `<${t}>`).join(' or ')}, and here ` +
+          `it sits inside <${stack[stack.length - 1] ?? 'nothing'}>. Nothing was written.`,
+      );
+    }
+
+    if (VOID_TAGS.has(tag)) {
+      // `<br>` and `<br/>` both, since a caller writing HTML by hand produces
+      // either and neither is a reason to refuse a table.
+      continue;
+    }
+    if (selfClosing) {
+      throw failure(`<${tag}/> cannot be empty. Nothing was written.`);
+    }
+
+    stack.push(tag);
+  }
+
+  if (trimmed.slice(cursor).includes('<')) {
+    throw failure(
+      'That markup ends in an unfinished tag. Nothing was written.',
+    );
+  }
+
+  if (stack.length > 0) {
+    throw failure(
+      `That markup leaves <${stack[stack.length - 1]}> unclosed. Malformed HTML in a ` +
+        'patch can corrupt the page, and OneNote keeps no version of one, so nothing ' +
+        'was written.',
+    );
+  }
+
+  return trimmed;
+};
+
+/**
+ * The tag of the single element a fragment consists of, or undefined if it is
+ * not exactly one element.
+ *
+ * A replace must yield an element of the kind the target supports: a table
+ * replaced by two tables, or by a table and a stray paragraph, is not the
+ * change that was previewed as one table.
+ */
+export const rootTag = (html: string): string | undefined => {
+  const trimmed = html.trim();
+  const open = /^<([a-zA-Z][a-zA-Z0-9]*)/.exec(trimmed);
+  if (open === null) return undefined;
+
+  // extractElement finds its opening tag by attribute, which a root has no
+  // need of, so the balance is counted here directly rather than borrowed.
+  const tag = open[1].toLowerCase();
+  const step = new RegExp(`<(/?)${tag}\\b[^>]*?(/?)>`, 'gi');
+  let depth = 0;
+  let match: RegExpExecArray | null;
+  while ((match = step.exec(trimmed)) !== null) {
+    if (match[2] === '/') continue;
+    depth += match[1] === '/' ? -1 : 1;
+    if (depth === 0) {
+      return match.index + match[0].length === trimmed.length ? tag : undefined;
+    }
+  }
+  return undefined;
+};
+
+export type EditablePart = {
+  element_id: string;
+  /** A table is replaced whole and with HTML; everything else takes plain text. */
+  kind: 'text' | 'table';
+  /** As the musician reads it: a table as its rows, anything else as its text. */
+  text: string;
+  /** The table this sits in, if it does. Null for a top-level element. */
+  inside_table: string | null;
+};
+
+export type EditDraft = {
+  page_id: string;
+  action: 'append' | 'replace' | 'insert';
+  /** The generated id of the element to replace, or to sit beside. Absent for an append. */
+  element_id: string | null;
+  /** Plain text, escaped on the way out. Null when the change is markup. */
+  text: string | null;
+  /** Validated markup. Null when the change is plain text. */
+  html: string | null;
+  /** Which side of the anchor an insert lands on. Null otherwise. */
+  position: 'before' | 'after' | null;
+  source_page: string | null;
+};
+
 /** As in onenote-write.ts: opaque, but concatenated into URLs. */
 const ONENOTE_ID = /^[A-Za-z0-9!._~-]{1,300}$/;
 
 const MAX_TEXT_CHARS = 4_000;
 
-export type EditDraft = {
-  page_id: string;
-  action: 'append' | 'replace';
-  /** The generated id of the element to replace. Absent for an append. */
-  element_id: string | null;
-  text: string;
-  source_page: string | null;
-};
+/**
+ * Markup gets a larger ceiling than text, and for a reason that is not
+ * generosity: one of these pages carries a roster table of a dozen rows, and a
+ * whole-table replace has to be able to carry the whole table or the capability
+ * does not exist. It is still a ceiling — a change larger than this is a page,
+ * and a page is created rather than patched.
+ */
+const MAX_HTML_CHARS = 20_000;
 
 export const editFrom = (params: Record<string, unknown>): EditDraft => {
   const pageId = params.page_id;
@@ -226,34 +517,115 @@ export const editFrom = (params: Record<string, unknown>): EditDraft => {
   }
 
   const action = params.action;
-  if (action !== 'append' && action !== 'replace') {
-    throw failure("action must be either 'append' or 'replace'. Nothing else can be done to a page.");
-  }
-
-  const text = params.text;
-  if (typeof text !== 'string' || text.trim() === '') {
-    throw failure('text is required: there is nothing to write.');
-  }
-  if (text.length > MAX_TEXT_CHARS) {
+  if (action !== 'append' && action !== 'replace' && action !== 'insert') {
     throw failure(
-      `That is ${text.length} characters. An edit records a decision, not a page — ` +
-        `${MAX_TEXT_CHARS} is the most. A longer change is a new page.`,
+      "action must be 'append', 'replace' or 'insert'. Nothing else can be done to a page.",
     );
   }
+
+  const rawText = params.text;
+  const rawHtml = params.html;
+  const hasText = typeof rawText === 'string' && rawText.trim() !== '';
+  const hasHtml = typeof rawHtml === 'string' && rawHtml.trim() !== '';
+
+  // Two ways to say what to write, and exactly one of them per change. Silently
+  // preferring one would mean a caller that filled in both gets a page holding
+  // the half it was not looking at.
+  if (hasText && hasHtml) {
+    throw failure(
+      'Give either text or html, not both. text is written as one paragraph with ' +
+        'nothing interpreted; html is markup and is what a table has to be written as.',
+    );
+  }
+  if (!hasText && !hasHtml) {
+    throw failure('text or html is required: there is nothing to write.');
+  }
+
+  if (hasText && (rawText as string).length > MAX_TEXT_CHARS) {
+    throw failure(
+      `That is ${(rawText as string).length} characters. An edit records a decision, ` +
+        `not a page — ${MAX_TEXT_CHARS} is the most. A longer change is a new page.`,
+    );
+  }
+  if (hasHtml && (rawHtml as string).length > MAX_HTML_CHARS) {
+    throw failure(
+      `That is ${(rawHtml as string).length} characters of markup. ${MAX_HTML_CHARS} is ` +
+        'the most a single patch may carry. A change larger than that is a new page.',
+    );
+  }
+
+  // Validated here rather than at the point of sending, so a malformed table is
+  // refused by the preview — before anybody is asked to approve it, and long
+  // before anything reaches the page.
+  const html = hasHtml ? validateFragment(rawHtml as string) : null;
+  const text = hasText ? (rawText as string) : null;
 
   const elementId = params.element_id;
-  if (action === 'replace') {
-    if (typeof elementId !== 'string' || !isGeneratedId(elementId)) {
+  const named = typeof elementId === 'string' && elementId !== '';
+
+  if (action === 'append') {
+    if (named) {
       throw failure(
-        'A replace needs element_id: the generated id of the part to change, as ' +
-          'preview_onenote_edit reports it. Read the page again if you do not have one.',
+        'An append goes at the end of the page and takes no element_id. To change ' +
+          'something already written use replace, and to put something beside an ' +
+          'existing table use insert.',
       );
     }
-  } else if (elementId !== undefined && elementId !== null && elementId !== '') {
+  } else if (!named || !isGeneratedId(elementId as string)) {
     throw failure(
-      'An append goes at the end of the page and takes no element_id. To change ' +
-        'something already written, use replace.',
+      `A ${action} needs element_id: the generated id of the part to ` +
+        `${action === 'replace' ? 'change' : 'sit beside'}, as preview_onenote_edit ` +
+        'reports it. Read the page again if you do not have one.',
     );
+  }
+
+  const targetsTable = named && isTableId(elementId as string);
+
+  // The three rules Graph imposes, stated where a caller meets them rather than
+  // left to be discovered as a 20138. `tr` and `td` support no update action at
+  // all, so a table is changed by replacing the whole of it — and a whole table
+  // cannot be expressed as plain text.
+  if (action === 'replace' && targetsTable) {
+    if (html === null) {
+      throw failure(
+        'A table is replaced with markup, not plain text: pass the whole new table ' +
+          'as html, starting with <table> and ending with </table>. OneNote supports ' +
+          'no update action on a row or a cell, so the whole table is the unit.',
+      );
+    }
+    if (rootTag(html) !== 'table') {
+      throw failure(
+        'Replacing a table has to yield exactly one table. Send one <table> element ' +
+          'and nothing beside it.',
+      );
+    }
+  }
+
+  if (action === 'replace' && !targetsTable && html !== null) {
+    throw failure(
+      'Only a table is replaced with markup. This element takes plain text, written ' +
+        'as one paragraph. To restructure a section, replace the table it lives in.',
+    );
+  }
+
+  if (action === 'insert' && !targetsTable) {
+    throw failure(
+      'insert puts a new block beside a table, and element_id does not name one. ' +
+        'OneNote supports a sibling insert on a table; for anything else the ways to ' +
+        'add content are append, at the end of the page, and replace.',
+    );
+  }
+
+  const position = params.position;
+  if (action === 'insert') {
+    if (position !== 'before' && position !== 'after') {
+      throw failure("An insert needs position: 'before' or 'after' the table named.");
+    }
+    if (html === null) {
+      throw failure('An insert writes markup: pass the new block as html.');
+    }
+  } else if (position !== undefined && position !== null && position !== '') {
+    throw failure('position belongs to an insert and to nothing else.');
   }
 
   const source = params.source_page;
@@ -266,8 +638,10 @@ export const editFrom = (params: Record<string, unknown>): EditDraft => {
   return {
     page_id: pageId,
     action,
-    element_id: action === 'replace' ? (elementId as string) : null,
+    element_id: action === 'append' ? null : (elementId as string),
     text,
+    html,
+    position: action === 'insert' ? (position as 'before' | 'after') : null,
     source_page: typeof source === 'string' && source !== '' ? source : null,
   };
 };
@@ -302,7 +676,17 @@ const base32hex = (bytes: Uint8Array): string => {
  * the element still holds exactly what the musician was shown.
  */
 export const editToken = async (draft: EditDraft, preImageHtml: string): Promise<string> => {
-  const canonical = [draft.page_id, draft.action, draft.element_id ?? '', draft.text].join(' ');
+  const canonical = [
+    draft.page_id,
+    draft.action,
+    draft.element_id ?? '',
+    draft.position ?? '',
+    draft.text ?? '',
+    // The markup itself, not a rendering of it. The preview shows a table as
+    // rows because that is what can be read, but two different tables can render
+    // to the same rows — so what the token binds is what would actually be sent.
+    draft.html ?? '',
+  ].join(' ');
   const data = new TextEncoder().encode(`confirm-edit ${canonical} ${preImageHtml}`);
   return base32hex(new Uint8Array(await crypto.subtle.digest('SHA-256', data)));
 };
@@ -334,6 +718,97 @@ const asText = (html: string): string =>
     .trim();
 
 /**
+ * The elements of one kind directly inside a fragment, each whole.
+ *
+ * Depth-counted like `extractElement`, and for the same reason: a lazy match
+ * returns half a row whenever a cell holds anything with a closing tag of its
+ * own. Where the markup does not balance it stops rather than guessing, which
+ * shows up as a short table in the preview and is meant to — a preview that
+ * silently drops rows is worse than one that visibly ends early.
+ */
+const childElements = (html: string, tags: string): string[] => {
+  const out: string[] = [];
+  const open = new RegExp(`<(?:${tags})\\b[^>]*>`, 'gi');
+  let start: RegExpExecArray | null;
+
+  while ((start = open.exec(html)) !== null) {
+    const step = new RegExp(`<(/?)(?:${tags})\\b[^>]*?(/?)>`, 'gi');
+    step.lastIndex = start.index;
+    let depth = 0;
+    let closed = false;
+    let match: RegExpExecArray | null;
+
+    while ((match = step.exec(html)) !== null) {
+      if (match[2] === '/') continue;
+      depth += match[1] === '/' ? -1 : 1;
+      if (depth === 0) {
+        out.push(html.slice(start.index, match.index + match[0].length));
+        open.lastIndex = match.index + match[0].length;
+        closed = true;
+        break;
+      }
+    }
+
+    if (!closed) break;
+  }
+
+  return out;
+};
+
+/** A table as its cell text, row by row. */
+export const tableRows = (tableHtml: string): string[][] =>
+  childElements(tableHtml, 'tr').map((row) =>
+    childElements(row, 'td|th').map((cell) => asText(cell).replace(/\s*\n\s*/g, ' / ')),
+  );
+
+const CELL_WIDTH = 40;
+
+/**
+ * A table as something a musician can read and say yes or no to.
+ *
+ * This is the difference between a whole-table replace being previewable and
+ * not. The thing a replace destroys here is a block of markup hundreds of
+ * characters wide; shown raw it is not a preview, it is a wall that gets
+ * approved unread — and an approval nobody could read is exactly the failure
+ * the confirmation step exists to prevent. So the table is shown as its rows.
+ *
+ * Columns are padded to line up, and a long cell is cut with an ellipsis: the
+ * shape of the table is what tells the reader whether the right one is about to
+ * be overwritten, and that shape is unreadable when one cell is a paragraph.
+ */
+export const renderTable = (tableHtml: string): string => {
+  const rows = tableRows(tableHtml);
+  if (rows.length === 0) return asText(tableHtml);
+
+  const clipped = rows.map((row) =>
+    row.map((cell) => (cell.length > CELL_WIDTH ? `${cell.slice(0, CELL_WIDTH - 1)}…` : cell)),
+  );
+  const columns = Math.max(...clipped.map((row) => row.length));
+  const widths = Array.from({ length: columns }, (_, i) =>
+    Math.max(...clipped.map((row) => (row[i] ?? '').length)),
+  );
+
+  return clipped
+    .map(
+      (row) =>
+        `  | ${Array.from({ length: columns }, (_, i) => (row[i] ?? '').padEnd(widths[i])).join(' | ')} |`,
+    )
+    .join('\n');
+};
+
+/** Whether a generated id names a table, which decides what may be done to it. */
+export const isTableId = (id: string): boolean => id.startsWith('table:');
+
+/**
+ * How an element reads, whichever kind it is.
+ *
+ * A table goes through `renderTable` and everything else through `asText`, so
+ * one call site does not have to know which it is holding.
+ */
+const readable = (elementHtml: string, id: string): string =>
+  isTableId(id) ? renderTable(elementHtml) : asText(elementHtml);
+
+/**
  * What the page currently says, element by element, so a caller can name the
  * part to change without guessing an id.
  *
@@ -345,13 +820,36 @@ const asText = (html: string): string =>
 export const readEditableParts = async (
   token: string,
   pageId: string,
-): Promise<{ html: string; etag: string | null; parts: { element_id: string; text: string }[] }> => {
+): Promise<{ html: string; etag: string | null; parts: EditablePart[] }> => {
   const { html, etag } = await onenotePageContent(pageId, token);
-  const parts = readTargets(html)
-    .generatedIds.filter((id) => /^(?:p|h[1-6]|li):/.test(id))
-    .map((id) => {
+  const ids = readTargets(html).generatedIds.filter((id) =>
+    /^(?:p|h[1-6]|li|table):/.test(id),
+  );
+
+  // Which table, if any, each element sits inside. Read once here rather than
+  // per part: the enclosing table has to be extracted anyway, and on a page of
+  // twenty tables the alternative is quadratic in the page.
+  const tables = ids
+    .filter(isTableId)
+    .map((id) => ({ id, html: extractElement(html, 'id', id) }))
+    .filter((t): t is { id: string; html: string } => t.html !== undefined);
+
+  const parts = ids
+    .map((id): EditablePart => {
       const element = extractElement(html, 'id', id);
-      return { element_id: id, text: element === undefined ? '' : asText(element) };
+      return {
+        element_id: id,
+        kind: isTableId(id) ? 'table' : 'text',
+        text: element === undefined ? '' : readable(element, id),
+        // A paragraph in a cell is listed, because it is there and hiding it
+        // would be a lie about the page. But Graph supports no update action on
+        // `tr` or `td`, so what a replace aimed at it does is not something this
+        // tool can promise — the documented way to change a cell is to replace
+        // the whole table, and the caller is told which one that is.
+        inside_table: isTableId(id)
+          ? null
+          : (tables.find((t) => t.html.includes(`id="${id}"`))?.id ?? null),
+      };
     })
     .filter((part) => part.text !== '');
 
@@ -370,10 +868,13 @@ export async function previewEdit(token: string, params: Record<string, unknown>
   // the tool text says so. It used to be refused here, which meant a model
   // following that text got an error and had to guess its way out.
   //
+  // An insert is the same shape: it names a table it can only have learnt about
+  // by reading the page first.
+  //
   // No confirmation token comes back from this branch. Nothing has been chosen
   // yet, and a token would be one for a change nobody has described.
   const wantsPart =
-    params.action === 'replace' &&
+    (params.action === 'replace' || params.action === 'insert') &&
     (params.element_id === undefined || params.element_id === null || params.element_id === '');
 
   if (wantsPart) {
@@ -401,9 +902,19 @@ export async function previewEdit(token: string, params: Record<string, unknown>
   const draft = editFrom(params);
   const { html, parts } = await readEditableParts(token, draft.page_id);
 
+  // What the change says, rendered the way the thing it touches is rendered, so
+  // the before and the after in a preview are comparable rather than one being
+  // rows and the other markup.
+  const proposed =
+    draft.html === null
+      ? (draft.text as string).trim()
+      : rootTag(draft.html) === 'table'
+        ? renderTable(draft.html)
+        : asText(draft.html);
+
   if (draft.action === 'append') {
     return {
-      preview: `Add to the end of the page:\n\n${draft.text.trim()}`,
+      preview: `Add to the end of the page:\n\n${proposed}`,
       page_id: draft.page_id,
       parts,
       confirmation_token: await editToken(draft, ''),
@@ -413,18 +924,43 @@ export async function previewEdit(token: string, params: Record<string, unknown>
     };
   }
 
+  // Captured for both, and for different reasons. A replace needs it because it
+  // is the only copy of what is about to be destroyed. An insert destroys
+  // nothing, but it lands relative to this element — so binding the token to the
+  // anchor's current content is what makes "the page changed since you looked"
+  // a refusal rather than a block that quietly lands somewhere else.
   const captured = preImage(html, draft.element_id as string);
+  const anchor = readable(captured, draft.element_id as string);
+
+  if (draft.action === 'insert') {
+    return {
+      preview:
+        `Put this ${draft.position} the table that currently reads:\n\n${anchor}\n\n` +
+        `New block:\n\n${proposed}`,
+      page_id: draft.page_id,
+      parts,
+      confirmation_token: await editToken(draft, captured),
+      note:
+        'Show this to the musician and wait for their yes. Nothing is overwritten ' +
+        'or removed — this adds a block beside the table quoted above. If that ' +
+        'table is not the one they mean, the block will land in the wrong place.',
+    };
+  }
 
   return {
-    preview:
-      `Replace this:\n\n${asText(captured)}\n\nWith this:\n\n${draft.text.trim()}`,
+    preview: `Replace this:\n\n${anchor}\n\nWith this:\n\n${proposed}`,
     page_id: draft.page_id,
     parts,
     confirmation_token: await editToken(draft, captured),
     note:
       'Show this to the musician and wait for their yes. This overwrites what is ' +
-      'quoted above, and OneNote keeps no version of a page — what it replaces is ' +
-      'kept in this install\'s own write log and nowhere else.',
+      'quoted above' +
+      (isTableId(draft.element_id as string)
+        ? ' — the whole table, every row of it, because OneNote supports no change ' +
+          'to a single row or cell'
+        : '') +
+      ', and OneNote keeps no version of a page — what it replaces is ' +
+      "kept in this install's own write log and nowhere else.",
   };
 }
 
@@ -448,32 +984,51 @@ export async function applyEdit(
   const draft = editFrom(params);
   const { html, etag } = await onenotePageContent(draft.page_id, token);
 
-  const captured = draft.action === 'replace' ? preImage(html, draft.element_id as string) : '';
+  const captured = draft.action === 'append' ? '' : preImage(html, draft.element_id as string);
 
   const expected = await editToken(draft, captured);
   if (params.confirmation_token !== expected) {
     throw failure(
-      draft.action === 'replace'
-        ? 'That part of the page is not what was previewed — either the values ' +
-          'changed, or the page did since it was shown. Nothing was written. Call ' +
-          'preview_onenote_edit again and show the musician what it returns now.'
-        : 'The confirmation token does not match these values. Call ' +
+      draft.action === 'append'
+        ? 'The confirmation token does not match these values. Call ' +
           'preview_onenote_edit again with exactly what should be written, show the ' +
-          'musician what it returns, then apply it with those same values.',
+          'musician what it returns, then apply it with those same values.'
+        : 'That part of the page is not what was previewed — either the values ' +
+          'changed, or the page did since it was shown. Nothing was written. Call ' +
+          'preview_onenote_edit again and show the musician what it returns now.',
     );
   }
 
+  // Plain text becomes exactly one escaped paragraph, as it always has. Markup
+  // goes out as the caller wrote it — validated in `editFrom`, hashed into the
+  // token, and unchanged since the musician saw it rendered.
+  const content = draft.html ?? paragraph(draft.text as string);
+
   const command =
     draft.action === 'append'
-      ? appendCommand('body', paragraph(draft.text))
-      : replaceCommand(draft.element_id as string, paragraph(draft.text));
+      ? appendCommand('body', content)
+      : draft.action === 'insert'
+        ? insertCommand(
+            draft.element_id as string,
+            draft.position as 'before' | 'after',
+            content,
+          )
+        : replaceCommand(draft.element_id as string, content);
 
   await onenotePatchPage(draft.page_id, [command], token, etag);
+
+  const wrote = draft.html === null ? (draft.text as string).trim() : draft.html;
+  const destroyed = draft.action === 'replace' ? readable(captured, draft.element_id as string) : '';
 
   // After the write, and carrying what it destroyed. For a replace this line is
   // the only copy of the previous content that exists anywhere.
   await record({
-    operation: draft.action === 'append' ? 'append_onenote_page' : 'replace_onenote_element',
+    operation:
+      draft.action === 'append'
+        ? 'append_onenote_page'
+        : draft.action === 'insert'
+          ? 'insert_onenote_element'
+          : 'replace_onenote_element',
     // The text itself, not merely that something happened. `summary` is
     // documented as what was written "as the user would read it back", and the
     // calendar rows honour that while these two originally named only the page
@@ -482,10 +1037,16 @@ export async function applyEdit(
     // reconstructing an edit they cannot see any other way.
     summary:
       draft.action === 'append'
-        ? `Added to the end of the page: ${draft.text.trim()}`
-        : `Replaced "${asText(captured)}" with "${draft.text.trim()}"`,
+        ? `Added to the end of the page: ${wrote}`
+        : draft.action === 'insert'
+          ? `Inserted ${draft.position} an existing table: ${wrote}`
+          : `Replaced "${destroyed}" with "${wrote}"`,
     target: draft.page_id,
     source_page: draft.source_page,
+    // Only a replace has one. An insert captured the anchor to bind its token,
+    // but nothing of it was destroyed, and recording it as a pre-image would
+    // put content in the log that is still on the page — which is the one thing
+    // a reader of this log must be able to trust it does not do.
     pre_image: draft.action === 'replace' ? captured : null,
   });
 
@@ -495,8 +1056,10 @@ export async function applyEdit(
     note:
       draft.action === 'append'
         ? 'The page now carries this at the end. Nothing was removed.'
-        : 'The page now says this. What it said before is in this install\'s write ' +
-          'log and nowhere else — OneNote keeps no version of a page, so tell the ' +
-          'musician that rather than implying it can be undone in OneNote.',
+        : draft.action === 'insert'
+          ? 'The page now carries this block beside that table. Nothing was removed.'
+          : 'The page now says this. What it said before is in this install\'s write ' +
+            'log and nowhere else — OneNote keeps no version of a page, so tell the ' +
+            'musician that rather than implying it can be undone in OneNote.',
   };
 }

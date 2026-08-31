@@ -69,8 +69,8 @@ test('a replace with no element_id asks which part, rather than refusing', async
   // nobody has described.
   assert.equal(asked.confirmation_token, null);
   assert.deepEqual(asked.parts, [
-    { element_id: para, text: 'Fee: 1200' },
-    { element_id: other, text: 'Load-in 18:00' },
+    { element_id: para, kind: 'text', text: 'Fee: 1200', inside_table: null },
+    { element_id: other, kind: 'text', text: 'Load-in 18:00', inside_table: null },
   ]);
 });
 
@@ -120,8 +120,8 @@ test('the preview lists the parts, so an id never has to be guessed', async () =
   );
 
   assert.deepEqual(preview.parts, [
-    { element_id: para, text: 'Fee: 1200' },
-    { element_id: other, text: 'Load-in 18:00' },
+    { element_id: para, kind: 'text', text: 'Fee: 1200', inside_table: null },
+    { element_id: other, kind: 'text', text: 'Load-in 18:00', inside_table: null },
   ]);
 });
 

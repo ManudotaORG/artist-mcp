@@ -2044,32 +2044,59 @@ const createServer = async (
       "preview_onenote_edit",
       "Call this before edit_onenote_page — it is the only way to obtain the confirmation_token that one requires, and it is what puts the exact change in front of the musician. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. " +
         "Reads the page as it stands right now and shows what the change would " +
-        "do to it. Changes nothing. For a replace it quotes the text that would " +
-        "be overwritten, which is the part the musician has to agree to. It also " +
-        "returns the page's editable parts with an element_id for each, so pass " +
-        "action 'replace' with no element_id first if you do not know which part " +
-        "to change, read the parts back, then preview again naming one. Those " +
-        "ids are read fresh each call and are good only for the next call — " +
-        "never store one, repeat one to the musician, or reuse one from earlier " +
-        "in the conversation.",
+        "do to it. Changes nothing. For a replace it quotes what would be " +
+        "overwritten — a table as its rows — which is the part the musician has " +
+        "to agree to. It also returns the page's editable parts with an " +
+        "element_id for each, paragraphs and TABLES alike, so pass action " +
+        "'replace' with no element_id first if you do not know which part to " +
+        "change, read the parts back, then preview again naming one. Those ids " +
+        "are read fresh each call and are good only for the next call — never " +
+        "store one, repeat one to the musician, or reuse one from earlier in the " +
+        "conversation. Most of a filled-in page lives in tables, and a cell " +
+        "cannot be changed on its own: OneNote supports no update to a row or a " +
+        "cell, so changing one value means replacing that whole table with html " +
+        "carrying every other cell unchanged. Copy them from the rows this " +
+        "returns rather than retyping them from memory.",
       {
         page_id: z
           .string()
           .describe("The page to change, by id from list_notes or read_note. The id, not the title"),
         action: z
-          .enum(["append", "replace"])
+          .enum(["append", "replace", "insert"])
           .describe(
-            "append adds a paragraph at the end and removes nothing. replace " +
-              "overwrites one existing element and is the destructive one",
+            "append adds to the end of the page and removes nothing. replace " +
+              "overwrites one existing element — a paragraph, or a whole table — and " +
+              "is the destructive one. insert puts a new block before or after an " +
+              "existing table, which is the only way to add a section in the middle " +
+              "of a page rather than at the end",
           ),
-        text: z.string().describe("The new text, plain. Markdown and HTML are NOT interpreted"),
+        text: z
+          .string()
+          .optional()
+          .describe(
+            "The new text, plain. Markdown and HTML are NOT interpreted. For a " +
+              "paragraph. Give either this or html, never both",
+          ),
+        html: z
+          .string()
+          .optional()
+          .describe(
+            "The new content as markup, which is how a table has to be written: one " +
+              "whole <table> for a replace, any block for an insert. Tables, rows, " +
+              "cells, paragraphs, headings, lists and simple emphasis only — anything " +
+              "else is refused and nothing is written",
+          ),
         element_id: z
           .string()
           .optional()
           .describe(
-            "For replace only: which part to overwrite, using an element_id this " +
-              "tool reported in the parts list on a previous call",
+            "For replace and insert: which part to overwrite or sit beside, using an " +
+              "element_id this tool reported in the parts list on a previous call",
           ),
+        position: z
+          .enum(["before", "after"])
+          .optional()
+          .describe("For insert only: which side of that table the new block goes on"),
         source_page: z
           .string()
           .optional()
@@ -2080,15 +2107,35 @@ const createServer = async (
           const { preview, confirmation_token, parts, note } = await call<{
             preview: string | null;
             confirmation_token: string | null;
-            parts: { element_id: string; text: string }[];
+            parts: {
+              element_id: string;
+              kind: "text" | "table";
+              text: string;
+              inside_table: string | null;
+            }[];
             note: string;
           }>("preview_onenote_edit", params);
 
+          // A table is listed as its rows, already laid out, so it goes in
+          // unindented. A paragraph sitting in a cell says so and names the
+          // table to replace instead: without that line a model reads a cell as
+          // separately editable, aims a replace at it, and gets a refusal it
+          // cannot interpret.
           const listed =
             parts.length === 0
               ? ""
               : "\n\nThe editable parts of this page right now:\n" +
-                parts.map((p) => `  ${p.element_id}\n    ${p.text}`).join("\n");
+                parts
+                  .map((p) =>
+                    p.kind === "table"
+                      ? `  ${p.element_id}  (a table — replace it whole, with html)\n${p.text}`
+                      : `  ${p.element_id}${
+                          p.inside_table === null
+                            ? ""
+                            : `  (in table ${p.inside_table} — a cell cannot be changed on its own; replace that table)`
+                        }\n    ${p.text}`,
+                  )
+                  .join("\n");
 
           // No token means nothing has been chosen yet: this was the call that
           // asks which part to change. Saying "wait for their yes" here would
@@ -2123,23 +2170,32 @@ const createServer = async (
       "Only call this after preview_onenote_edit AND after the musician has said yes to what the preview showed. Never call it to find out whether it would work. " +
         "Changes ONE page that artist-mcp itself created. It CANNOT touch a page " +
         "the musician wrote or one another app created — Microsoft refuses those, " +
-        "not this tool — and it cannot delete anything. 'append' adds a paragraph " +
-        "at the end and removes nothing. 'replace' overwrites one element and is " +
-        "destructive: OneNote keeps no page version and a replaced paragraph is " +
+        "not this tool — and it cannot delete anything. 'append' adds to the end " +
+        "and removes nothing. 'insert' adds a block before or after an existing " +
+        "table and removes nothing. 'replace' overwrites one element and is " +
+        "destructive: OneNote keeps no page version and what it replaced is " +
         "recoverable only from this install's own write log, so never describe it " +
-        "as undoable in OneNote. Requires the confirmation_token from a preview " +
+        "as undoable in OneNote. Replacing a TABLE overwrites every row of it at " +
+        "once, because OneNote supports no change to a single row or cell — so " +
+        "the html must carry the cells that are staying exactly as they read now, " +
+        "and a cell left out is a value destroyed. Requires the confirmation_token from a preview " +
         "of these exact values; if the page changed since that preview the token " +
         "stops matching and nothing is written, which means preview again and " +
         "show the musician the new version. Never write a value the musician " +
         "chose in chat to break a tie between pages that still disagree.",
       {
         page_id: z.string().describe("Exactly what the preview showed"),
-        action: z.enum(["append", "replace"]).describe("Exactly what the preview showed"),
-        text: z.string().describe("Exactly what the preview showed"),
+        action: z.enum(["append", "replace", "insert"]).describe("Exactly what the preview showed"),
+        text: z.string().optional().describe("Exactly what the preview was given"),
+        html: z.string().optional().describe("Exactly what the preview was given, byte for byte"),
         element_id: z
           .string()
           .optional()
-          .describe("For replace: the same element_id the preview was given"),
+          .describe("For replace and insert: the same element_id the preview was given"),
+        position: z
+          .enum(["before", "after"])
+          .optional()
+          .describe("For insert: the same position the preview was given"),
         source_page: z
           .string()
           .optional()
