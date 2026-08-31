@@ -36,6 +36,11 @@ export const hostedAudit =
         p_summary: entry.summary,
         p_target: entry.target,
         p_source_page: entry.source_page ?? null,
+        // The only copy of what a replaced element said. Dropping it here
+        // would leave the hosted service accepting a destructive OneNote edit
+        // and discarding its undo — not a weaker recovery than the local one,
+        // but none. See docs/decisions/0004-onenote-page-maintenance.md.
+        p_pre_image: entry.pre_image ?? null,
       });
       if (error) throw new Error(error.message);
     } catch (err) {
