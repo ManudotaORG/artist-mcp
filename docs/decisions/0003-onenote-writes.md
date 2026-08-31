@@ -5,7 +5,12 @@ rather than quoted before any code was written, and the `createdByAppId` claim
 corrected — see "What was verified". **Deleting and replacing are ruled out
 permanently**, because a Graph write leaves nothing recoverable — not because
 the scope is too broad, which turned out to be false. Appending is undecided and
-is a different question. Extends
+is a different question. **The permanence claim did not hold**, and
+[0004](0004-onenote-page-maintenance.md) says why: replacing was measured here
+against the page body, where nothing can be salvaged, and a paragraph-level
+replace is small enough to capture before it is overwritten. Read that record
+alongside the "nothing can be undone" section below, which is correct about the
+operation it tested and wrong about the operation that was available. Extends
 [0001](0001-opt-in-calendar-writes.md), which ruled OneNote writes out and said
 so in terms this record has to answer. Raised by issue #117.
 

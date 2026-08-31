@@ -94,6 +94,26 @@ test('a grant widens its own provider and never the other', () => {
   );
 });
 
+/**
+ * The editing grant asks for a different Microsoft scope from the creating one,
+ * and the two are not interchangeable: `Notes.Create` cannot express an edit at
+ * all, and `Notes.ReadWrite.CreatedByApp` is what Microsoft names in the body of
+ * its own 403 for PATCH. An install holding only the edit grant must still get
+ * the editing scope on its consent screen.
+ */
+test('editing asks for the editing scope, not the creating one', () => {
+  const ms = scopesFor('microsoft', ['onenote-edit']).split(' ');
+  assert.ok(ms.includes('Notes.ReadWrite.CreatedByApp'));
+  assert.ok(!ms.includes('Notes.Create'), 'the edit grant does not ask for Notes.Create itself');
+  assert.equal(scopesFor('google', ['onenote-edit']), PROVIDERS.google.scope);
+});
+
+test('holding both OneNote grants asks for both scopes', () => {
+  const ms = scopesFor('microsoft', ['onenote-create', 'onenote-edit']).split(' ');
+  assert.ok(ms.includes('Notes.Create'));
+  assert.ok(ms.includes('Notes.ReadWrite.CreatedByApp'));
+});
+
 test('an install holding both providers asks each for only its own writes', () => {
   const both = ['calendar-create', 'onenote-create'];
   const ms = scopesFor('microsoft', both).split(' ');

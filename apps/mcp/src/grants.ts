@@ -42,6 +42,20 @@ export const WRITE_CAPABILITIES = {
   'onenote-create':
     'add a new page to a OneNote section, after showing it to you first. ' +
     'It cannot change or delete any page, including the ones it made.',
+  // Also not this file's boundary to keep, and for a stronger reason than
+  // `onenote-create`: `Notes.ReadWrite.CreatedByApp` distinguishes *this* app
+  // from every other, so a page the musician wrote is refused by Microsoft
+  // before our code is reached — verified as 401 40003, not assumed.
+  //
+  // One capability covering both actions rather than two. No scope separates
+  // appending from replacing, so a second grant would be a promise this
+  // repository keeps while reading like the provider-enforced kind, which is
+  // the confusion 0003 exists to prevent. What makes a replace survivable is
+  // the pre-image, not the name it was granted under.
+  // See docs/decisions/0004-onenote-page-maintenance.md.
+  'onenote-edit':
+    'change a page that artist-mcp itself created, after showing it to you first. ' +
+    'It cannot touch a page you wrote, and it cannot delete anything.',
 } as const;
 
 export type WriteCapability = keyof typeof WRITE_CAPABILITIES;

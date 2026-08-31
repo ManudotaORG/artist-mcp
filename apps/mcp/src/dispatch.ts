@@ -28,6 +28,7 @@ import {
 } from './calendar.js';
 import { listEmails, readEmail } from './mail.js';
 import { listNotes, mapNotes, readNote } from './notes.js';
+import { applyEdit, previewEdit } from './onenote-patch.js';
 import { createPage, previewPage } from './onenote-write.js';
 import { accessTokenFor } from './oauth.js';
 import { type ProviderName, loadTokens } from './tokens.js';
@@ -90,6 +91,16 @@ export const OPERATIONS = {
   // `Notes.Create` cannot express an edit or a delete, so there is no sibling
   // row here to refuse. See docs/decisions/0003-onenote-writes.md.
   create_onenote_page: { provider: 'microsoft', effect: 'write' },
+  // Reads the page and shows the change against what is actually written there
+  // now. A read, and necessarily so: it is what has to happen before a write is
+  // allowed, and gating it would gate the safeguard rather than the danger.
+  preview_onenote_edit: { provider: 'microsoft', effect: 'read' },
+  // The first row here that can destroy something. Both actions ride one row
+  // and one grant because no scope separates them, so the distinction is made
+  // where it can be enforced — in the operation itself, where a replace cannot
+  // proceed unless what it would overwrite has been captured first.
+  // See docs/decisions/0004-onenote-page-maintenance.md.
+  edit_onenote_page: { provider: 'microsoft', effect: 'write' },
 } as const satisfies Record<string, { provider: ProviderName; effect: 'read' | 'write' }>;
 
 export type Operation = keyof typeof OPERATIONS;
@@ -199,6 +210,10 @@ export const dispatchWith =
         return (await previewPage(token, params)) as T;
       case 'create_onenote_page':
         return (await createPage(token, params, record)) as T;
+      case 'preview_onenote_edit':
+        return (await previewEdit(token, params)) as T;
+      case 'edit_onenote_page':
+        return (await applyEdit(token, params, record)) as T;
       case 'list_calendars':
         // No parameters by design: the whole value is knowing the full set, and
         // a filtered list of what exists is the reach problem again.
