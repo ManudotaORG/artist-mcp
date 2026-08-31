@@ -76,6 +76,26 @@ may have edited since.
 - Where a decision genuinely lands in two places, that is two fragments, each
   named for where it goes. Not one merged block covering both.
 
+### A table is the exception, and only because OneNote makes it one
+
+OneNote supports no change to a single row or cell. The tool can replace a whole
+table and nothing smaller, so where the decision lands in a table the smallest
+fragment it can *apply* is the entire table.
+
+That does not loosen anything above; it moves the care somewhere else. **Every
+cell that is not changing has to be carried across exactly as it reads now** —
+copy them from the rows the preview lists rather than retyping them from memory,
+because a cell left out of the markup is not a cell left alone, it is a value
+destroyed. `UNKNOWN` stays `UNKNOWN` in those words, and a column the musician
+never fills stays empty.
+
+Say what the change is, not what the mechanism is. "Changing Honorar to 1450" is
+the decision; that the whole table is rewritten to do it is worth one sentence,
+because they are approving the loss of everything in it if the markup is wrong.
+
+A patch to be pasted is unaffected: they place a row themselves, so it stays one
+row.
+
 A whole page is a fragment only when the whole page is what they settled — the
 consolidated page in `policy:divergence`, once every conflicting field has been
 decided, which goes somewhere new rather than over either original. Wanting a
