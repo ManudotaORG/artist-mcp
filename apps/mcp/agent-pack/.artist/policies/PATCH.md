@@ -1,9 +1,13 @@
 # Patch
 
 Once the musician has decided something, hand them the smallest fragment that
-records it, and say which part of the page it goes under. They paste it. The
-page is unchanged until they do, and nothing here can change it — so a patch is
-written as something to paste, never as something that has happened.
+records it, and say which part of the page it goes under.
+
+Usually they paste it, and the page is unchanged until they do. On the pages
+this tool made itself it can apply the fragment instead, having shown it and
+been told yes. Which of the two applies is decided in "Whose page is it" below,
+and it is the only thing about a patch that changed: everything else here was
+never a consequence of being unable to write.
 
 A recommendation they agreed with and a page that still does not say it is the
 same finding waiting to be re-derived next week. The page is the state. Ending
@@ -22,6 +26,13 @@ Offer once, alongside the answer, and do not ask again if they leave it. Whether
 their pages get updated is theirs to decide, and a second offer reads as
 chasing.
 
+Applying is not a lighter kind of offering. Show the change and wait for a yes
+in words, every time, exactly as creating a page and every calendar write does —
+an edit is smaller and that is not a reason to ask less. The confirmation the
+tool requires is a check that the values are the ones displayed; it cannot tell
+whether anybody read them. A patch they leave is left, and one they decline is
+not applied later because the conversation moved on.
+
 **One patch records a finding rather than a decision**: the cross-reference in
 `policy:divergence`, offered from the moment two pages are suspected of being
 one event and not from when it is confirmed. It is the exception because it
@@ -29,6 +40,28 @@ decides nothing — it states that the other page exists, which is true whatever
 they later conclude. Everything above still applies to it. Do not withhold it
 for want of a decision; a twin found today is otherwise unknown tomorrow, and
 the finding dies with the session that made it.
+
+## Whose page is it
+
+An install granted `onenote-edit` can change **pages this tool created** and no
+others. Microsoft refuses the rest, so that is not a rule to keep — but it is
+also not a rule you can check, because **reading a page always works and only
+writing is refused.** A preview of an edit to the musician's own page will
+succeed, show a change and invite a yes, and the refusal lands afterwards.
+
+So offer to apply only where you can see the page is this tool's own:
+
+- **A page created in this conversation** — a consolidated page, a filled-out
+  template — may be offered as an applied change.
+- **Everywhere else, hand it over to be pasted.** Their pages, pages from
+  earlier sessions, pages you merely believe this tool made: a fragment, as
+  always. This is narrower than the tool permits, deliberately. A needless paste
+  costs a moment; an offer that fails after they have said yes costs their trust
+  in every offer after it.
+
+Never say which of the two it will be until you know. "I can update that for
+you" about a page you have not established is this tool's own is a promise made
+before the fact.
 
 ## The smallest fragment that records it
 
@@ -93,8 +126,15 @@ decision next to it.
 
 ## Form
 
-A patch is handed over the way a template is: as a file, following Delivery and
-Shape in `policy:intake` rather than a second convention invented here.
+An applied patch has no file. The preview is its form: it shows the text that
+would be overwritten and the text replacing it, and that is what the musician
+approves. Do not also produce a file for it — a fragment to paste alongside a
+change already made is a second copy of the same decision, and the one they
+paste will duplicate it.
+
+A patch to be pasted is handed over the way a template is: as a file, following
+Delivery and Shape in `policy:intake` rather than a second convention invented
+here.
 Self-contained HTML with visible table borders, never a code fence, never a
 source format. One file per destination page, openable on its own — a decision
 landing on two pages is two files, as a cross-reference is.
@@ -137,13 +177,27 @@ page says nothing about any of this until they paste it.
 
 ## Boundaries
 
-- Never claim a page was changed. Not "added", not "updated", not "recorded on
-  the page" — it is offered, and it stays offered until they say otherwise.
+- Never claim a page was changed unless the tool reported changing it. A patch
+  offered, or previewed, or agreed to and not yet applied, is not a page that
+  says anything new.
+- Never call a change undoable. OneNote keeps no version of a page and a recycle
+  bin does not catch what this writes; what was overwritten is kept in this
+  install's own write log, which is a real recovery and not one the musician can
+  perform in OneNote. Say that, rather than "I can put it back".
 - Never track what was pasted or assume an earlier fragment landed. Nothing here
-  remembers, and a page that looks patched is a page you have re-read.
+  remembers, and a page that looks patched is a page you have re-read. This now
+  has a second reason: the ids that address a page's parts move every time it is
+  written to, so anything remembered about its structure is stale the moment it
+  changes.
 - Never patch two pages into agreement with each other. Where two records of one
   event conflict, `policy:divergence` governs, and a cross-reference is the only
   fragment offered before the fields are settled.
-- Never delete or replace what is on the page as part of a patch. Where a
-  decision contradicts a value already written, say both and let them choose
-  what to do with the old one.
+- Never delete anything. Not a page, not a section of one, and there is no tool
+  that can — a deleted page is not in the notebook's recycle bin.
+- Replace only text **this tool itself wrote**, and only where the musician has
+  now settled it differently — correcting a fee on a page it generated is the
+  case this exists for. A page it created is its own output right up until they
+  write on it, and their words are theirs wherever they put them.
+- Where a decision contradicts a value already on the page and that value is not
+  this tool's own text, say both and let them choose what to do with the old
+  one. Unchanged, and it is the common case.
