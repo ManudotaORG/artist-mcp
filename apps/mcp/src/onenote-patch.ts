@@ -460,10 +460,16 @@ export async function applyEdit(
   // the only copy of the previous content that exists anywhere.
   await record({
     operation: draft.action === 'append' ? 'append_onenote_page' : 'replace_onenote_element',
+    // The text itself, not merely that something happened. `summary` is
+    // documented as what was written "as the user would read it back", and the
+    // calendar rows honour that while these two originally named only the page
+    // id — so the log recorded the replaced text in `pre_image` and left the
+    // replacing text nowhere at all. Someone reading this line back is
+    // reconstructing an edit they cannot see any other way.
     summary:
       draft.action === 'append'
-        ? `Added to the end of page ${draft.page_id}`
-        : `Replaced an element on page ${draft.page_id}`,
+        ? `Added to the end of the page: ${draft.text.trim()}`
+        : `Replaced "${asText(captured)}" with "${draft.text.trim()}"`,
     target: draft.page_id,
     source_page: draft.source_page,
     pre_image: draft.action === 'replace' ? captured : null,

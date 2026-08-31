@@ -1,10 +1,10 @@
 # 0004 — Editing the pages this tool wrote, and only those
 
-Status: **accepted; built, not yet verified end to end.** The capability,
-its scope, the pre-image and the tool pair are in the package and unit-tested
-against stubs. What has not happened is a run through Claude Desktop against a
-real notebook — the probe established what Graph does, not what this code does
-with it. Reopens what
+Status: **accepted; built and verified end to end** on 2026-08-31, against a
+real page this tool's own app registration had created. The preview quoted the
+text it would destroy, the edit landed, the audit line captured the previous
+content, and replaying the same call was refused. Two defects were found by
+that run and by nothing else — see "What the end-to-end run found". Reopens what
 [0003](0003-onenote-writes.md) closed "permanently", on evidence 0003 did not
 have and could not have had — it ruled replacing out because nothing could be
 undone, and an undo now exists. **Deleting stays out**, and this record does not
@@ -101,6 +101,35 @@ operation is built, not in which name it was granted under.
   resolved and does not support that action, which is what a paragraph returns
   for `append` and always will.
 - **Audited**, with enough recorded to find the page and the pre-image again.
+
+## What the end-to-end run found
+
+Every unit test passed before this was run, and the run still found two things.
+Both are the same kind of fault: an interface that contradicted itself, which a
+stub cannot notice because the stub is written from the same understanding as
+the code.
+
+- **The tool text described a call the code refused.** It told a model to
+  preview a `replace` with no `element_id` to discover the page's parts, then
+  preview again naming one. That first call threw. A model following the
+  description got an error and had to guess its way out — and naming a part is
+  impossible without it, since an id is only knowable by reading the page.
+- **The audit line recorded what was destroyed and not what replaced it.**
+  `summary` is documented as what was written "as the user would read it back";
+  for an edit it named only the page id, so the log held the old text in
+  `pre_image` and the new text nowhere at all.
+
+A third was found while working out how to run it: `connect` told a granted
+install that "no page can be changed or deleted by this tool, including the
+ones it creates — the permission it holds cannot express that". True of
+`Notes.Create` alone, and a false reassurance printed at the one moment the
+user is certainly reading.
+
+Also observed, and worth keeping: the replay was refused by the *earlier* of
+the two guards. The generated id had moved after the write, so the pre-image
+capture failed before the confirmation token was compared. Microsoft documents
+that ids move; this is what it looks like from inside the product, and it means
+the id check and the token check are not redundant.
 
 ## What is still open
 

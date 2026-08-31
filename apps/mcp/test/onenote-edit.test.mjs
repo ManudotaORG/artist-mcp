@@ -189,6 +189,9 @@ test('what a replace destroyed is written to the audit line, and nowhere else', 
 
   assert.equal(lines.length, 1);
   assert.equal(lines[0].operation, 'replace_onenote_element');
+  // Both halves of the change, because the line is read back by someone who
+  // cannot see the page as it was and can no longer see what replaced it.
+  assert.equal(lines[0].summary, 'Replaced "Fee: 1200" with "Fee: 1400"');
   // The only surviving copy of the previous content once the PATCH returns 204.
   assert.equal(lines[0].pre_image, `<p id="${para}">Fee: 1200</p>`);
 });
@@ -214,6 +217,7 @@ test('an append records no pre-image, because it destroyed nothing', async () =>
   );
 
   assert.equal(lines[0].operation, 'append_onenote_page');
+  assert.equal(lines[0].summary, 'Added to the end of the page: Curfew 23:00');
   assert.equal(lines[0].pre_image, null);
   assert.deepEqual(s.sent[0].body, [
     { target: 'body', action: 'append', content: '<p>Curfew 23:00</p>' },
