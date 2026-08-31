@@ -1,5 +1,32 @@
 # Changelog
 
+## [2.0.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.8.2...artist-mcp-v2.0.0) (2026-08-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* name the mail attachment tools for their source
+
+### Features
+
+* expose page attachments as their own tools, gated on their own terms ([d406a64](https://github.com/ManudotaORG/artist-mcp/commit/d406a640e410e49b276a86779d45a0042f0fcad8)), closes [#70](https://github.com/ManudotaORG/artist-mcp/issues/70)
+* read a OneNote page's attachments, not only an email's ([f464f85](https://github.com/ManudotaORG/artist-mcp/commit/f464f851a9add5fbac630377e116e4e697a6a81e)), closes [#70](https://github.com/ManudotaORG/artist-mcp/issues/70)
+* read the attachments on a OneNote page, not only the ones in email ([bc00d30](https://github.com/ManudotaORG/artist-mcp/commit/bc00d305f82624af1c27e5b89ef52bc803494b1a))
+* read what a OneNote page has attached to it ([6f5b9dd](https://github.com/ManudotaORG/artist-mcp/commit/6f5b9dde9122c83224d7331a93c15e779dc93ea3)), closes [#70](https://github.com/ManudotaORG/artist-mcp/issues/70)
+* say when a Google connection will lapse, and why it did ([7ae03dc](https://github.com/ManudotaORG/artist-mcp/commit/7ae03dc5fc3e137c8891d314112641831dbbc0bd)), closes [#94](https://github.com/ManudotaORG/artist-mcp/issues/94)
+
+
+### Bug Fixes
+
+* ask before mapping a mail attachment, as before reading one ([4500b82](https://github.com/ManudotaORG/artist-mcp/commit/4500b823e36ccf9f09bff738bcb50383e09f77b6)), closes [#139](https://github.com/ManudotaORG/artist-mcp/issues/139)
+* three defects found reviewing the branch ([6a29a5c](https://github.com/ManudotaORG/artist-mcp/commit/6a29a5c268ff077fab8dc2f0655f6559d6a9e690)), closes [#70](https://github.com/ManudotaORG/artist-mcp/issues/70)
+* turn an embedded-object anchor into a space, not a stray glyph ([2a49475](https://github.com/ManudotaORG/artist-mcp/commit/2a494752efa2d40366a6f0631b3dd400cd6cb7ba)), closes [#70](https://github.com/ManudotaORG/artist-mcp/issues/70)
+
+
+### Code Refactoring
+
+* name the mail attachment tools for their source ([521f8f7](https://github.com/ManudotaORG/artist-mcp/commit/521f8f78f16d9a0a3d79bb05c757f6b31306a786)), closes [#70](https://github.com/ManudotaORG/artist-mcp/issues/70)
+
 ## [1.8.2](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.8.1...artist-mcp-v1.8.2) (2026-08-30)
 
 
