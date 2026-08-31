@@ -2077,17 +2077,25 @@ const createServer = async (
       },
       async (params) => {
         try {
-          const { preview, confirmation_token, parts } = await call<{
-            preview: string;
-            confirmation_token: string;
+          const { preview, confirmation_token, parts, note } = await call<{
+            preview: string | null;
+            confirmation_token: string | null;
             parts: { element_id: string; text: string }[];
+            note: string;
           }>("preview_onenote_edit", params);
 
           const listed =
-            params.action === "replace"
+            parts.length === 0
               ? ""
-              : `\n\nThe editable parts of this page right now:\n` +
+              : "\n\nThe editable parts of this page right now:\n" +
                 parts.map((p) => `  ${p.element_id}\n    ${p.text}`).join("\n");
+
+          // No token means nothing has been chosen yet: this was the call that
+          // asks which part to change. Saying "wait for their yes" here would
+          // be asking the musician to approve a change nobody has described.
+          if (confirmation_token === null) {
+            return { content: [{ type: "text", text: `${note}${listed}` }] };
+          }
 
           return {
             content: [

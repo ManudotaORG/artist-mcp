@@ -350,6 +350,40 @@ export const readEditableParts = async (
  * A read despite the name, exactly as the calendar and create previews are.
  */
 export async function previewEdit(token: string, params: Record<string, unknown>) {
+  // Naming a part to replace requires knowing its id, and an id is only
+  // knowable by reading the page. So a replace with no element_id is not a
+  // malformed call — it is the first half of the only workflow available, and
+  // the tool text says so. It used to be refused here, which meant a model
+  // following that text got an error and had to guess its way out.
+  //
+  // No confirmation token comes back from this branch. Nothing has been chosen
+  // yet, and a token would be one for a change nobody has described.
+  const wantsPart =
+    params.action === 'replace' &&
+    (params.element_id === undefined || params.element_id === null || params.element_id === '');
+
+  if (wantsPart) {
+    const pageId = params.page_id;
+    if (typeof pageId !== 'string' || !ONENOTE_ID.test(pageId)) {
+      throw failure('page_id is required, and must name the page to change.');
+    }
+
+    const { parts } = await readEditableParts(token, pageId);
+    return {
+      preview: null,
+      page_id: pageId,
+      parts,
+      confirmation_token: null,
+      note:
+        parts.length === 0
+          ? 'This page has no separately editable parts, so nothing on it can be ' +
+            'replaced. An append can still add to the end of it.'
+          : 'Nothing has been previewed yet. These are the parts of the page as it ' +
+            'stands. Name one as element_id and preview again to see the change ' +
+            'itself. The ids were read just now and are good only for the next call.',
+    };
+  }
+
   const draft = editFrom(params);
   const { html, parts } = await readEditableParts(token, draft.page_id);
 

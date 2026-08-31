@@ -54,6 +54,36 @@ test('a replace needs a generated id, and an append refuses one', () => {
   assert.throws(() => editFrom({ page_id: 'p1', action: 'delete', text: 'x' }), /append.*replace/s);
 });
 
+test('a replace with no element_id asks which part, rather than refusing', async () => {
+  // The tool text tells a model to call replace with no element_id first, to
+  // find out what the page's parts are. That used to be refused, so a model
+  // following the description got an error and had to guess its way out —
+  // found by driving the real tool rather than by any unit test here.
+  const { fetchImpl } = server();
+  const asked = await withFetch(fetchImpl, () =>
+    previewEdit('t', { page_id: 'p1', action: 'replace', text: 'Fee: 1400' }),
+  );
+
+  assert.equal(asked.preview, null);
+  // No token: nothing has been chosen, and a token would confirm a change
+  // nobody has described.
+  assert.equal(asked.confirmation_token, null);
+  assert.deepEqual(asked.parts, [
+    { element_id: para, text: 'Fee: 1200' },
+    { element_id: other, text: 'Load-in 18:00' },
+  ]);
+});
+
+test('a page with no editable parts says so instead of listing nothing', async () => {
+  const { fetchImpl } = server({ html: '<html><body><div><p>no ids at all</p></div></body></html>' });
+  const asked = await withFetch(fetchImpl, () =>
+    previewEdit('t', { page_id: 'p1', action: 'replace', text: 'x' }),
+  );
+
+  assert.deepEqual(asked.parts, []);
+  assert.match(asked.note, /nothing on it can be replaced/);
+});
+
 test('the preview quotes what would be overwritten', async () => {
   const { fetchImpl } = server();
   const preview = await withFetch(fetchImpl, () =>
