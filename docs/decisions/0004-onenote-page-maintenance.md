@@ -1,6 +1,10 @@
 # 0004 — Editing the pages this tool wrote, and only those
 
-Status: **accepted in principle; not built.** Reopens what
+Status: **accepted; built, not yet verified end to end.** The capability,
+its scope, the pre-image and the tool pair are in the package and unit-tested
+against stubs. What has not happened is a run through Claude Desktop against a
+real notebook — the probe established what Graph does, not what this code does
+with it. Reopens what
 [0003](0003-onenote-writes.md) closed "permanently", on evidence 0003 did not
 have and could not have had — it ruled replacing out because nothing could be
 undone, and an undo now exists. **Deleting stays out**, and this record does not

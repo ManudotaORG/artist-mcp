@@ -366,9 +366,14 @@ Decisions and their cost: [decisions/0001-opt-in-calendar-writes.md](decisions/0
 
 ## Not in scope
 
-No autonomous agent processes. No writes to OneNote or Gmail, ever. No message sending. No scheduled jobs. No teams or organisations. No billing. No copying or synchronizing source data. No workflow state in Supabase.
+No autonomous agent processes. No writes to Gmail, ever. No message sending. No scheduled jobs. No teams or organisations. No billing. No copying or synchronizing source data. No workflow state in Supabase.
 
-This line originally read "No writes to any source — not OneNote, Gmail, or Calendar." Creating a single Calendar event has since shipped as an opt-in, so it is corrected here rather than quietly left standing. Updating, moving and deleting events are still out, as is every OneNote write.
+This line originally read "No writes to any source — not OneNote, Gmail, or Calendar", and then "No writes to OneNote or Gmail, ever". Both are corrected here rather than quietly left standing, and the OneNote half had already been stale for a release:
+
+- **Creating a Calendar event** shipped as an opt-in, and deleting one this tool created followed. Updating and moving an event are still out: rescheduling creates the replacement and deletes the original precisely so that no `PATCH` is needed. See [0001](decisions/0001-opt-in-calendar-writes.md).
+- **Creating a OneNote page** shipped as an opt-in under [0003](decisions/0003-onenote-writes.md), which is what made "no OneNote writes, ever" stale.
+- **Editing a page this tool itself created** is opt-in under [0004](decisions/0004-onenote-page-maintenance.md), on a scope Microsoft enforces per application: a page the musician wrote is refused `401`, not merely unrequested. A replace captures what it overwrites first, because OneNote keeps no page version and that capture is the only undo there is.
+- **Deleting a OneNote page is still out**, and not for want of a scope. A Graph delete leaves nothing in the notebook recycle bin, so there is nothing to capture and nothing to restore.
 
 This line originally also read "No calendar. No Google. No web app deployment." All three have since shipped, so it is corrected here rather than quietly left standing:
 
