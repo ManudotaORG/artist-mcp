@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.1.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v2.0.0...artist-mcp-v2.1.0) (2026-08-31)
+
+
+### Features
+
+* **mcp:** add the onenote-edit grant and its scope ([c2a6ec1](https://github.com/ManudotaORG/artist-mcp/commit/c2a6ec1aedc097bb437d0a69f3f0f8e9e1bc5909)), closes [#117](https://github.com/ManudotaORG/artist-mcp/issues/117)
+* **mcp:** capture what a page edit would destroy, or refuse it ([19a1237](https://github.com/ManudotaORG/artist-mcp/commit/19a1237e6946b128ad8918e5172ad9139ad18bd1)), closes [#117](https://github.com/ManudotaORG/artist-mcp/issues/117)
+* **mcp:** preview and apply an edit to a page this tool wrote ([f51cb3d](https://github.com/ManudotaORG/artist-mcp/commit/f51cb3d5200e63f3b9def723c7817aecf47b6f5b)), closes [#117](https://github.com/ManudotaORG/artist-mcp/issues/117)
+* **mcp:** read ids and patch a page, with the page's own etag ([05675ca](https://github.com/ManudotaORG/artist-mcp/commit/05675cae268aaf64c49860dc3dbd3a98fa065814)), closes [#117](https://github.com/ManudotaORG/artist-mcp/issues/117)
+
+
+### Bug Fixes
+
+* **mcp:** decode the entities OneNote hands back, not only the ones we write ([9b21f42](https://github.com/ManudotaORG/artist-mcp/commit/9b21f42e58bc31c5f0906ed571736c383d945ce1)), closes [#117](https://github.com/ManudotaORG/artist-mcp/issues/117)
+* **mcp:** let a replace preview ask which part, as its own text promises ([a05d4a2](https://github.com/ManudotaORG/artist-mcp/commit/a05d4a2a736387f9b51a8421b4c8515030f69c80)), closes [#117](https://github.com/ManudotaORG/artist-mcp/issues/117)
+* **mcp:** record what an edit wrote, not only that it wrote something ([9f366be](https://github.com/ManudotaORG/artist-mcp/commit/9f366bec98efcf3ef916ac7076ee5805c7263366)), closes [#117](https://github.com/ManudotaORG/artist-mcp/issues/117)
+* **mcp:** stop telling a granted install that it cannot change a page ([fdb2dca](https://github.com/ManudotaORG/artist-mcp/commit/fdb2dcaf0185bd678e2ca4f4be21f1c3d6978161)), closes [#117](https://github.com/ManudotaORG/artist-mcp/issues/117)
+
 ## [2.0.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v1.8.2...artist-mcp-v2.0.0) (2026-08-30)
 
 
