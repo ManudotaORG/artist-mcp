@@ -199,12 +199,148 @@ const copyPage = async (token, sectionId, pageId, { dryRun }) => {
   return { ok: true, id: body.id, title };
 };
 
+/**
+ * Everything a copy could quietly lose, compared against the original.
+ *
+ * Written after a copy was declared faithful on the strength of `read_note`
+ * output matching. That comparison could not have failed: `read_note` renders
+ * a page as text, so it flattens a table to lines whether or not the table
+ * survived, and the missing borders were found by a person looking at the page
+ * instead. A check that cannot distinguish the failure it is looking for is
+ * worse than no check, because it is reported as a pass.
+ *
+ * So this compares the markup: the words, and the structure that carries them.
+ */
+const shape = (html) => {
+  const text = html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const tables = [...html.matchAll(/<table[^>]*>/gi)].map((m) => m[0]);
+
+  return {
+    text,
+    words: text.split(' ').length,
+    tables: tables.length,
+    // A border that reads as 0px is a table that lost its lines — the exact
+    // regression this whole verification exists for.
+    borderedTables: tables.filter((t) => /border[:="]/.test(t) && !/border:\s*0/.test(t)).length,
+    rows: (html.match(/<tr\b/gi) ?? []).length,
+    cells: (html.match(/<td\b/gi) ?? []).length,
+  };
+};
+
+const verify = async (token, sourceSection, targetSection) => {
+  const pagesIn = async (id) => {
+    const res = await graph(
+      token,
+      `/sections/${encodeURIComponent(id)}/pages?$top=100&$select=id,title,createdByAppId`,
+    );
+    if (res.status !== 200) die(`listing pages: ${res.status} ${res.text.slice(0, 200)}`);
+    return json(res)?.value ?? [];
+  };
+
+  const originals = await pagesIn(sourceSection);
+  const copies = await pagesIn(targetSection);
+  const byTitle = new Map(copies.map((c) => [c.title, c]));
+
+  let checked = 0;
+  const problems = [];
+
+  for (const original of originals) {
+    const copy = byTitle.get(original.title);
+    if (copy === undefined) continue;
+
+    const a = await graph(token, `/pages/${encodeURIComponent(original.id)}/content`);
+    const c = await graph(token, `/pages/${encodeURIComponent(copy.id)}/content`);
+    // Status checked before the body is read as HTML: an error body contains
+    // none of the markers, so it compares as catastrophic loss.
+    if (a.status !== 200 || c.status !== 200) {
+      problems.push(`${original.title}: could not read (${a.status}/${c.status})`);
+      continue;
+    }
+
+    const before = shape(a.text);
+    const after = shape(c.text);
+    checked += 1;
+
+    const differences = [];
+    if (before.text !== after.text) {
+      const at = [...before.text].findIndex((ch, i) => ch !== after.text[i]);
+      differences.push(
+        `text differs at character ${at}: ` +
+          `"…${before.text.slice(Math.max(0, at - 40), at + 40)}…" vs ` +
+          `"…${after.text.slice(Math.max(0, at - 40), at + 40)}…"`,
+      );
+    }
+    for (const key of ['tables', 'borderedTables', 'rows', 'cells']) {
+      if (before[key] !== after[key]) differences.push(`${key}: ${before[key]} → ${after[key]}`);
+    }
+    if (!copy.createdByAppId) differences.push('the copy has no createdByAppId, so it is not editable');
+
+    console.log(
+      differences.length === 0
+        ? `  ok    ${original.title}  (${before.words} words, ${before.tables} tables, ${before.cells} cells)`
+        : `  DIFF  ${original.title}\n          ${differences.join('\n          ')}`,
+    );
+    if (differences.length > 0) problems.push(original.title);
+  }
+
+  console.log(`\n${checked} pair(s) compared, ${problems.length} with differences.`);
+  const missing = originals.filter((o) => !byTitle.has(o.title));
+  if (missing.length > 0) {
+    console.log(`\n${missing.length} original(s) with no copy of that title:`);
+    for (const m of missing) console.log(`  ${m.title || '(untitled)'}`);
+  }
+};
+
 const main = async () => {
   const argv = process.argv.slice(2);
   const token = await accessTokenFor('microsoft').catch((err) => die(err.message));
 
   if (argv[0] === '--list-sections') {
     await listSections(token, argv[1]);
+    return;
+  }
+
+  // Ids are transcribed by hand otherwise, twenty of them, which is a way to
+  // copy the wrong page while believing otherwise.
+  if (argv[0] === '--list-pages') {
+    const sectionId = argv[1];
+    if (!sectionId) die('--list-pages needs a section id.');
+    const res = await graph(
+      token,
+      `/sections/${encodeURIComponent(sectionId)}/pages?$top=100&$select=id,title,createdByAppId`,
+    );
+    if (res.status !== 200) die(`listing pages: ${res.status} ${res.text.slice(0, 300)}`);
+    const pages = json(res)?.value ?? [];
+    console.log(`\n${pages.length} page(s):\n`);
+    for (const page of pages) {
+      // The raw value, not a verdict. An empty createdByAppId means a person
+      // wrote it — the page that can never be edited, and therefore the one
+      // worth copying. A non-empty one means *some* app and not necessarily
+      // this one, so "app-created" would be the unsound check 0003 warns
+      // about: only equality against our own known value says anything.
+      const owner = page.createdByAppId || 'handmade';
+      console.log(`  ${page.title || '(untitled)'}  [${owner}]`);
+      console.log(`    ${page.id}`);
+    }
+    return;
+  }
+
+  if (argv[0] === '--verify') {
+    if (!argv[1] || !argv[2]) die('--verify needs <source-section-id> <target-section-id>.');
+    console.log('\nComparing every copy against its original, by markup rather than by text.\n');
+    await verify(token, argv[1], argv[2]);
     return;
   }
 
