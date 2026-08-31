@@ -84,6 +84,24 @@ test('a page with no editable parts says so instead of listing nothing', async (
   assert.match(asked.note, /nothing on it can be replaced/);
 });
 
+test('entities OneNote stores are decoded before the musician reads them', async () => {
+  // OneNote hands back an apostrophe as the numeric &#39;, not the &apos; this
+  // tool writes. A decoder built only from what we emit showed a live preview
+  // reading "the product&#39;s own tool path" — and this is the text someone
+  // approves a destructive change against.
+  const html =
+    `<html><body><div id="div:{${GUID}}{32}">` +
+    `<p id="${para}">The band&#39;s fee &amp; rider &#x2014; agreed</p>` +
+    `</div></body></html>`;
+  const { fetchImpl } = server({ html });
+
+  const asked = await withFetch(fetchImpl, () =>
+    previewEdit('t', { page_id: 'p1', action: 'replace', text: 'x' }),
+  );
+
+  assert.equal(asked.parts[0].text, "The band's fee & rider — agreed");
+});
+
 test('the preview quotes what would be overwritten', async () => {
   const { fetchImpl } = server();
   const preview = await withFetch(fetchImpl, () =>

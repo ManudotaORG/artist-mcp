@@ -307,15 +307,29 @@ export const editToken = async (draft: EditDraft, preImageHtml: string): Promise
   return base32hex(new Uint8Array(await crypto.subtle.digest('SHA-256', data)));
 };
 
-/** Strip tags for display. The page is shown as the musician reads it, not as HTML. */
+/**
+ * Strip tags for display. The page is shown as the musician reads it, not as
+ * HTML — and this text is what they approve a destructive change against, so
+ * markup leaking into it is not cosmetic.
+ *
+ * Numeric entities are decoded as well as named ones. We write `&apos;`, but
+ * OneNote stores an apostrophe as `&#39;` and hands it back that way, so a
+ * decoder built only from what this file emits showed a preview reading
+ * "the product&#39;s own tool path" — observed on a real page.
+ *
+ * Ampersand last, or the entities the earlier passes produce get decoded again.
+ */
 const asText = (html: string): string =>
   html
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<[^>]+>/g, '')
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number(dec)))
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .trim();
 
