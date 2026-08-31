@@ -1967,7 +1967,11 @@ const createServer = async (
         "holds, not a policy it follows, so a page created by mistake stays " +
         "until the musician removes it in OneNote themselves. There is no bulk " +
         "form. It never changes an existing page, so it is not a way to add a " +
-        "line to one: paste that for the musician as always. Requires the " +
+        "line to one: " +
+        (isGranted(grants, "onenote-edit")
+          ? "use preview_onenote_edit and edit_onenote_page for that. "
+          : "paste that for the musician as always. ") +
+        "Requires the " +
         "confirmation_token from a preview of these exact values; change any " +
         "field and the token stops matching, which means preview again and show " +
         "the musician the new version. Never write a value the musician chose in " +
@@ -2013,6 +2017,137 @@ const createServer = async (
               },
             ],
           };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+  }
+
+  /**
+   * Editing a page this tool wrote.
+   *
+   * Everything the create tools lean on inverts here. There, the strongest
+   * thing the text could say was that a mistake is permanent, because a model
+   * that believes a mistake is repairable creates more freely. Here a mistake
+   * *is* repairable, and the danger runs the other way: a model that believes
+   * an edit is free will make more of them, and a replace destroys what it
+   * overwrites with only this install's own write log standing behind it.
+   *
+   * So the text below says the opposite thing plainly — that OneNote keeps no
+   * version, that the record of what was overwritten lives here and nowhere
+   * else, and that a page the musician wrote is unreachable no matter how the
+   * request is phrased. See docs/decisions/0004-onenote-page-maintenance.md.
+   */
+  if (isGranted(grants, "onenote-edit")) {
+    server.tool(
+      "preview_onenote_edit",
+      "Call this before edit_onenote_page — it is the only way to obtain the confirmation_token that one requires, and it is what puts the exact change in front of the musician. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. " +
+        "Reads the page as it stands right now and shows what the change would " +
+        "do to it. Changes nothing. For a replace it quotes the text that would " +
+        "be overwritten, which is the part the musician has to agree to. It also " +
+        "returns the page's editable parts with an element_id for each, so pass " +
+        "action 'replace' with no element_id first if you do not know which part " +
+        "to change, read the parts back, then preview again naming one. Those " +
+        "ids are read fresh each call and are good only for the next call — " +
+        "never store one, repeat one to the musician, or reuse one from earlier " +
+        "in the conversation.",
+      {
+        page_id: z
+          .string()
+          .describe("The page to change, by id from list_notes or read_note. The id, not the title"),
+        action: z
+          .enum(["append", "replace"])
+          .describe(
+            "append adds a paragraph at the end and removes nothing. replace " +
+              "overwrites one existing element and is the destructive one",
+          ),
+        text: z.string().describe("The new text, plain. Markdown and HTML are NOT interpreted"),
+        element_id: z
+          .string()
+          .optional()
+          .describe(
+            "For replace only: which part to overwrite, using an element_id this " +
+              "tool reported in the parts list on a previous call",
+          ),
+        source_page: z
+          .string()
+          .optional()
+          .describe("The page this change was decided from, so the write can be traced back"),
+      },
+      async (params) => {
+        try {
+          const { preview, confirmation_token, parts } = await call<{
+            preview: string;
+            confirmation_token: string;
+            parts: { element_id: string; text: string }[];
+          }>("preview_onenote_edit", params);
+
+          const listed =
+            params.action === "replace"
+              ? ""
+              : `\n\nThe editable parts of this page right now:\n` +
+                parts.map((p) => `  ${p.element_id}\n    ${p.text}`).join("\n");
+
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `${preview}${listed}\n\n` +
+                  "Show this to the musician and wait for their yes. If this is a " +
+                  "replace, say plainly what it overwrites: OneNote keeps no " +
+                  "version of a page, so the previous text will exist only in this " +
+                  "install's write log afterwards. If they agree, call " +
+                  "edit_onenote_page with the SAME values and:\n" +
+                  `  confirmation_token: ${confirmation_token}`,
+              },
+            ],
+          };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+
+    server.tool(
+      "edit_onenote_page",
+      "Only call this after preview_onenote_edit AND after the musician has said yes to what the preview showed. Never call it to find out whether it would work. " +
+        "Changes ONE page that artist-mcp itself created. It CANNOT touch a page " +
+        "the musician wrote or one another app created — Microsoft refuses those, " +
+        "not this tool — and it cannot delete anything. 'append' adds a paragraph " +
+        "at the end and removes nothing. 'replace' overwrites one element and is " +
+        "destructive: OneNote keeps no page version and a replaced paragraph is " +
+        "recoverable only from this install's own write log, so never describe it " +
+        "as undoable in OneNote. Requires the confirmation_token from a preview " +
+        "of these exact values; if the page changed since that preview the token " +
+        "stops matching and nothing is written, which means preview again and " +
+        "show the musician the new version. Never write a value the musician " +
+        "chose in chat to break a tie between pages that still disagree.",
+      {
+        page_id: z.string().describe("Exactly what the preview showed"),
+        action: z.enum(["append", "replace"]).describe("Exactly what the preview showed"),
+        text: z.string().describe("Exactly what the preview showed"),
+        element_id: z
+          .string()
+          .optional()
+          .describe("For replace: the same element_id the preview was given"),
+        source_page: z
+          .string()
+          .optional()
+          .describe("The page this change was decided from, so the write can be traced back"),
+        confirmation_token: z
+          .string()
+          .describe("The token preview_onenote_edit returned for these exact values"),
+      },
+      async (params) => {
+        try {
+          const { note } = await call<{ changed: boolean; page_id: string; note: string }>(
+            "edit_onenote_page",
+            params,
+          );
+
+          return { content: [{ type: "text", text: note }] };
         } catch (err) {
           return errorResult(err);
         }

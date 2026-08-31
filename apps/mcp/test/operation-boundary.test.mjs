@@ -57,6 +57,16 @@ const SANCTIONED = {
   // edit or a delete — so there is deliberately no update or delete row here
   // to refuse. See docs/decisions/0003-onenote-writes.md.
   create_onenote_page: 'write',
+  // Reads the page and shows the change against what is written there now. A
+  // read, and it has to be: it is the safeguard a write is conditional on.
+  preview_onenote_edit: 'read',
+  // The first operation in this table that can destroy something a musician
+  // might want back, and the only one whose undo is this install's own write
+  // log rather than the provider's. Appending and replacing share one row
+  // because no scope separates them; what separates them is that a replace
+  // cannot proceed unless what it would overwrite was captured first.
+  // See docs/decisions/0004-onenote-page-maintenance.md.
+  edit_onenote_page: 'write',
 };
 
 test('the operation table is exactly what was sanctioned', () => {
