@@ -50,6 +50,22 @@ export type WriteRecord = {
    * docs/decisions/0003-onenote-writes.md.
    */
   created_by_app_id?: string | null;
+  /**
+   * For a replaced OneNote element: exactly what was on the page beforehand.
+   *
+   * This is the undo, and there is no other one. OneNote keeps no version of a
+   * page and a Graph write leaves nothing in the recycle bin, so what stood
+   * where the change landed exists nowhere else the moment the PATCH returns
+   * 204. The audit line is not a note about the write here — it *is* the
+   * recovery, which is what the header of this file has always claimed the
+   * point of these records to be.
+   *
+   * Held as the element's HTML rather than its text, because restoring it means
+   * writing it back. It restores content and not bytes: OneNote rewrites the
+   * markup it stores, so a restored paragraph comes back carrying its words and
+   * not its original HTML. See docs/decisions/0004-onenote-page-maintenance.md.
+   */
+  pre_image?: string | null;
 };
 
 /**

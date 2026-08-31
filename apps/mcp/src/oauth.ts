@@ -213,6 +213,18 @@ export const WRITE_SCOPES: Readonly<
   // Microsoft. Asking for `Notes.ReadWrite` instead would hand back exactly
   // the position 0001 was stuck in. See docs/decisions/0003-onenote-writes.md.
   'onenote-create': { provider: 'microsoft', scopes: ['Notes.Create'] },
+  // Named in the body of Microsoft's own 403 for PATCH and DELETE, and absent
+  // from the documentation for the operations it enables — the permissions
+  // table for page-delete lists only Notes.ReadWrite and Notes.ReadWrite.All,
+  // and says higher privileges are "not available" for a personal account,
+  // while a personal account edits with this one. Treat that reference as
+  // describing intent and probe for behaviour; scripts/spike-onenote-patch.mjs
+  // is that probe.
+  //
+  // Enforced per-app, not per-scope-holder: a page another application created
+  // is refused with 403 40006, and one the musician wrote with 401 40003.
+  // Consent for it folds in Notes.Create unasked, observed on every run.
+  'onenote-edit': { provider: 'microsoft', scopes: ['Notes.ReadWrite.CreatedByApp'] },
 };
 
 /**

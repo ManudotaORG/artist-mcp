@@ -37,10 +37,14 @@ situation, where no insert-only scope exists and the boundary had to become our
 code. The price is that a created page is permanent as far as this tool is
 concerned: there is no undo, and the musician removes it in OneNote themselves.
 Read [docs/decisions/0003-onenote-writes.md](docs/decisions/0003-onenote-writes.md)
-before touching that path. **Editing an existing page is still out.** Asking for
-`Notes.ReadWrite` would hand back edit and delete over every page in the
-notebook and put the boundary in our code again, which is exactly what 0003
-exists to avoid.
+before touching that path. **Editing an existing page is still out, and is no longer out permanently.**
+`Notes.ReadWrite` would indeed hand back edit and delete over every page and put
+the boundary in our code again — but it is not the only door.
+`Notes.ReadWrite.CreatedByApp` is enforced by Microsoft against *this* app's own
+pages, verified as `401` on a page the musician wrote, and under it a
+paragraph-level replace is both surgical and recoverable from a pre-image.
+[docs/decisions/0004-onenote-page-maintenance.md](docs/decisions/0004-onenote-page-maintenance.md)
+accepts that in principle and nothing is built yet. **Deleting stays out.**
 
 Message sending and synchronization remain out, and the reasoning is in the
 records rather than restated here.

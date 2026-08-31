@@ -1,0 +1,29 @@
+-- Clear every write grant again, because the switch that set them now means
+-- more than it did.
+--
+-- 20260828120000 did this for `onenote-create` and said why it was not a
+-- one-off:
+--
+--   "**This is required of every future capability**, not a one-off for this
+--    one. Adding to WRITE_CAPABILITIES without a migration like this one
+--    widens a consent that was already given."
+--
+-- `onenote-edit` is that case, and it is a larger step than the one before it.
+-- Creating a page adds something to the notebook and leaves everything already
+-- written alone; editing changes what a page says. A user who agreed to "may
+-- this write on my behalf" while that meant creating calendar events and pages
+-- has not agreed to a tool that can replace a paragraph on a page — least of
+-- all in a notebook whose whole role is being the record later sessions read
+-- back.
+--
+-- Registration is gated on the grant rather than on the token's scope, so
+-- without this every granted hosted user would find `edit_onenote_page` in
+-- their tool list on deploy: a capability they never chose, on a Microsoft
+-- connection made before `Notes.ReadWrite.CreatedByApp` existed, failing at
+-- call time in a way that reads as a bug rather than as a boundary.
+--
+-- So the grants go back to empty and everyone re-answers the question as it is
+-- now worded. One click and a reconnect each, which remains the correct price.
+-- See docs/decisions/0004-onenote-page-maintenance.md.
+
+delete from public.write_grants;
