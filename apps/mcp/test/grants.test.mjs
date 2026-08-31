@@ -96,7 +96,11 @@ test('every capability has a description, since it is shown to the user', () => 
  * If this fails and the capability is intended: read the decision record that
  * argued for it, then update the literal below in the same commit.
  */
-const SANCTIONED = ['calendar-create', 'calendar-delete', 'onenote-create'];
+// Adding a row here is the acknowledgement that a boundary moved. `onenote-edit`
+// was added by docs/decisions/0004-onenote-page-maintenance.md, which reopens
+// what 0003 closed: editing a page this tool created, never one the musician
+// wrote, and never a delete.
+const SANCTIONED = ['calendar-create', 'calendar-delete', 'onenote-create', 'onenote-edit'];
 
 test('the capability list is exactly what was sanctioned', () => {
   assert.deepEqual(
