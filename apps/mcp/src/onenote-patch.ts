@@ -761,39 +761,156 @@ export const tableRows = (tableHtml: string): string[][] =>
     childElements(row, 'td|th').map((cell) => asText(cell).replace(/\s*\n\s*/g, ' / ')),
   );
 
-const CELL_WIDTH = 40;
+/** How wide a rendered row may get before its columns start wrapping. */
+const MAX_ROW_WIDTH = 96;
+
+/** No column is squeezed below this, however many there are. */
+const MIN_COLUMN_WIDTH = 14;
+
+/** Greedy word wrap, hard-breaking a token that cannot fit on a line of its own. */
+const wrap = (text: string, width: number): string[] => {
+  const out: string[] = [];
+  let line = '';
+
+  for (const word of text.split(' ')) {
+    let rest = word;
+    while (rest.length > width) {
+      if (line !== '') {
+        out.push(line);
+        line = '';
+      }
+      out.push(rest.slice(0, width));
+      rest = rest.slice(width);
+    }
+    if (rest === '') continue;
+    if (line === '') line = rest;
+    else if (line.length + 1 + rest.length <= width) line += ` ${rest}`;
+    else {
+      out.push(line);
+      line = rest;
+    }
+  }
+
+  if (line !== '' || out.length === 0) out.push(line);
+  return out;
+};
+
+/**
+ * How wide each column may be, sharing one row's worth of space between them.
+ *
+ * A table narrow enough to fit is left at its natural widths. A wider one has
+ * its columns shrunk from the widest inwards, so a free-text column gives way
+ * before a column of labels does.
+ */
+const columnWidths = (rows: string[][], columns: number): number[] => {
+  const widths = Array.from({ length: columns }, (_, i) =>
+    Math.max(1, ...rows.map((row) => (row[i] ?? '').length)),
+  );
+
+  const frame = 4 + 3 * (columns - 1) + 2;
+  let budget = MAX_ROW_WIDTH - frame;
+  if (budget < columns * MIN_COLUMN_WIDTH) budget = columns * MIN_COLUMN_WIDTH;
+
+  while (widths.reduce((a, b) => a + b, 0) > budget) {
+    const widest = widths.indexOf(Math.max(...widths));
+    if (widths[widest] <= MIN_COLUMN_WIDTH) break;
+    widths[widest] -= 1;
+  }
+
+  return widths;
+};
 
 /**
  * A table as something a musician can read and say yes or no to.
  *
  * This is the difference between a whole-table replace being previewable and
- * not. The thing a replace destroys here is a block of markup hundreds of
- * characters wide; shown raw it is not a preview, it is a wall that gets
- * approved unread — and an approval nobody could read is exactly the failure
- * the confirmation step exists to prevent. So the table is shown as its rows.
+ * not. The thing a replace destroys is a block of markup hundreds of characters
+ * wide; shown raw it is not a preview, it is a wall that gets approved unread —
+ * and an approval nobody could read is exactly the failure the confirmation
+ * step exists to prevent. So the table is shown as its rows.
  *
- * Columns are padded to line up, and a long cell is cut with an ellipsis: the
- * shape of the table is what tells the reader whether the right one is about to
- * be overwritten, and that shape is unreadable when one cell is a paragraph.
+ * **Nothing is ever cut.** This originally clipped a cell at forty characters
+ * with an ellipsis, on the reasoning that the shape of the table is what a
+ * reader checks. That was wrong in the case these pages are mostly made of: a
+ * single-cell table holding a paragraph of free text, where the whole change
+ * lives past the fortieth character. Both halves of the preview then rendered
+ * to the same truncated line, and the preview asserted in effect that a
+ * destructive change was a no-op. Found in use, not by any test here — the test
+ * asserted the ellipsis was present, which is how a defect gets a green tick.
+ *
+ * So a long cell wraps within its column instead. A wrapped preview is longer
+ * to read; a truncated one cannot be read at all.
+ *
+ * `marks` optionally prefixes each row, from `markRows`. The mark sits outside
+ * the table so the columns still line up under it.
  */
-export const renderTable = (tableHtml: string): string => {
-  const rows = tableRows(tableHtml);
-  if (rows.length === 0) return asText(tableHtml);
+export const renderTable = (tableHtml: string, marks: string[] = []): string =>
+  renderRows(tableRows(tableHtml), marks) || asText(tableHtml);
 
-  const clipped = rows.map((row) =>
-    row.map((cell) => (cell.length > CELL_WIDTH ? `${cell.slice(0, CELL_WIDTH - 1)}…` : cell)),
-  );
-  const columns = Math.max(...clipped.map((row) => row.length));
-  const widths = Array.from({ length: columns }, (_, i) =>
-    Math.max(...clipped.map((row) => (row[i] ?? '').length)),
-  );
+export const renderRows = (rows: string[][], marks: string[] = []): string => {
+  if (rows.length === 0) return '';
 
-  return clipped
-    .map(
-      (row) =>
-        `  | ${Array.from({ length: columns }, (_, i) => (row[i] ?? '').padEnd(widths[i])).join(' | ')} |`,
-    )
+  const columns = Math.max(...rows.map((row) => row.length));
+  const widths = columnWidths(rows, columns);
+
+  return rows
+    .map((row, index) => {
+      const cells = Array.from({ length: columns }, (_, i) => wrap(row[i] ?? '', widths[i]));
+      const height = Math.max(...cells.map((lines) => lines.length));
+      const mark = marks[index] ?? ' ';
+
+      return Array.from({ length: height }, (_, line) =>
+        // The mark goes on the first line of a row only: a wrapped cell is one
+        // row, and marking every line of it would read as several.
+        `${line === 0 ? mark : ' '} | ${cells
+          .map((lines, i) => (lines[line] ?? '').padEnd(widths[i]))
+          .join(' | ')} |`,
+      ).join('\n');
+    })
     .join('\n');
+};
+
+/**
+ * Which rows a replace actually changes, matched up rather than compared by
+ * position.
+ *
+ * A row inserted near the top shifts every row under it, and comparing by index
+ * would then mark the whole table as changed — which tells a reader as little
+ * as marking none of it. So the two row lists are matched by their longest
+ * common subsequence, and only what is genuinely new, gone or altered is
+ * marked.
+ */
+export const markRows = (
+  before: string[][],
+  after: string[][],
+): { before: string[]; after: string[] } => {
+  const a = before.map((row) => row.join(' '));
+  const b = after.map((row) => row.join(' '));
+
+  const lcs: number[][] = Array.from({ length: a.length + 1 }, () =>
+    new Array(b.length + 1).fill(0),
+  );
+  for (let i = a.length - 1; i >= 0; i -= 1) {
+    for (let j = b.length - 1; j >= 0; j -= 1) {
+      lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+    }
+  }
+
+  const marksBefore: string[] = new Array(a.length).fill('-');
+  const marksAfter: string[] = new Array(b.length).fill('+');
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) {
+      marksBefore[i] = ' ';
+      marksAfter[j] = ' ';
+      i += 1;
+      j += 1;
+    } else if (lcs[i + 1][j] >= lcs[i][j + 1]) i += 1;
+    else j += 1;
+  }
+
+  return { before: marksBefore, after: marksAfter };
 };
 
 /** Whether a generated id names a table, which decides what may be done to it. */
@@ -947,8 +1064,31 @@ export async function previewEdit(token: string, params: Record<string, unknown>
     };
   }
 
+  // A table replace is shown with its rows matched up, so the reader can see
+  // which of them the change actually touches. Without this the interesting
+  // line is one of forty identical-looking ones, and a reader who cannot find
+  // the change approves it on trust — which is the same as not previewing.
+  const asTable = isTableId(draft.element_id as string) && draft.html !== null;
+  const beforeRows = asTable ? tableRows(captured) : [];
+  const afterRows = asTable ? tableRows(draft.html as string) : [];
+  const marks = asTable ? markRows(beforeRows, afterRows) : { before: [], after: [] };
+  const touched = asTable ? marks.after.filter((m) => m !== ' ').length : 0;
+  const dropped = asTable ? marks.before.filter((m) => m !== ' ').length : 0;
+
+  const shown = asTable
+    ? `Replace this:\n\n${renderTable(captured, marks.before)}\n\n` +
+      `With this:\n\n${renderTable(draft.html as string, marks.after)}\n\n` +
+      (touched === 0 && dropped === 0
+        ? 'Every row reads exactly as it does now. What differs is the markup — ' +
+          'borders, widths, or the way a cell is written. Say that plainly rather ' +
+          'than describing a change to the words, because there is none.'
+        : `Marked rows are the ones that differ: ${dropped} going, ${touched} arriving. ` +
+          'Every unmarked row is being rewritten too — a table is replaced whole — ' +
+          'and is only safe because it is carried across unchanged.')
+    : `Replace this:\n\n${anchor}\n\nWith this:\n\n${proposed}`;
+
   return {
-    preview: `Replace this:\n\n${anchor}\n\nWith this:\n\n${proposed}`,
+    preview: shown,
     page_id: draft.page_id,
     parts,
     confirmation_token: await editToken(draft, captured),

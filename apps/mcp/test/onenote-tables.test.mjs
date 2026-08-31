@@ -5,6 +5,7 @@ import {
   applyEdit,
   editFrom,
   previewEdit,
+  markRows,
   renderTable,
   rootTag,
   tableRows,
@@ -316,10 +317,77 @@ test('the markup a real OneNote table is made of survives validation', () => {
   assert.deepEqual(tableRows(real), [['Honorar'], ['Netto / zzgl. USt', '1200']]);
 });
 
-test('a long cell is clipped so the shape of the table stays readable', () => {
-  const long = `<table><tr><td>${'x'.repeat(120)}</td><td>b</td></tr></table>`;
+test('a change past the fortieth character is visible in the preview', async () => {
+  // The defect this exists for, found in use: cells were clipped at forty
+  // characters, so a single-cell table holding a paragraph — which is what
+  // these pages use for a free-text section — rendered before and after as the
+  // same truncated line. The preview showed a destructive change as a no-op.
+  const sentence =
+    'Musik aus Lateinamerika (Vidala-Programm), zusammengestellt mit dem Veranstalter';
+  const html = `<html><body><table id="${table}"><tr><td><p>${sentence} im Mai.</p></td></tr></table></body></html>`;
+  const { fetchImpl } = server({ html });
+
+  const shown = await withFetch(fetchImpl, () =>
+    previewEdit('t', {
+      page_id: 'p1',
+      action: 'replace',
+      element_id: table,
+      html: `<table><tr><td><p>${sentence} im Juni.</p></td></tr></table></table>`.replace(
+        '</table></table>',
+        '</table>',
+      ),
+    }),
+  );
+
+  const [was, willBe] = shown.preview.split('With this:');
+  assert.notEqual(was, willBe, 'the two halves of a preview must not be identical');
+  assert.match(was, /im Mai\./);
+  assert.match(willBe, /im Juni\./);
+  assert.ok(!shown.preview.includes('…'), 'nothing may be cut out of a preview');
+});
+
+test('a rendered table keeps every character, wrapped inside its column', () => {
+  const long = `<table><tr><td>${'x '.repeat(80)}</td><td>b</td></tr></table>`;
   const rendered = renderTable(long);
 
-  assert.ok(rendered.includes('…'));
-  assert.ok(rendered.split('\n').every((line) => line.length < 100));
+  assert.equal((rendered.match(/x/g) ?? []).length, 80, 'no character may be dropped');
+  assert.ok(
+    rendered.split('\n').every((line) => line.length <= 100),
+    'and it still has to fit on a line',
+  );
+  // One row, wrapped: the second column is empty on the continuation lines
+  // rather than repeated, so the row still reads as one row.
+  assert.equal((rendered.match(/\| b /g) ?? []).length, 1);
+});
+
+test('only the rows that differ are marked, however they moved', () => {
+  const before = [['Honorar', '1200'], ['Anreise', 'UNKNOWN'], ['Signatur', 'CL']];
+  const after = [
+    ['Ausfüllkonventionen', 'UNKNOWN heißt ungeklärt'],
+    ['Honorar', '1450'],
+    ['Anreise', 'UNKNOWN'],
+    ['Signatur', 'CL'],
+  ];
+
+  const marks = markRows(before, after);
+
+  // A row added at the top must not mark everything under it as changed: a
+  // preview where every row is flagged says as little as one where none is.
+  assert.deepEqual(marks.after, ['+', '+', ' ', ' ']);
+  assert.deepEqual(marks.before, ['-', ' ', ' ']);
+});
+
+test('a replace that changes no words says so instead of implying an edit', async () => {
+  const { fetchImpl } = server();
+  const same = pageHtml()
+    .slice(pageHtml().indexOf('<table'), pageHtml().indexOf('</table>') + 8)
+    .replace(/ id="[^"]*"/g, '')
+    .replace('<table', '<table border="1"');
+
+  const shown = await withFetch(fetchImpl, () =>
+    previewEdit('t', { page_id: 'p1', action: 'replace', element_id: table, html: same }),
+  );
+
+  assert.match(shown.preview, /Every row reads exactly as it does now/);
+  assert.match(shown.preview, /What differs is the markup/);
 });

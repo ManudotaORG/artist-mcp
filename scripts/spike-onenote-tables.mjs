@@ -58,6 +58,14 @@ const die = (message) => {
   process.exit(1);
 };
 
+/** Rows lined up under the label that introduces them. */
+const indent = (block) =>
+  block
+    .split('\n')
+    .map((line) => `        ${line}`)
+    .join('\n')
+    .trimStart();
+
 const graph = async (token, path, init = {}) => {
   const res = await fetch(path.startsWith('http') ? path : `${GRAPH}${path}`, {
     ...init,
@@ -139,7 +147,7 @@ const run = async (sectionId) => {
   }
   ok(
     '1. a table is enumerated',
-    `${tables[0].element_id}\n${tables[0].text.replace(/\n/g, '\n        ')}`,
+    `${tables[0].element_id}\n${indent(tables[0].text)}`,
   );
 
   const inCells = before.parts.filter((p) => p.inside_table !== null).length;
@@ -190,7 +198,7 @@ const run = async (sectionId) => {
     wrote.includes('1450') && wrote.includes('Bahn, 1. Klasse') && wrote.includes('Mitschnitt');
   (roundTripped ? ok : bad)(
     '3. the table reads back as it was written',
-    wrote.replace(/\n/g, '\n        ') || '(no table found afterwards)',
+    indent(wrote) || '(no table found afterwards)',
   );
   const untouched = ['Signatur', 'A scratch page written by'].filter((line) =>
     after.parts.some((p) => p.text.includes(line)),

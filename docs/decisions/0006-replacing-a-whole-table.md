@@ -72,9 +72,23 @@ A paragraph replace could show the old text and the new text and be read in a
 second. A table shown the same way is several hundred characters of markup, and
 a preview nobody can read is not a safeguard; it is a wall that gets approved
 unread, which is worse than no preview because everyone involved believes a
-check occurred. So a table is rendered as its rows, padded into columns, long
-cells clipped — the shape of the table is what tells a reader whether the right
-one is about to go.
+check occurred. So a table is rendered as its rows, padded into
+columns, with the rows that differ marked — matched by longest common
+subsequence, so a row inserted at the top does not flag everything under it. A
+preview where every row is marked says as little as one where none is.
+
+**Nothing is clipped**, and the first version of this got that wrong. It cut
+each cell at forty characters, reasoning that the shape of a table is what a
+reader checks. That holds for a roster and fails completely for the case these
+pages are mostly built from: a single-cell table holding a paragraph of free
+text, where the change lives past the fortieth character. Both halves of the
+preview then rendered to the same truncated line, so it asserted in effect that
+a destructive change was a no-op. Reported from use, not caught here — the test
+asserted the ellipsis was present, which is how a defect gets a green tick.
+
+Long cells wrap inside their column instead. A wrapped preview is longer to
+read; a truncated one cannot be read at all, and the case where it truncates is
+exactly the case where reading it matters.
 
 The confirmation token still binds the **markup**, not the rendering. Two
 different tables can render to the same rows.
