@@ -54,14 +54,30 @@ export const runConnect = async (input?: string): Promise<void> => {
   } else {
     // Named, because the consent screen the user just approved was wider than
     // the one every other install sees, and they should be able to tell why.
+    // What Microsoft consent covered depends on which OneNote grants are held,
+    // and the difference is exactly the thing a user would want to know. This
+    // said unconditionally that no page could be changed "including the ones it
+    // creates — the permission it holds cannot express that", which was true of
+    // `Notes.Create` alone and becomes a false reassurance the moment
+    // `onenote-edit` is granted. A sentence that is wrong only for the widest
+    // install is the worst possible place to be wrong.
+    const canEdit = relevant.includes('onenote-edit');
+    const microsoft = canEdit
+      ? 'creating OneNote pages and changing the ones it created. It cannot ' +
+        'touch a page you wrote or one another app created — Microsoft refuses ' +
+        'those — and it cannot delete anything. A change it makes to its own ' +
+        'page overwrites what was there, and OneNote keeps no version, so what ' +
+        'it replaced is kept only in this install\'s write log.'
+      : 'creating OneNote pages. No page can be changed or deleted by this ' +
+        'tool, including the ones it creates — the permission it holds cannot ' +
+        'express that.';
+
     console.log(
       `This install was granted ${relevant.join(', ')}, so consent included ` +
-        `${provider === 'microsoft' ? 'creating OneNote pages' : 'creating calendar events'}. ` +
         (provider === 'microsoft'
-          ? 'No page can be changed or deleted by this tool, including the ones ' +
-            'it creates — the permission it holds cannot express that.'
-          : 'Nothing else is ever written back: not mail, and no event is ' +
-            'changed except by the reschedule you granted.'),
+          ? microsoft
+          : 'creating calendar events. Nothing else is ever written back: not ' +
+            'mail, and no event is changed except by the reschedule you granted.'),
     );
   }
 
