@@ -45,9 +45,9 @@
       "id": "policy:patch",
       "kind": "policy",
       "name": "Patch",
-      "description": "Once the musician has decided something, hand them the smallest fragment that records it, and say which part of the page it goes under. They paste it. The page is unchanged until they do, and nothing here can change it — so a patch is written as something to paste, never as something that has happened.",
+      "description": "Once the musician has decided something, hand them the smallest fragment that records it, and say which part of the page it goes under.",
       "file": ".artist/policies/PATCH.md",
-      "sha256": "b5da16f37d6210d93d323e181c08cf98b0bf4f3a0d9b77518bdf343296122b9f"
+      "sha256": "d844496f2720befd02efa0ae940355e569acf2467e18906bad7e0769350653e2"
     },
     {
       "id": "project-type:concert",

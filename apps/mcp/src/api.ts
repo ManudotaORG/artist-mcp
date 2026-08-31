@@ -403,3 +403,123 @@ export const onenoteCreatePage = async (
 
   throw new GraphError(`OneNote refused to create the page (${res.status}). ${detail}`, false);
 };
+
+/**
+ * Read a page back with the ids a patch can aim at.
+ *
+ * `includeIDs=true` is not optional and not a nicety: without it Graph returns
+ * only the `data-id` values the page was created with, and a replace requires
+ * the generated `id`. Microsoft warns those "might change after a page update",
+ * so this is called immediately before the command that uses what it returns —
+ * never once per session, and never carried across a write.
+ *
+ * The ETag comes back too, because it is the only thing that can tell us the
+ * page moved between the read and the write. Verified honoured: a stale
+ * `If-Match` is answered 412 rather than ignored.
+ */
+export const onenotePageContent = async (
+  pageId: string,
+  token: string,
+): Promise<{ html: string; etag: string | null }> => {
+  // graphGet rather than a bare path: getWithRetry takes a whole URL, and the
+  // throttling and scope handling live in that wrapper.
+  const res = await graphGet(
+    `/me/onenote/pages/${encodeURIComponent(pageId)}/content?includeIDs=true`,
+    token,
+  );
+
+  return { html: await res.text(), etag: res.headers.get('etag') };
+};
+
+/**
+ * Apply patch commands to one page.
+ *
+ * Narrow in the same way `onenoteCreatePage` is, and here the narrowness is
+ * load-bearing rather than defensive: this is the only function in the package
+ * that can destroy something a musician might want back. A general
+ * `graphPatch(path)` would make that reachable from anywhere.
+ *
+ * Not retried. A 5xx does not say whether the patch landed, and a repeated
+ * replace against an id read before the first attempt would aim at whatever
+ * that id points at now. Where a caller wants to try again it must read the
+ * page again first, which is the same rule the ids themselves impose.
+ *
+ * See docs/decisions/0004-onenote-page-maintenance.md.
+ */
+export const onenotePatchPage = async (
+  pageId: string,
+  commands: readonly { target: string; action: string; content: string }[],
+  token: string,
+  etag: string | null,
+): Promise<void> => {
+  const res = await fetch(`${GRAPH}/me/onenote/pages/${encodeURIComponent(pageId)}/content`, {
+    method: 'PATCH',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+      ...(etag === null ? {} : { 'if-match': etag }),
+    },
+    body: JSON.stringify(commands),
+  });
+
+  if (res.status === 204) return;
+
+  const detail = (await res.text().catch(() => '')).slice(0, 300);
+
+  // The page changed under us. Reported as what it is rather than retried: the
+  // musician typing in OneNote while this ran is the likeliest cause, and
+  // writing over that is the exact harm the header exists to prevent.
+  if (res.status === 412) {
+    throw new GraphError(
+      'That page changed while this change was being prepared, so nothing was ' +
+        'written — the edit would have overwritten whatever was just done to it. ' +
+        'Ask again to work from the current version of the page.',
+      false,
+    );
+  }
+
+  // 40003 is a page the musician wrote; 40006 is a page another application
+  // created. Both are Microsoft refusing on ownership, which is the boundary
+  // this capability rests on, so neither is reported as a fault.
+  if ((res.status === 401 || res.status === 403) && /40003|40006/.test(detail)) {
+    throw new GraphError(
+      'That page was not created by artist-mcp, so it cannot be changed. This ' +
+        'tool can only edit its own pages — a page you wrote is refused by ' +
+        'Microsoft, not by this tool, and that is deliberate.',
+      false,
+    );
+  }
+
+  if ((res.status === 401 || res.status === 403) && /40004|scope/i.test(detail)) {
+    throw new ScopeError(
+      'This Microsoft connection cannot edit OneNote pages. Reconnect with ' +
+        '`artist-mcp connect microsoft` — a refresh token carries the scopes it ' +
+        'was granted with, so an existing connection cannot edit until renewed.',
+      'edit OneNote pages',
+      false,
+    );
+  }
+
+  // 20134 means the target did not resolve, which for a data-id is the missing
+  // '#' and for a generated id means it moved since the read. 20138 means the
+  // element resolved and does not support that action. They read alike and are
+  // not alike, so they are told apart here rather than in a log nobody reads.
+  if (/20134/.test(detail)) {
+    throw new GraphError(
+      'That part of the page could not be found, which usually means the page ' +
+        'changed since it was read. Nothing was written. Ask again to work from ' +
+        'the current version.',
+      false,
+    );
+  }
+
+  if (/20138/.test(detail)) {
+    throw new GraphError(
+      'That part of the page cannot be changed in that way — OneNote does not ' +
+        'allow it for that kind of element. Nothing was written.',
+      false,
+    );
+  }
+
+  throw new GraphError(`OneNote refused to change the page (${res.status}). ${detail}`, false);
+};
