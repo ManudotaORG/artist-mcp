@@ -195,6 +195,49 @@ Owner is the only cell they settled. Due is `UNKNOWN` because no date was given
 is `UNKNOWN` because "not started" is a reasonable guess and still a guess. The
 page says nothing about any of this until they paste it.
 
+## Table markup
+
+A table cannot be edited a cell at a time — OneNote supports no update to a row
+or a cell, so changing one value rewrites the whole table. Every cell that is
+not changing has to be carried across exactly as it reads.
+
+Formatting the original carried and the replacement leaves out is now carried
+across for you, and the preview says which parts it is keeping. Do not rely on
+that silently: it covers the table's own borders and its cells' borders, and it
+stops the moment the markup specifies any styling of its own — style one cell
+and you have taken responsibility for all of them.
+
+So write the house shape explicitly whenever the table is a new one, and let
+inheritance cover the ones you are editing in place. The house shape, which is
+what the artist's own pages already look like:
+
+- The table itself: `<table border="1" style="border-collapse:collapse">`. The
+  `border` attribute is the part OneNote acts on — a CSS `border:1px solid` in
+  the style alone comes back as `border:0px`.
+- Every cell: `<td style="border:1px solid #A3A3A3;padding:4px">`, with the
+  content in a `<p>`.
+- The header row, where the table has one, additionally carries
+  `background-color:#EFEFEF` on each cell and wraps its text in `<b>`. A roster
+  of musicians, a milestones table, a Field/Value block — the first row names the
+  columns and is shaded so it reads as a header rather than as data.
+- A free-text section is a single-cell table and has **no** header row. Shading
+  its only cell would make the whole section look like a heading.
+- Column widths are not set. OneNote sizes them, and a width guessed from a
+  preview is worse than none.
+
+Send this through the `html` parameter, never `text` — a table put through
+`text` arrives entity-escaped and lands on the page as literal angle brackets.
+
+Where a page needs several changes, give them as `changes` in one call. They are
+previewed together, confirmed together and written together, and if any one of
+them cannot be applied then none of them is. Changing one thing at a time makes
+the tool re-read the page between every change.
+
+Reading the page back afterwards is still worth doing on anything structural. It
+is no longer a way of telling a display artifact from a real mangling — the
+preview shows paragraph breaks and table rows as they are — but it is the only
+thing that confirms what the page now holds.
+
 ## Boundaries
 
 - Never claim a page was changed unless the tool reported changing it. A patch

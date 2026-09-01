@@ -592,10 +592,47 @@ export const inherit = (
     }
   }
 
+  let inner = content.inner;
+
+  // A table's borders, which take more than copying its style attribute across.
+  //
+  // Observed twice, the second time by re-deriving it: a replacement carrying
+  // the original's exact `style="border:1px solid;border-collapse:collapse"`
+  // still came back as `border:0px` on the table and on every cell. OneNote
+  // honours the **`border` attribute** on a `<table>`; the CSS border in the
+  // style is not enough on a patch.
+  //
+  // `scripts/copy-onenote-page.mjs` already knew this — `preserveTableBorders`
+  // adds `border="1"` wherever the style says bordered, and its commit message
+  // says the copies came back unbordered without it. The same rule is applied
+  // here rather than referenced, because that file is maintenance tooling this
+  // package cannot import.
+  if (target.tag === 'table' && content.tag === 'table') {
+    const bordered =
+      /\bborder\s*=\s*"?[1-9]/.test(target.attrs) ||
+      /border\s*:\s*(?!0)(\d*\.?\d+)\s*(px|pt|em)?\s+solid/i.test(target.attrs);
+
+    let carried = false;
+    if (bordered && !/\bborder\s*=/.test(attrs)) {
+      attrs += ' border="1"';
+      carried = true;
+    }
+
+    // And the cells, which carry their own border in what OneNote hands back.
+    // Only when the replacement specifies none anywhere: a caller that styled
+    // one cell has decided about all of them.
+    const cellStyle = /<t[dh]\b[^>]*\bstyle="([^"]*)"/i.exec(target.inner)?.[1];
+    if (cellStyle !== undefined && !/<t[dh]\b[^>]*\bstyle="/i.test(inner)) {
+      inner = inner.replace(/<(t[dh])(\b[^>]*?)?>/gi, `<$1$2 style="${cellStyle}">`);
+      carried = true;
+    }
+
+    if (carried) notes.push('the borders of the table it replaces');
+  }
+
   // Character formatting, which on these pages is where a heading lives. Only
   // when the target is exactly one styled span and the replacement carries no
   // styling of its own anywhere inside it.
-  let inner = content.inner;
   const wrapper = /^\s*<span\s+style="([^"]*)"\s*>([\s\S]*)<\/span>\s*$/i.exec(target.inner);
   if (
     wrapper !== null &&

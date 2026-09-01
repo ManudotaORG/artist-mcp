@@ -439,6 +439,29 @@ test('a replacement keeps the formatting it does not specify', () => {
   assert.match(borders.html, /1pt solid/);
 });
 
+test('a table keeps its borders, which takes the attribute and not the style', () => {
+  // Learned twice. A replacement carrying the original's exact
+  // style="border:1px solid" still came back as border:0px on a real page:
+  // OneNote honours the border ATTRIBUTE on a patch, and the CSS border alone
+  // is ignored. scripts/copy-onenote-page.mjs already encoded this.
+  const original =
+    '<table id="t" style="border:1px solid;border-collapse:collapse">' +
+    '<tr><td style="border:1px solid"><p>Honorar</p></td></tr></table>';
+
+  const kept = inherit(original, '<table><tr><td><p>Honorar</p></td></tr></table>');
+
+  assert.match(kept.html, /<table[^>]*border="1"/, 'the attribute is what OneNote acts on');
+  assert.match(kept.html, /<td style="border:1px solid">/, 'and every cell carries its own');
+  assert.deepEqual(kept.notes, [
+    'style of the table it replaces',
+    'the borders of the table it replaces',
+  ]);
+
+  // A caller that styled a cell has decided about all of them.
+  const own = inherit(original, '<table><tr><td style="border:0"><p>x</p></td></tr></table>');
+  assert.ok(!own.html.includes('border:1px solid"><p>x'));
+});
+
 test('a caller that specifies formatting has decided, and inherits nothing', () => {
   const heading =
     '<p style="margin-top:0pt"><span style="font-size:16pt;font-weight:bold">Projektzustand</span></p>';

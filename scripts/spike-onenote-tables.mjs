@@ -492,6 +492,51 @@ const run = async (sectionId) => {
       `over ${full.parts.length} parts`,
   );
 
+  // 13 — borders, which no stub can answer. A replacement that specifies no
+  // formatting must come back bordered, because the preview says its formatting
+  // is being kept and a preview that says so falsely is worse than one that
+  // says nothing.
+  const raw = await onenoteRaw(token, pageId);
+  const anyTable = (await readEditableParts(token, pageId, { full: false })).parts.find(
+    (part) => part.kind === 'table',
+  );
+
+  if (anyTable === undefined || !/border/i.test(raw)) {
+    bad('13. a bare replacement keeps the table borders', 'no bordered table on the page to test');
+  } else {
+    const bare = '<table><tr><td><p>Rand</p></td><td><p>geprüft</p></td></tr></table>';
+    const shownBare = await previewEdit(token, {
+      page_id: pageId,
+      action: 'replace',
+      element_id: anyTable.element_id,
+      html: bare,
+    });
+
+    await applyEdit(
+      token,
+      {
+        page_id: pageId,
+        action: 'replace',
+        element_id: anyTable.element_id,
+        html: bare,
+        confirmation_token: shownBare.confirmation_token,
+      },
+      record,
+    );
+
+    const afterBare = await onenoteRaw(token, pageId);
+    const at = afterBare.indexOf('geprüft');
+    const around = afterBare.slice(Math.max(0, at - 800), at);
+    const kept = /border:\s*1px solid/.test(around) && !/border:\s*0px/.test(around);
+
+    (kept ? ok : bad)(
+      '13. a bare replacement keeps the table borders',
+      kept
+        ? 'the borders came back, and the preview said they would'
+        : 'the table came back unbordered while the preview claimed its formatting was kept',
+    );
+  }
+
   console.log(`\n  ${written.length} write log line(s), pre-image on ${written.filter((w) => w.pre_image).length}`);
   console.log(`  the scratch page is still there: delete it in OneNote when you are done.`);
 };
