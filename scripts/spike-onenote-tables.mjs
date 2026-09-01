@@ -409,6 +409,89 @@ const run = async (sectionId) => {
     );
   }
 
+  // 10 — several changes in one write, through the shipped path. The claim
+  // being checked is not that Graph accepts an array — spike-onenote-batch.mjs
+  // established that — but that our own preview, token and apply hold together
+  // over a batch, and that the ids read once are still good for every command.
+  const state = await readEditableParts(token, pageId, { full: false });
+  const someTable = state.parts.find((part) => part.kind === 'table');
+  const someParagraph = state.parts.find(
+    (part) => part.kind === 'text' && part.inside_table === null,
+  );
+
+  if (someTable === undefined || someParagraph === undefined) {
+    bad('10. several changes in one write', 'the page no longer has both a table and a paragraph');
+  } else {
+    const batch = [
+      {
+        action: 'replace',
+        element_id: someTable.element_id,
+        html:
+          '<table border="1" style="border-collapse:collapse">' +
+          '<tr><td><p>Honorar</p></td><td><p>1650</p></td></tr>' +
+          '<tr><td><p>Anreise</p></td><td><p>Bahn, 1. Klasse</p></td></tr></table>',
+      },
+      {
+        action: 'insert',
+        element_id: someParagraph.element_id,
+        position: 'after',
+        html: '<p>BATCHED INSERT</p>',
+      },
+      { action: 'append', text: 'BATCHED APPEND' },
+    ];
+
+    const before = written.length;
+    const shownBatch = await previewEdit(token, { page_id: pageId, changes: batch });
+    console.log(`\n  the batch preview a musician would see:\n\n${shownBatch.preview}\n`);
+
+    try {
+      await applyEdit(
+        token,
+        { page_id: pageId, changes: batch, confirmation_token: shownBatch.confirmation_token },
+        record,
+      );
+    } catch (err) {
+      bad('10. several changes in one write', String(err?.message ?? err));
+      return;
+    }
+
+    const done = await readEditableParts(token, pageId, { full: false });
+    const text = done.parts.map((part) => part.text).join(' | ');
+    const all =
+      text.includes('1650') && text.includes('BATCHED INSERT') && text.includes('BATCHED APPEND');
+
+    (all ? ok : bad)(
+      '10. three changes, one write, one confirmation',
+      all
+        ? `all three landed from ids read once, and logged ${written.length - before} lines`
+        : `some did not land: ${text.slice(0, 200)}`,
+    );
+
+    // 11 — the batch must fail closed as a whole. Replaying the confirmation is
+    // the cheapest way to prove nothing goes out on a mismatch.
+    try {
+      await applyEdit(
+        token,
+        { page_id: pageId, changes: batch, confirmation_token: shownBatch.confirmation_token },
+        record,
+      );
+      bad('11. a spent batch confirmation is refused', 'the replay was APPLIED');
+    } catch (err) {
+      ok('11. a spent batch confirmation is refused', String(err?.message ?? err).slice(0, 120));
+    }
+  }
+
+  // 12 — what the index costs against what the page costs. Not a pass/fail;
+  // the number is the point, since this is the reason the index exists.
+  const full = await readEditableParts(token, pageId);
+  const short = await readEditableParts(token, pageId, { full: false });
+  const size = (parts) => parts.reduce((total, part) => total + part.text.length, 0);
+  ok(
+    '12. a named change returns an index rather than the page',
+    `${size(short.parts)} characters against ${size(full.parts)} for the full listing, ` +
+      `over ${full.parts.length} parts`,
+  );
+
   console.log(`\n  ${written.length} write log line(s), pre-image on ${written.filter((w) => w.pre_image).length}`);
   console.log(`  the scratch page is still there: delete it in OneNote when you are done.`);
 };

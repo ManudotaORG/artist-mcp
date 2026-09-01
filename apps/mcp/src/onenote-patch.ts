@@ -482,8 +482,8 @@ export type EditablePart = {
   inside_table: string | null;
 };
 
-export type EditDraft = {
-  page_id: string;
+/** One change. A draft carries a list of these, even when the list has one entry. */
+export type EditChange = {
   action: 'append' | 'replace' | 'insert';
   /** The generated id of the element to replace, or to sit beside. Absent for an append. */
   element_id: string | null;
@@ -493,6 +493,11 @@ export type EditDraft = {
   html: string | null;
   /** Which side of the anchor an insert lands on. Null otherwise. */
   position: 'before' | 'after' | null;
+};
+
+export type EditDraft = {
+  page_id: string;
+  changes: EditChange[];
   source_page: string | null;
 };
 
@@ -638,16 +643,20 @@ const MAX_HTML_CHARS = 20_000;
  */
 const ANCHORABLE = /^(?:p|h[1-6]|table):/;
 
-export const editFrom = (params: Record<string, unknown>): EditDraft => {
-  const pageId = params.page_id;
-  if (typeof pageId !== 'string' || !ONENOTE_ID.test(pageId)) {
-    throw failure('page_id is required, and must name the page to change.');
-  }
+/**
+ * The most changes one confirmation may cover.
+ *
+ * Not a technical limit. A batch is approved as one thing, and a list nobody
+ * reads to the end is approved unread — the same failure a truncated preview
+ * was. Restructuring one of these pages takes a handful of changes, not twenty.
+ */
+const MAX_CHANGES = 12;
 
+const changeFrom = (params: Record<string, unknown>, where: string): EditChange => {
   const action = params.action;
   if (action !== 'append' && action !== 'replace' && action !== 'insert') {
     throw failure(
-      "action must be 'append', 'replace' or 'insert'. Nothing else can be done to a page.",
+      `${where}: action must be 'append', 'replace' or 'insert'. Nothing else can be done to a page.`,
     );
   }
 
@@ -661,28 +670,28 @@ export const editFrom = (params: Record<string, unknown>): EditDraft => {
   // the half it was not looking at.
   if (hasText && hasHtml) {
     throw failure(
-      'Give either text or html, not both. text is written as one paragraph with ' +
-        'nothing interpreted; html is markup and is what a table has to be written as.',
+      `${where}: give either text or html, not both. text is written as one paragraph ` +
+        'with nothing interpreted; html is markup and is what a table has to be written as.',
     );
   }
   if (!hasText && !hasHtml) {
-    throw failure('text or html is required: there is nothing to write.');
+    throw failure(`${where}: text or html is required — there is nothing to write.`);
   }
 
   if (hasText && (rawText as string).length > MAX_TEXT_CHARS) {
     throw failure(
-      `That is ${(rawText as string).length} characters. An edit records a decision, ` +
-        `not a page — ${MAX_TEXT_CHARS} is the most. A longer change is a new page.`,
+      `${where}: that is ${(rawText as string).length} characters. An edit records a ` +
+        `decision, not a page — ${MAX_TEXT_CHARS} is the most. A longer change is a new page.`,
     );
   }
   if (hasHtml && (rawHtml as string).length > MAX_HTML_CHARS) {
     throw failure(
-      `That is ${(rawHtml as string).length} characters of markup. ${MAX_HTML_CHARS} is ` +
-        'the most a single patch may carry. A change larger than that is a new page.',
+      `${where}: that is ${(rawHtml as string).length} characters of markup. ` +
+        `${MAX_HTML_CHARS} is the most a single change may carry.`,
     );
   }
 
-  // Validated here rather than at the point of sending, so a malformed table is
+  // Validated here rather than at the point of sending, so malformed markup is
   // refused by the preview — before anybody is asked to approve it, and long
   // before anything reaches the page.
   const html = hasHtml ? validateFragment(rawHtml as string) : null;
@@ -694,14 +703,14 @@ export const editFrom = (params: Record<string, unknown>): EditDraft => {
   if (action === 'append') {
     if (named) {
       throw failure(
-        'An append goes at the end of the page and takes no element_id. To change ' +
-          'something already written use replace, and to put something beside an ' +
-          'existing table use insert.',
+        `${where}: an append goes at the end of the page and takes no element_id. To ` +
+          'change something already written use replace, and to put something beside an ' +
+          'existing element use insert.',
       );
     }
   } else if (!named || !isGeneratedId(elementId as string)) {
     throw failure(
-      `A ${action} needs element_id: the generated id of the part to ` +
+      `${where}: a ${action} needs element_id — the generated id of the part to ` +
         `${action === 'replace' ? 'change' : 'sit beside'}, as preview_onenote_edit ` +
         'reports it. Read the page again if you do not have one.',
     );
@@ -709,39 +718,29 @@ export const editFrom = (params: Record<string, unknown>): EditDraft => {
 
   const targetsTable = named && isTableId(elementId as string);
 
-  // The three rules Graph imposes, stated where a caller meets them rather than
-  // left to be discovered as a 20138. `tr` and `td` support no update action at
-  // all, so a table is changed by replacing the whole of it — and a whole table
+  // The rules Graph imposes, stated where a caller meets them rather than left
+  // to be discovered as a 20138. `tr` and `td` support no update action at all,
+  // so a table is changed by replacing the whole of it — and a whole table
   // cannot be expressed as plain text.
   if (action === 'replace' && targetsTable) {
     if (html === null) {
       throw failure(
-        'A table is replaced with markup, not plain text: pass the whole new table ' +
-          'as html, starting with <table> and ending with </table>. OneNote supports ' +
+        `${where}: a table is replaced with markup, not plain text — pass the whole new ` +
+          'table as html, starting with <table> and ending with </table>. OneNote supports ' +
           'no update action on a row or a cell, so the whole table is the unit.',
       );
     }
     if (rootTag(html) !== 'table') {
       throw failure(
-        'Replacing a table has to yield exactly one table. Send one <table> element ' +
-          'and nothing beside it.',
+        `${where}: replacing a table has to yield exactly one table. Send one <table> ` +
+          'element and nothing beside it.',
       );
     }
   }
 
-  // A paragraph replaced by markup, including several elements at once, which
-  // is how a section gets added in the middle of a page: the intro paragraph
-  // becomes itself plus a heading plus a table, in one command. Verified
-  // against a real page — Graph accepts it and interprets it, and this was our
-  // restriction rather than OneNote's. See scripts/spike-onenote-anchors.mjs.
-  //
-  // Nothing is checked about the shape of that content beyond `validateFragment`.
-  // A replace on a paragraph may legitimately yield a table, so there is no
-  // equivalent of the one-table rule above to apply.
-
   if (action === 'insert' && !ANCHORABLE.test(elementId as string)) {
     throw failure(
-      'insert puts a new block beside a paragraph, a heading or a table, and ' +
+      `${where}: insert puts a new block beside a paragraph, a heading or a table, and ` +
         'element_id names none of those. Append reaches the end of the page, and a ' +
         'replace changes something already there.',
     );
@@ -750,13 +749,45 @@ export const editFrom = (params: Record<string, unknown>): EditDraft => {
   const position = params.position;
   if (action === 'insert') {
     if (position !== 'before' && position !== 'after') {
-      throw failure("An insert needs position: 'before' or 'after' the table named.");
+      throw failure(`${where}: an insert needs position — 'before' or 'after' the element named.`);
     }
     if (html === null) {
-      throw failure('An insert writes markup: pass the new block as html.');
+      throw failure(`${where}: an insert writes markup — pass the new block as html.`);
     }
   } else if (position !== undefined && position !== null && position !== '') {
-    throw failure('position belongs to an insert and to nothing else.');
+    throw failure(`${where}: position belongs to an insert and to nothing else.`);
+  }
+
+  return {
+    action,
+    element_id: action === 'append' ? null : (elementId as string),
+    text,
+    html,
+    position: action === 'insert' ? (position as 'before' | 'after') : null,
+  };
+};
+
+/**
+ * A page and the changes to make to it, whether that is one or several.
+ *
+ * Several ride in one `PATCH`, which is what Graph's array of change objects is
+ * for and which this used to send one command at a time. The reason to batch is
+ * not only the round trips: generated ids move after *every* write, so eight
+ * changes applied one by one means eight reads, and every one of them is a
+ * chance for the page to have moved under the sequence. One command array
+ * resolves every target against a single read.
+ *
+ * That was verified rather than assumed, and so was the thing that makes it
+ * safe to approve as one step: a batch containing one unresolvable target
+ * applies **nothing** — `400`, and the page untouched. See
+ * scripts/spike-onenote-batch.mjs. A batch that half-applied would be a page in
+ * a state nobody previewed and nobody agreed to, and this capability would not
+ * be worth having.
+ */
+export const editFrom = (params: Record<string, unknown>): EditDraft => {
+  const pageId = params.page_id;
+  if (typeof pageId !== 'string' || !ONENOTE_ID.test(pageId)) {
+    throw failure('page_id is required, and must name the page to change.');
   }
 
   const source = params.source_page;
@@ -766,13 +797,52 @@ export const editFrom = (params: Record<string, unknown>): EditDraft => {
     }
   }
 
+  const batch = params.changes;
+  if (batch !== undefined && batch !== null) {
+    if (!Array.isArray(batch) || batch.length === 0) {
+      throw failure('changes must be a list of the changes to make, in the order they apply.');
+    }
+    if (batch.length > MAX_CHANGES) {
+      throw failure(
+        `That is ${batch.length} changes in one confirmation. ${MAX_CHANGES} is the most: ` +
+          'they are approved as one thing, and a list nobody reads to the end is approved ' +
+          'unread. Split it and show each batch.',
+      );
+    }
+    if (params.action !== undefined || params.text !== undefined || params.html !== undefined) {
+      throw failure(
+        'Give either changes, or a single action with its text or html — not both. A ' +
+          'change listed in one place and a change listed in the other would be two ' +
+          'different edits with one confirmation between them.',
+      );
+    }
+
+    const changes = batch.map((change, index) =>
+      changeFrom(
+        (change ?? {}) as Record<string, unknown>,
+        `change ${index + 1} of ${batch.length}`,
+      ),
+    );
+
+    // Two changes aimed at one element both resolve — every target is resolved
+    // against the page as read — and what the page ends up holding is whichever
+    // ran last, with the other silently gone. Refused rather than ordered.
+    const targets = changes.map((change) => change.element_id).filter((id) => id !== null);
+    const twice = targets.find((id, index) => targets.indexOf(id) !== index);
+    if (twice !== undefined) {
+      throw failure(
+        `Two changes name ${twice}. In one batch both resolve, and only the last one ` +
+          'survives — so the other would be lost without any refusal. Combine them into ' +
+          'the single change you mean.',
+      );
+    }
+
+    return { page_id: pageId, changes, source_page: source === '' ? null : (source as string) ?? null };
+  }
+
   return {
     page_id: pageId,
-    action,
-    element_id: action === 'append' ? null : (elementId as string),
-    text,
-    html,
-    position: action === 'insert' ? (position as 'before' | 'after') : null,
+    changes: [changeFrom(params, 'this change')],
     source_page: typeof source === 'string' && source !== '' ? source : null,
   };
 };
@@ -806,19 +876,30 @@ const base32hex = (bytes: Uint8Array): string => {
  * Hashing the pre-image makes that case fail closed: the edit is refused unless
  * the element still holds exactly what the musician was shown.
  */
-export const editToken = async (draft: EditDraft, preImageHtml: string): Promise<string> => {
-  const canonical = [
-    draft.page_id,
-    draft.action,
-    draft.element_id ?? '',
-    draft.position ?? '',
-    draft.text ?? '',
-    // The markup itself, not a rendering of it. The preview shows a table as
-    // rows because that is what can be read, but two different tables can render
-    // to the same rows — so what the token binds is what would actually be sent.
-    draft.html ?? '',
-  ].join(' ');
-  const data = new TextEncoder().encode(`confirm-edit ${canonical} ${preImageHtml}`);
+export const editToken = async (draft: EditDraft, preImages: string[]): Promise<string> => {
+  // Every change and every pre-image, in order. A batch is approved as one
+  // thing, so it fails closed as one thing: if any element it would overwrite
+  // has moved or changed since the preview, the whole batch stops. Hashing them
+  // separately would let a batch apply the changes whose targets still match,
+  // which is the partial application the atomicity of the PATCH exists to
+  // prevent — the guarantee has to hold in our code too, not only in Graph's.
+  const canonical = draft.changes
+    .map((change, index) =>
+      [
+        change.action,
+        change.element_id ?? '',
+        change.position ?? '',
+        change.text ?? '',
+        // The markup itself, not a rendering of it. The preview shows a table as
+        // rows because that is what can be read, but two different tables can
+        // render to the same rows — so what the token binds is what is sent.
+        change.html ?? '',
+        preImages[index] ?? '',
+      ].join(' '),
+    )
+    .join(' | ');
+
+  const data = new TextEncoder().encode(`confirm-edit ${draft.page_id} ${canonical}`);
   return base32hex(new Uint8Array(await crypto.subtle.digest('SHA-256', data)));
 };
 
@@ -1104,6 +1185,7 @@ const readable = (elementHtml: string, id: string): string =>
 export const readEditableParts = async (
   token: string,
   pageId: string,
+  { full = true }: { full?: boolean } = {},
 ): Promise<{ html: string; etag: string | null; parts: EditablePart[] }> => {
   const { html, etag } = await onenotePageContent(pageId, token);
   const ids = readTargets(html).generatedIds.filter((id) =>
@@ -1121,10 +1203,17 @@ export const readEditableParts = async (
   const parts = ids
     .map((id): EditablePart => {
       const element = extractElement(html, 'id', id);
+      const text = element === undefined ? '' : readable(element, id);
+
       return {
         element_id: id,
         kind: isTableId(id) ? 'table' : 'text',
-        text: element === undefined ? '' : readable(element, id),
+        // Abbreviated only when this is an index rather than the thing being
+        // decided. Nothing a change would overwrite is ever shortened — that is
+        // the diff, and it is rendered in full further down. This is the list a
+        // caller looks an id up in, and returning twenty tables in full on the
+        // twentieth edit of one page is most of what a session spends.
+        text: full ? text : label(text),
         // A paragraph in a cell is listed, because it is there and hiding it
         // would be a lie about the page. But Graph supports no update action on
         // `tr` or `td`, so what a replace aimed at it does is not something this
@@ -1140,24 +1229,118 @@ export const readEditableParts = async (
   return { html, etag, parts };
 };
 
+/** How much of an element the index shows: enough to recognise, never enough to approve. */
+const LABEL_CHARS = 60;
+
+const label = (text: string): string => {
+  const line = text.replace(/\s+/g, ' ').trim();
+  return line.length > LABEL_CHARS ? `${line.slice(0, LABEL_CHARS - 1)}…` : line;
+};
+
+/** One change rendered as its before and after, which is what gets approved. */
+const showChange = (
+  change: EditChange,
+  captured: string,
+  carriedHtml: string,
+): { preview: string; inherited: string[] } => {
+  const rendered = (html: string): string =>
+    rootTag(html) === 'table' ? renderTable(html) : renderFragment(html);
+
+  if (change.action === 'append') {
+    return {
+      preview: `Add to the end of the page:\n\n${
+        change.html === null ? (change.text as string).trim() : rendered(change.html)
+      }`,
+      inherited: [],
+    };
+  }
+
+  const anchor = readable(captured, change.element_id as string);
+
+  if (change.action === 'insert') {
+    return {
+      preview:
+        `Put this ${change.position} the ${
+          isTableId(change.element_id as string) ? 'table' : 'paragraph'
+        } that currently reads:\n\n${anchor}\n\nNew block:\n\n${rendered(change.html as string)}`,
+      inherited: [],
+    };
+  }
+
+  const carried = change.html === null ? { html: '', notes: [] } : inherit(captured, change.html);
+  const asTable = isTableId(change.element_id as string) && change.html !== null;
+
+  if (asTable) {
+    const marks = markRows(tableRows(captured), tableRows(carriedHtml));
+    const touched = marks.after.filter((m) => m !== ' ').length;
+    const dropped = marks.before.filter((m) => m !== ' ').length;
+
+    return {
+      preview:
+        `Replace this:\n\n${renderTable(captured, marks.before)}\n\n` +
+        `With this:\n\n${renderTable(carriedHtml, marks.after)}\n\n` +
+        (touched === 0 && dropped === 0
+          ? 'Every row reads exactly as it does now. What differs is the markup — ' +
+            'borders, widths, or the way a cell is written. Say that plainly rather ' +
+            'than describing a change to the words, because there is none.'
+          : `Marked rows are the ones that differ: ${dropped} going, ${touched} arriving. ` +
+            'Every unmarked row is being rewritten too — a table is replaced whole — ' +
+            'and is only safe because it is carried across unchanged.'),
+      inherited: carried.notes,
+    };
+  }
+
+  return {
+    preview: `Replace this:\n\n${anchor}\n\nWith this:\n\n${
+      change.html === null ? (change.text as string).trim() : rendered(carriedHtml)
+    }`,
+    inherited: carried.notes,
+  };
+};
+
+/**
+ * What each change would destroy, and what would actually be sent for it.
+ *
+ * Shared by the preview and the apply so that the two cannot drift: the apply
+ * hashes what this returns and sends what this returns, and the preview shows
+ * it. A capture that fails throws, here as before — a replace whose pre-image
+ * could not be read is refused rather than performed blind.
+ */
+const resolveChanges = (
+  html: string,
+  draft: EditDraft,
+): { captured: string[]; content: string[] } => {
+  const captured = draft.changes.map((change) =>
+    change.action === 'append' ? '' : preImage(html, change.element_id as string),
+  );
+
+  const content = draft.changes.map((change, index) =>
+    change.html === null
+      ? paragraph(change.text as string)
+      : change.action === 'replace'
+        ? inherit(captured[index], change.html).html
+        : change.html,
+  );
+
+  return { captured, content };
+};
+
 /**
  * Show the change that would be made, and hand back the token making it needs.
  *
  * A read despite the name, exactly as the calendar and create previews are.
  */
 export async function previewEdit(token: string, params: Record<string, unknown>) {
-  // Naming a part to replace requires knowing its id, and an id is only
-  // knowable by reading the page. So a replace with no element_id is not a
-  // malformed call — it is the first half of the only workflow available, and
-  // the tool text says so. It used to be refused here, which meant a model
-  // following that text got an error and had to guess its way out.
-  //
-  // An insert is the same shape: it names a table it can only have learnt about
-  // by reading the page first.
+  // Naming a part to change requires knowing its id, and an id is only knowable
+  // by reading the page. So a replace with no element_id is not a malformed
+  // call — it is the first half of the only workflow available, and the tool
+  // text says so. It used to be refused here, which meant a model following that
+  // text got an error and had to guess its way out.
   //
   // No confirmation token comes back from this branch. Nothing has been chosen
   // yet, and a token would be one for a change nobody has described.
   const wantsPart =
+    params.changes === undefined &&
     (params.action === 'replace' || params.action === 'insert') &&
     (params.element_id === undefined || params.element_id === null || params.element_id === '');
 
@@ -1167,11 +1350,14 @@ export async function previewEdit(token: string, params: Record<string, unknown>
       throw failure('page_id is required, and must name the page to change.');
     }
 
+    // In full: this is the call whose whole purpose is showing what the page
+    // holds, and the one place the cost is the point.
     const { parts } = await readEditableParts(token, pageId);
     return {
       preview: null,
       page_id: pageId,
       parts,
+      abbreviated: false,
       confirmation_token: null,
       note:
         parts.length === 0
@@ -1179,123 +1365,94 @@ export async function previewEdit(token: string, params: Record<string, unknown>
             'replaced. An append can still add to the end of it.'
           : 'Nothing has been previewed yet. These are the parts of the page as it ' +
             'stands. Name one as element_id and preview again to see the change ' +
-            'itself. The ids were read just now and are good only for the next call.',
+            'itself — or list several changes at once as `changes`, which are ' +
+            'applied together in one write. The ids were read just now and are ' +
+            'good only for the next call.',
     };
   }
 
   const draft = editFrom(params);
-  const { html, parts } = await readEditableParts(token, draft.page_id);
 
-  // What the change says, rendered the way the thing it touches is rendered, so
-  // the before and the after in a preview are comparable rather than one being
-  // rows and the other markup.
-  const rendered = (html: string): string =>
-    rootTag(html) === 'table' ? renderTable(html) : renderFragment(html);
+  // An index rather than the page: the caller has named what it is changing, so
+  // what it needs back is the diff for that, plus enough to look up an id it
+  // did not have. Returning every table in full on every call is the dominant
+  // cost of patching one page in several steps.
+  const { html, parts } = await readEditableParts(token, draft.page_id, { full: false });
+  const { captured, content } = resolveChanges(html, draft);
 
-  if (draft.action === 'append') {
-    return {
-      preview: `Add to the end of the page:\n\n${
-        draft.html === null ? (draft.text as string).trim() : rendered(draft.html)
-      }`,
-      page_id: draft.page_id,
-      parts,
-      confirmation_token: await editToken(draft, ''),
-      note:
-        'Show this to the musician and wait for their yes. Nothing on the page is ' +
-        'changed or removed by an append — it adds to the end.',
-    };
-  }
+  const shown = draft.changes.map((change, index) =>
+    showChange(change, captured[index], content[index]),
+  );
 
-  // Captured for both, and for different reasons. A replace needs it because it
-  // is the only copy of what is about to be destroyed. An insert destroys
-  // nothing, but it lands relative to this element — so binding the token to the
-  // anchor's current content is what makes "the page changed since you looked"
-  // a refusal rather than a block that quietly lands somewhere else.
-  const captured = preImage(html, draft.element_id as string);
-  const anchor = readable(captured, draft.element_id as string);
-
-  if (draft.action === 'insert') {
-    return {
-      preview:
-        `Put this ${draft.position} the ${
-          isTableId(draft.element_id as string) ? 'table' : 'paragraph'
-        } that currently reads:\n\n${anchor}\n\n` +
-        `New block:\n\n${rendered(draft.html as string)}`,
-      page_id: draft.page_id,
-      parts,
-      confirmation_token: await editToken(draft, captured),
-      note:
-        'Show this to the musician and wait for their yes. Nothing is overwritten ' +
-        'or removed — this adds a block beside the element quoted above. If that ' +
-        'is not the one they mean, the block will land in the wrong place.',
-    };
-  }
-
-  // What would actually be sent, formatting carried across included. The
-  // preview shows this rather than the caller's raw markup: the two differ
-  // exactly when something is inherited, and that difference is a change to the
-  // page like any other.
-  const carried =
-    draft.html === null ? { html: '', notes: [] } : inherit(captured, draft.html);
-  const inherited =
-    carried.notes.length === 0
+  const inherited = [...new Set(shown.flatMap((one) => one.inherited))];
+  const inheritedNote =
+    inherited.length === 0
       ? ''
-      : `\n\nKeeping ${carried.notes.join(', ')}, which this change does not ` +
-        'specify. Without that it would land as ordinary body text.';
+      : `\n\nKeeping ${inherited.join(', ')}, which this change does not specify. ` +
+        'Without that it would land as ordinary body text.';
 
-  // A table replace is shown with its rows matched up, so the reader can see
-  // which of them the change actually touches. Without this the interesting
-  // line is one of forty identical-looking ones, and a reader who cannot find
-  // the change approves it on trust — which is the same as not previewing.
-  const asTable = isTableId(draft.element_id as string) && draft.html !== null;
-  const beforeRows = asTable ? tableRows(captured) : [];
-  const afterRows = asTable ? tableRows(carried.html) : [];
-  const marks = asTable ? markRows(beforeRows, afterRows) : { before: [], after: [] };
-  const touched = asTable ? marks.after.filter((m) => m !== ' ').length : 0;
-  const dropped = asTable ? marks.before.filter((m) => m !== ' ').length : 0;
+  const body =
+    draft.changes.length === 1
+      ? shown[0].preview
+      : `${draft.changes.length} changes, applied together in one write — all of them ` +
+        'or none:\n\n' +
+        shown.map((one, index) => `${index + 1}. ${one.preview}`).join('\n\n');
 
-  const shown = asTable
-    ? `Replace this:\n\n${renderTable(captured, marks.before)}\n\n` +
-      `With this:\n\n${renderTable(carried.html, marks.after)}\n\n` +
-      (touched === 0 && dropped === 0
-        ? 'Every row reads exactly as it does now. What differs is the markup — ' +
-          'borders, widths, or the way a cell is written. Say that plainly rather ' +
-          'than describing a change to the words, because there is none.'
-        : `Marked rows are the ones that differ: ${dropped} going, ${touched} arriving. ` +
-          'Every unmarked row is being rewritten too — a table is replaced whole — ' +
-          'and is only safe because it is carried across unchanged.')
-    : `Replace this:\n\n${anchor}\n\nWith this:\n\n${
-        draft.html === null ? (draft.text as string).trim() : rendered(carried.html)
-      }`;
+  const destroys = draft.changes.some((change) => change.action === 'replace');
+
+  // Kept per-kind rather than folded into the general wording: this is the
+  // sentence that tells a musician a table replace takes every row with it, and
+  // it stopped being said when the note started describing a batch instead of a
+  // change. A note that covers several changes still has to say the strongest
+  // thing true of any of them.
+  const wholeTable = draft.changes.some(
+    (change) => change.action === 'replace' && isTableId(change.element_id ?? ''),
+  );
 
   return {
-    preview: `${shown}${inherited}`,
+    preview: `${body}${inheritedNote}`,
     page_id: draft.page_id,
     parts,
+    // Said plainly, because a shortened list that does not announce itself is a
+    // list a reader will treat as the whole page.
+    abbreviated: true,
     confirmation_token: await editToken(draft, captured),
     note:
-      'Show this to the musician and wait for their yes. This overwrites what is ' +
-      'quoted above' +
-      (isTableId(draft.element_id as string)
-        ? ' — the whole table, every row of it, because OneNote supports no change ' +
-          'to a single row or cell'
-        : '') +
-      ', and OneNote keeps no version of a page — what it replaces is ' +
-      "kept in this install's own write log and nowhere else.",
+      'Show this to the musician and wait for their yes. ' +
+      (destroys
+        ? 'This overwrites what is quoted above' +
+          (wholeTable
+            ? ' — a table is replaced whole, every row of it, because OneNote supports ' +
+              'no change to a single row or cell'
+            : '') +
+          ', and OneNote keeps no version of a ' +
+          "page — what it replaces is kept in this install's own write log and " +
+          'nowhere else.'
+        : 'Nothing on the page is overwritten or removed by this.') +
+      (draft.changes.length === 1
+        ? ''
+        : ' They are one confirmation: applied in a single write, and if any one of ' +
+          'them cannot be applied then none of them is.'),
   };
 }
 
 /**
- * Apply the change, having shown it.
+ * Apply the change, or the batch of them, having shown it.
  *
  * The page is read again here rather than trusted from the preview, and that is
- * not caution: generated ids move after any page update, so an id that was
- * right at preview may name something else by now. Re-reading also produces the
- * ETag that goes out as `If-Match`, which is what makes the musician typing in
+ * not caution: generated ids move after any page update, so an id that was right
+ * at preview may name something else by now. Re-reading also produces the ETag
+ * that goes out as `If-Match`, which is what makes the musician typing in
  * OneNote between the two calls a refusal rather than a silent overwrite.
  *
- * The confirmation token is checked against the payload *and* the pre-image, so
- * an element whose content changed since the preview fails closed.
+ * The confirmation token is checked against every change *and* every pre-image,
+ * so a batch fails closed if any element it would overwrite has changed since
+ * the preview — not merely the one that moved.
+ *
+ * All the commands go out in one `PATCH`, which is what Graph's array is for.
+ * A batch containing an unresolvable target applies nothing at all, verified
+ * against a real page, so there is no state in which half a confirmed batch is
+ * on the page.
  */
 export async function applyEdit(
   token: string,
@@ -1304,90 +1461,88 @@ export async function applyEdit(
 ) {
   const draft = editFrom(params);
   const { html, etag } = await onenotePageContent(draft.page_id, token);
-
-  const captured = draft.action === 'append' ? '' : preImage(html, draft.element_id as string);
+  const { captured, content } = resolveChanges(html, draft);
 
   const expected = await editToken(draft, captured);
   if (params.confirmation_token !== expected) {
     throw failure(
-      draft.action === 'append'
-        ? 'The confirmation token does not match these values. Call ' +
-          'preview_onenote_edit again with exactly what should be written, show the ' +
-          'musician what it returns, then apply it with those same values.'
-        : 'That part of the page is not what was previewed — either the values ' +
+      draft.changes.some((change) => change.action !== 'append')
+        ? 'That part of the page is not what was previewed — either the values ' +
           'changed, or the page did since it was shown. Nothing was written. Call ' +
-          'preview_onenote_edit again and show the musician what it returns now.',
+          'preview_onenote_edit again and show the musician what it returns now.'
+        : 'The confirmation token does not match these values. Call ' +
+          'preview_onenote_edit again with exactly what should be written, show the ' +
+          'musician what it returns, then apply it with those same values.',
     );
   }
 
-  // Plain text becomes exactly one escaped paragraph, as it always has. Markup
-  // goes out validated, with whatever formatting it inherits from the element it
-  // replaces — which is a pure function of the pre-image and the markup, both of
-  // which the confirmation token binds, so what is sent is still exactly what
-  // was previewed.
-  const content =
-    draft.html === null
-      ? paragraph(draft.text as string)
-      : draft.action === 'replace'
-        ? inherit(captured, draft.html).html
-        : draft.html;
-
-  const command =
-    draft.action === 'append'
-      ? appendCommand('body', content)
-      : draft.action === 'insert'
+  const commands = draft.changes.map((change, index) =>
+    change.action === 'append'
+      ? appendCommand('body', content[index])
+      : change.action === 'insert'
         ? insertCommand(
-            draft.element_id as string,
-            draft.position as 'before' | 'after',
-            content,
+            change.element_id as string,
+            change.position as 'before' | 'after',
+            content[index],
           )
-        : replaceCommand(draft.element_id as string, content);
+        : replaceCommand(change.element_id as string, content[index]),
+  );
 
-  await onenotePatchPage(draft.page_id, [command], token, etag);
+  await onenotePatchPage(draft.page_id, commands, token, etag);
 
-  const wrote = draft.html === null ? (draft.text as string).trim() : draft.html;
-  const destroyed = draft.action === 'replace' ? readable(captured, draft.element_id as string) : '';
+  // After the write, and carrying what each change destroyed. For a replace
+  // this line is the only copy of the previous content that exists anywhere, so
+  // a batch is logged as one line per change rather than one line for the
+  // batch — a restore is per element, and a summary of five changes is not
+  // something anybody can put back.
+  for (const [index, change] of draft.changes.entries()) {
+    const wrote = change.html === null ? (change.text as string).trim() : change.html;
+    const destroyed =
+      change.action === 'replace' ? readable(captured[index], change.element_id as string) : '';
 
-  // After the write, and carrying what it destroyed. For a replace this line is
-  // the only copy of the previous content that exists anywhere.
-  await record({
-    operation:
-      draft.action === 'append'
-        ? 'append_onenote_page'
-        : draft.action === 'insert'
-          ? 'insert_onenote_element'
-          : 'replace_onenote_element',
-    // The text itself, not merely that something happened. `summary` is
-    // documented as what was written "as the user would read it back", and the
-    // calendar rows honour that while these two originally named only the page
-    // id — so the log recorded the replaced text in `pre_image` and left the
-    // replacing text nowhere at all. Someone reading this line back is
-    // reconstructing an edit they cannot see any other way.
-    summary:
-      draft.action === 'append'
-        ? `Added to the end of the page: ${wrote}`
-        : draft.action === 'insert'
-          ? `Inserted ${draft.position} an existing table: ${wrote}`
-          : `Replaced "${destroyed}" with "${wrote}"`,
-    target: draft.page_id,
-    source_page: draft.source_page,
-    // Only a replace has one. An insert captured the anchor to bind its token,
-    // but nothing of it was destroyed, and recording it as a pre-image would
-    // put content in the log that is still on the page — which is the one thing
-    // a reader of this log must be able to trust it does not do.
-    pre_image: draft.action === 'replace' ? captured : null,
-  });
+    await record({
+      operation:
+        change.action === 'append'
+          ? 'append_onenote_page'
+          : change.action === 'insert'
+            ? 'insert_onenote_element'
+            : 'replace_onenote_element',
+      // The text itself, not merely that something happened. `summary` is
+      // documented as what was written "as the user would read it back", and the
+      // calendar rows honour that while these two originally named only the page
+      // id — so the log recorded the replaced text in `pre_image` and left the
+      // replacing text nowhere at all. Someone reading this line back is
+      // reconstructing an edit they cannot see any other way.
+      summary:
+        (draft.changes.length === 1 ? '' : `[${index + 1}/${draft.changes.length}] `) +
+        (change.action === 'append'
+          ? `Added to the end of the page: ${wrote}`
+          : change.action === 'insert'
+            ? `Inserted ${change.position} an existing element: ${wrote}`
+            : `Replaced "${destroyed}" with "${wrote}"`),
+      target: draft.page_id,
+      source_page: draft.source_page,
+      // Only a replace has one. An insert captured the anchor to bind its token,
+      // but nothing of it was destroyed, and recording it as a pre-image would
+      // put content in the log that is still on the page — which is the one thing
+      // a reader of this log must be able to trust it does not do.
+      pre_image: change.action === 'replace' ? captured[index] : null,
+    });
+  }
+
+  const replaced = draft.changes.filter((change) => change.action === 'replace').length;
 
   return {
     changed: true,
     page_id: draft.page_id,
     note:
-      draft.action === 'append'
-        ? 'The page now carries this at the end. Nothing was removed.'
-        : draft.action === 'insert'
-          ? 'The page now carries this block beside that table. Nothing was removed.'
-          : 'The page now says this. What it said before is in this install\'s write ' +
-            'log and nowhere else — OneNote keeps no version of a page, so tell the ' +
-            'musician that rather than implying it can be undone in OneNote.',
+      (draft.changes.length === 1
+        ? ''
+        : `${draft.changes.length} changes were applied in one write. `) +
+      (replaced === 0
+        ? 'The page now carries this. Nothing was removed.'
+        : "What the page said before is in this install's write log and nowhere else " +
+          '— OneNote keeps no version of a page, so tell the musician that rather ' +
+          'than implying it can be undone in OneNote.'),
   };
 }

@@ -2052,7 +2052,12 @@ const createServer = async (
         "change, read the parts back, then preview again naming one. Those ids " +
         "are read fresh each call and are good only for the next call — never " +
         "store one, repeat one to the musician, or reuse one from earlier in the " +
-        "conversation. Most of a filled-in page lives in tables, and a cell " +
+        "conversation. A page needing several changes takes ONE call with " +
+        "`changes`: they are previewed together, confirmed together and written " +
+        "together, and the ids stay valid because they only move once the write " +
+        "happens. Changing one thing at a time re-reads the page every time and " +
+        "is what makes patching a page expensive. " +
+        "Most of a filled-in page lives in tables, and a cell " +
         "cannot be changed on its own: OneNote supports no update to a row or a " +
         "cell, so changing one value means replacing that whole table with html " +
         "carrying every other cell unchanged. Copy them from the rows this " +
@@ -2102,6 +2107,25 @@ const createServer = async (
           .enum(["before", "after"])
           .optional()
           .describe("For insert only: which side of that element the new block goes on"),
+        changes: z
+          .array(
+            z.object({
+              action: z.enum(["append", "replace", "insert"]),
+              element_id: z.string().optional(),
+              position: z.enum(["before", "after"]).optional(),
+              text: z.string().optional(),
+              html: z.string().optional(),
+            }),
+          )
+          .optional()
+          .describe(
+            "SEVERAL changes to one page, applied together in ONE write and approved " +
+              "as one thing. Prefer this whenever a page needs more than one change: " +
+              "the ids move after every write, so changes applied one at a time mean " +
+              "re-reading the page between each. A batch resolves every id against a " +
+              "single read, and if any one change cannot be applied then none of them " +
+              "is. Give this OR a single action, never both",
+          ),
         source_page: z
           .string()
           .optional()
@@ -2109,9 +2133,10 @@ const createServer = async (
       },
       async (params) => {
         try {
-          const { preview, confirmation_token, parts, note } = await call<{
+          const { preview, confirmation_token, parts, note, abbreviated } = await call<{
             preview: string | null;
             confirmation_token: string | null;
+            abbreviated: boolean;
             parts: {
               element_id: string;
               kind: "text" | "table";
@@ -2129,7 +2154,13 @@ const createServer = async (
           const listed =
             parts.length === 0
               ? ""
-              : "\n\nThe editable parts of this page right now:\n" +
+              : `\n\n${
+                  abbreviated
+                    ? "Where the rest of the page's parts are, shortened to one line each " +
+                      "so this call does not return the whole page. Preview a part to see " +
+                      "it in full"
+                    : "The editable parts of this page right now"
+                }:\n` +
                 parts
                   .map((p) =>
                     p.kind === "table"
@@ -2201,6 +2232,18 @@ const createServer = async (
           .enum(["before", "after"])
           .optional()
           .describe("For insert: the same position the preview was given"),
+        changes: z
+          .array(
+            z.object({
+              action: z.enum(["append", "replace", "insert"]),
+              element_id: z.string().optional(),
+              position: z.enum(["before", "after"]).optional(),
+              text: z.string().optional(),
+              html: z.string().optional(),
+            }),
+          )
+          .optional()
+          .describe("Exactly the list the preview was given, in the same order"),
         source_page: z
           .string()
           .optional()

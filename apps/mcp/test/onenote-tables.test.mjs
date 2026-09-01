@@ -29,6 +29,7 @@ const GUID = '33f8a242-7c33-4bb2-90c5-8425a68cc5bf';
 const table = `table:{${GUID}}{50}`;
 const cell = `p:{${GUID}}{53}`;
 const loose = `p:{${GUID}}{40}`;
+const loose2 = `p:{${GUID}}{70}`;
 
 const pageHtml = () =>
   `<html><body><div id="div:{${GUID}}{32}">` +
@@ -38,6 +39,7 @@ const pageHtml = () =>
   `</tr><tr>` +
   `<td><p id="p:{${GUID}}{55}">Anreise</p></td><td><p id="p:{${GUID}}{56}">UNKNOWN</p></td>` +
   `</tr></table>` +
+  `<p id="${loose2}">Signatur</p>` +
   `</div></body></html>`;
 
 const server = ({ html = pageHtml(), etag = 'W/"1"' } = {}) => {
@@ -114,7 +116,7 @@ test('the preview of a table replace shows every row that would go', async () =>
   // The row that is not changing has to be visible in both halves: a table
   // replace destroys it too, and carrying it forward is the caller's job.
   assert.equal(shown.preview.match(/Anreise/g).length, 2);
-  assert.match(shown.note, /the whole table, every row of it/);
+  assert.match(shown.note, /a table is replaced whole, every row of it/);
 });
 
 test('a table takes markup, and a paragraph takes either', () => {
@@ -137,8 +139,8 @@ test('a table takes markup, and a paragraph takes either', () => {
     element_id: loose,
     html: `<p>Programm</p><p>Ausfüllkonventionen</p>${newTable('1400')}`,
   });
-  assert.equal(draft.action, 'replace');
-  assert.match(draft.html, /Ausfüllkonventionen/);
+  assert.equal(draft.changes[0].action, 'replace');
+  assert.match(draft.changes[0].html, /Ausfüllkonventionen/);
 });
 
 test('replacing a table has to yield exactly one table', () => {
@@ -167,7 +169,7 @@ test('an insert anchors on a paragraph as well as a table', () => {
     position: 'after',
     html: '<p>x</p>',
   });
-  assert.equal(draft.position, 'after');
+  assert.equal(draft.changes[0].position, 'after');
 
   assert.throws(
     () =>
@@ -201,7 +203,7 @@ test('an insert says plainly that it removes nothing', async () => {
 
   assert.match(shown.preview, /Put this before the table that currently reads:/);
   assert.match(shown.preview, /\| Honorar \| 1200 +\|/);
-  assert.match(shown.note, /Nothing is overwritten/);
+  assert.match(shown.note, /Nothing on the page is overwritten or removed/);
 });
 
 test('what goes out is one command of the shape Graph documents', async () => {
@@ -486,4 +488,131 @@ test('a preview keeps the paragraph breaks the markup has', async () => {
 
   const after = shown.preview.slice(shown.preview.indexOf('With this:'));
   assert.match(after, /Programm\nAusfüllkonventionen\nUNKNOWN heißt ungeklärt/);
+});
+
+test('several changes ride in one write, and are approved as one', async () => {
+  const { sent, fetchImpl } = server();
+  const { record, lines } = audit();
+
+  const changes = [
+    { action: 'replace', element_id: table, html: newTable('1450') },
+    { action: 'insert', element_id: loose, position: 'after', html: '<p>Mitschnitt: UNKNOWN</p>' },
+    { action: 'replace', element_id: loose2, text: 'Signatur, CL' },
+  ];
+
+  const shown = await withFetch(fetchImpl, () =>
+    previewEdit('t', { page_id: 'p1', changes }),
+  );
+
+  assert.match(shown.preview, /3 changes, applied together in one write/);
+  assert.match(shown.note, /if any one of them cannot be applied then none of them is/);
+
+  await withFetch(fetchImpl, () =>
+    applyEdit('t', { page_id: 'p1', changes, confirmation_token: shown.confirmation_token }, record),
+  );
+
+  // One PATCH, three commands, in the order they were given. That is the whole
+  // point: the ids move once the write happens, so three writes would need
+  // three reads.
+  assert.equal(sent.length, 1, 'a batch is one request');
+  assert.deepEqual(
+    sent[0].body.map((c) => [c.target, c.action, c.position ?? null]),
+    [
+      [table, 'replace', null],
+      [loose, 'insert', 'after'],
+      [loose2, 'replace', null],
+    ],
+  );
+
+  // One log line per change: a restore is per element, and a summary of three
+  // changes is not something anybody can put back.
+  assert.equal(lines.length, 3);
+  assert.match(lines[0].summary, /^\[1\/3\]/);
+  assert.equal(lines[1].pre_image, null, 'an insert destroys nothing');
+  assert.ok(lines[0].pre_image.startsWith('<table id='));
+});
+
+test('a batch fails closed as a whole, not change by change', async () => {
+  const { fetchImpl } = server();
+  const changes = [
+    { action: 'replace', element_id: table, html: newTable('1450') },
+    { action: 'replace', element_id: loose, text: 'Programm 2026' },
+  ];
+  const shown = await withFetch(fetchImpl, () => previewEdit('t', { page_id: 'p1', changes }));
+
+  // The musician edited the SECOND element in OneNote after the preview. The
+  // first change is still exactly what was shown, and it must not go anyway:
+  // they approved the pair.
+  const moved = server({ html: pageHtml().replace('Programm', 'Programmheft') });
+
+  await assert.rejects(
+    withFetch(moved.fetchImpl, () =>
+      applyEdit(
+        't',
+        { page_id: 'p1', changes, confirmation_token: shown.confirmation_token },
+        audit().record,
+      ),
+    ),
+    /not what was previewed/,
+  );
+  assert.equal(moved.sent.length, 0, 'nothing may go out when any part of a batch has moved');
+});
+
+test('two changes aimed at one element are refused rather than ordered', () => {
+  assert.throws(
+    () =>
+      editFrom({
+        page_id: 'p1',
+        changes: [
+          { action: 'replace', element_id: table, html: newTable('1450') },
+          { action: 'replace', element_id: table, html: newTable('1500') },
+        ],
+      }),
+    /only the last one survives/,
+  );
+});
+
+test('a batch and a single change cannot be given at once', () => {
+  assert.throws(
+    () =>
+      editFrom({
+        page_id: 'p1',
+        action: 'replace',
+        element_id: loose,
+        text: 'x',
+        changes: [{ action: 'replace', element_id: table, html: newTable('1') }],
+      }),
+    /not both/,
+  );
+});
+
+test('a named change gets an index of the page, not the page', async () => {
+  const long = 'Musik aus Lateinamerika, zusammengestellt mit dem Veranstalter und dem Orchester';
+  const html =
+    `<html><body><p id="${loose}">${long}</p>` +
+    `<table id="${table}"><tr><td><p>Honorar</p></td><td><p>1200</p></td></tr></table>` +
+    `<p id="${loose2}">Signatur</p></body></html>`;
+
+  const probe = await withFetch(server({ html }).fetchImpl, () =>
+    previewEdit('t', { page_id: 'p1', action: 'replace' }),
+  );
+  const named = await withFetch(server({ html }).fetchImpl, () =>
+    previewEdit('t', { page_id: 'p1', action: 'replace', element_id: loose2, text: 'Signatur, CL' }),
+  );
+
+  // The probe is the call whose whole purpose is showing the page.
+  assert.equal(probe.abbreviated, false);
+  assert.match(probe.parts.find((x) => x.element_id === loose).text, /dem Orchester$/);
+  assert.match(probe.parts.find((x) => x.kind === 'table').text, /\| Honorar \| 1200 \|/);
+
+  // Naming one gets an index: shorter, and saying that it is shorter.
+  assert.equal(named.abbreviated, true);
+  assert.ok(named.parts.find((x) => x.element_id === loose).text.endsWith('…'));
+  assert.ok(
+    named.parts.every((part) => !part.text.includes('\n')),
+    'an index is one line per part',
+  );
+
+  // What is being decided is never abbreviated.
+  assert.match(named.preview, /Replace this:\n\nSignatur\n\nWith this:\n\nSignatur, CL/);
 });

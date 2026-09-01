@@ -144,6 +144,63 @@ rather than out of a model, which is the same reasoning
 verbatim. An `id` and a `data-id` are never copied: duplicating either would
 make the page address two elements the same way.
 
+## Several changes, one write
+
+Applying changes one at a time meant one read per change, because the generated
+ids move after *every* write. Restructuring one page was around eight round
+trips, and each read between them was another chance for the page to have moved
+under the sequence.
+
+Graph's `PATCH` takes an array. Three things about it were probed before this
+was built (`scripts/spike-onenote-batch.mjs`), because one confirmation would
+now cover several destructive changes:
+
+- **Every target resolves against the page as read.** A command whose target an
+  earlier command in the same batch has already rewritten past still lands. One
+  read covers a whole batch, which is the entire reason to batch.
+- **A batch with one unresolvable target applies nothing.** `400`, page
+  untouched — verified with a well-formed id naming nothing, sent between two
+  commands that would otherwise have applied. This is the property that makes a
+  batch safe to approve as one thing. A batch that half-applied would leave a
+  page in a state nobody previewed and nobody agreed to, and the capability
+  would not be worth having.
+- A command *can* target what an earlier one in the same batch created, which
+  nothing here relies on but which would otherwise be a surprise.
+
+So the confirmation token binds every change **and every pre-image, in order**.
+If any one element has moved or changed since the preview, the whole batch is
+refused rather than the changes whose targets still match — the atomicity has to
+hold in our code and not only in Graph's, or the token would quietly become a
+per-change guarantee.
+
+Two changes naming the same element are refused rather than ordered. Both would
+resolve, and only the last would survive, with the other silently gone.
+
+Twelve changes is the ceiling, and it is not a technical one. A batch is
+approved as one thing, and a list nobody reads to the end is approved unread —
+the same failure the truncated preview was.
+
+## The listing is an index once a change is named
+
+The preview returned every part of the page in full on every call, which on a
+real page is 36 parts and about 13,500 characters — most of what a session
+spends when it patches one page in several steps.
+
+That listing exists so a caller can find an id. Once it has named one, what it
+needs back is the diff for that change, and enough of the rest to look up an id
+it does not have. So a preview that names a change returns a one-line label per
+part instead: 3,100 characters against 13,500 on the page above, and it says
+that it is abbreviated, because a shortened list that does not announce itself
+is one a reader treats as the whole page.
+
+The probe call — a replace with no `element_id`, whose whole purpose is showing
+what the page holds — still returns everything.
+
+**Nothing being decided is ever abbreviated.** The diff is rendered in full,
+including a table's every row. Shortening the index is a different act from
+shortening the thing under approval, and the distinction is the whole reason
+the truncation defect is not being reintroduced here.
+
 ## Why markup is refused rather than sanitised
 
 `text` is escaped on the way out, which is what makes it safe to compose from an
