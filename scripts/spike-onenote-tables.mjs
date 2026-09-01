@@ -100,6 +100,7 @@ const listSections = async (token, wanted) => {
 /** A page with a table of the shape these pages actually use: label, value, per row. */
 const SCRATCH = `<!DOCTYPE html><html><head><title>artist-mcp table spike ${new Date().toISOString()}</title></head><body>
 <p>A scratch page written by scripts/spike-onenote-tables.mjs. Safe to delete.</p>
+<p><span style="font-size:12.5pt;color:black;font-weight:bold">Projektzustand</span></p>
 <table border="1" style="border-collapse:collapse">
 <tr><td><p>Honorar</p></td><td><p>1200</p></td></tr>
 <tr><td><p>Anreise</p></td><td><p>UNKNOWN</p></td></tr>
@@ -116,6 +117,10 @@ const readWhenReady = async (token, pageId) => {
     await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
   }
 };
+
+/** The page markup itself, for the questions that are about formatting. */
+const onenoteRaw = async (token, pageId) =>
+  (await graph(token, `/pages/${pageId}/content?includeIDs=true`)).text;
 
 /** Every element on the page as text, so "only the table changed" is checkable. */
 const snapshot = (parts) =>
@@ -275,6 +280,134 @@ const run = async (sectionId) => {
       ? `first table now reads: ${order[0].split('\n')[0].trim()}`
       : `expected two tables, found ${order.length}`,
   );
+
+  // 7 — a paragraph replaced by several elements at once, which is how a
+  // section reaches the middle of a page. Both neighbours of the real one are
+  // paragraphs, so this is the case the capability exists for.
+  const intro = final.parts.find((part) => part.text.includes('A scratch page written by'));
+  if (intro === undefined) {
+    bad('7. a paragraph replaced by a whole section', 'the intro paragraph is no longer there');
+    return;
+  }
+
+  const section =
+    '<p>A scratch page written by scripts/spike-onenote-tables.mjs. Safe to delete.</p>' +
+    '<p><span style="font-size:12.5pt;color:black;font-weight:bold">Eigener Probenbedarf</span></p>' +
+    '<table border="1" style="border-collapse:collapse"><tr><td><p>UNKNOWN</p></td></tr></table>';
+  const shownSection = await previewEdit(token, {
+    page_id: pageId,
+    action: 'replace',
+    element_id: intro.element_id,
+    html: section,
+  });
+
+  try {
+    await applyEdit(
+      token,
+      {
+        page_id: pageId,
+        action: 'replace',
+        element_id: intro.element_id,
+        html: section,
+        confirmation_token: shownSection.confirmation_token,
+      },
+      record,
+    );
+  } catch (err) {
+    bad('7. a paragraph replaced by a whole section', String(err?.message ?? err));
+    return;
+  }
+
+  const withSection = await readEditableParts(token, pageId);
+  const landed = withSection.parts.some((part) => part.text.includes('Eigener Probenbedarf'));
+  (landed ? ok : bad)(
+    '7. a paragraph becomes a paragraph, a heading and a table',
+    landed
+      ? `the page now holds ${withSection.parts.filter((x) => x.kind === 'table').length} tables`
+      : 'the new section is not on the page',
+  );
+
+  // 8 — an insert anchored on a paragraph rather than a table.
+  const signature = withSection.parts.find((part) => part.text.trim() === 'Signatur');
+  if (signature === undefined) {
+    bad('8. insert anchored on a paragraph', 'the signature paragraph is gone');
+  } else {
+    const note = '<p>Mehrere Konzerte: UNKNOWN</p>';
+    const shownNote = await previewEdit(token, {
+      page_id: pageId,
+      action: 'insert',
+      element_id: signature.element_id,
+      position: 'before',
+      html: note,
+    });
+
+    try {
+      await applyEdit(
+        token,
+        {
+          page_id: pageId,
+          action: 'insert',
+          element_id: signature.element_id,
+          position: 'before',
+          html: note,
+          confirmation_token: shownNote.confirmation_token,
+        },
+        record,
+      );
+      const after = await readEditableParts(token, pageId);
+      const texts = after.parts.map((part) => part.text.trim());
+      const placed = texts.indexOf('Mehrere Konzerte: UNKNOWN') < texts.indexOf('Signatur');
+      (placed ? ok : bad)(
+        '8. insert anchored on a paragraph lands on the right side',
+        placed ? 'it sits before the signature' : `order came back as ${texts.join(' / ')}`,
+      );
+    } catch (err) {
+      bad('8. insert anchored on a paragraph', String(err?.message ?? err));
+    }
+  }
+
+  // 9 — the formatting a replacement does not specify. A heading here is a
+  // paragraph holding one styled span; replaced by a bare <p> and left alone,
+  // it comes back as ordinary body text.
+  const beforeHeading = await onenoteRaw(token, pageId);
+  const headingPart = (await readEditableParts(token, pageId)).parts.find(
+    (part) => part.text.trim() === 'Projektzustand',
+  );
+
+  if (headingPart === undefined || !beforeHeading.includes('font-weight:bold')) {
+    bad('9. a heading keeps its formatting', 'no styled heading on the page to test with');
+  } else {
+    const plain = '<p>Projektzustand 2026</p>';
+    const shownHeading = await previewEdit(token, {
+      page_id: pageId,
+      action: 'replace',
+      element_id: headingPart.element_id,
+      html: plain,
+    });
+
+    const disclosed = /Keeping/.test(shownHeading.preview);
+    await applyEdit(
+      token,
+      {
+        page_id: pageId,
+        action: 'replace',
+        element_id: headingPart.element_id,
+        html: plain,
+        confirmation_token: shownHeading.confirmation_token,
+      },
+      record,
+    );
+
+    const afterHeading = await onenoteRaw(token, pageId);
+    const at = afterHeading.indexOf('Projektzustand 2026');
+    const kept = afterHeading.slice(Math.max(0, at - 300), at).includes('font-weight:bold');
+    (kept && disclosed ? ok : bad)(
+      '9. a heading replaced by unstyled markup keeps being a heading',
+      kept
+        ? `bold carried across, and the preview said so: ${disclosed}`
+        : 'the heading came back as ordinary body text — the inheritance did not hold',
+    );
+  }
 
   console.log(`\n  ${written.length} write log line(s), pre-image on ${written.filter((w) => w.pre_image).length}`);
   console.log(`  the scratch page is still there: delete it in OneNote when you are done.`);

@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   applyEdit,
   editFrom,
+  inherit,
   previewEdit,
   markRows,
   renderTable,
@@ -116,20 +117,28 @@ test('the preview of a table replace shows every row that would go', async () =>
   assert.match(shown.note, /the whole table, every row of it/);
 });
 
-test('a table takes markup and a paragraph does not, in both directions', () => {
+test('a table takes markup, and a paragraph takes either', () => {
   assert.throws(
     () => editFrom({ page_id: 'p1', action: 'replace', element_id: table, text: 'Honorar 1400' }),
     /replaced with markup/,
-  );
-  assert.throws(
-    () => editFrom({ page_id: 'p1', action: 'replace', element_id: loose, html: newTable('1400') }),
-    /Only a table is replaced with markup/,
   );
   assert.throws(
     () =>
       editFrom({ page_id: 'p1', action: 'replace', element_id: table, text: 'x', html: newTable('1') }),
     /not both/,
   );
+
+  // A paragraph replaced by several elements at once: the intro becomes itself
+  // plus a heading plus a table, which is how a section is added mid-page.
+  // Verified against a real page before it was allowed here.
+  const draft = editFrom({
+    page_id: 'p1',
+    action: 'replace',
+    element_id: loose,
+    html: `<p>Programm</p><p>Ausfüllkonventionen</p>${newTable('1400')}`,
+  });
+  assert.equal(draft.action, 'replace');
+  assert.match(draft.html, /Ausfüllkonventionen/);
 });
 
 test('replacing a table has to yield exactly one table', () => {
@@ -146,17 +155,30 @@ test('replacing a table has to yield exactly one table', () => {
   }
 });
 
-test('an insert names a table and a side of it', () => {
+test('an insert anchors on a paragraph as well as a table', () => {
+  // Graph supports a sibling insert on a p, verified against a real page. On
+  // these pages that is the case that matters: a new section belongs between an
+  // intro paragraph and the heading under it, and both neighbours are
+  // paragraphs.
+  const draft = editFrom({
+    page_id: 'p1',
+    action: 'insert',
+    element_id: loose,
+    position: 'after',
+    html: '<p>x</p>',
+  });
+  assert.equal(draft.position, 'after');
+
   assert.throws(
     () =>
       editFrom({
         page_id: 'p1',
         action: 'insert',
-        element_id: loose,
+        element_id: `li:{33f8a242-7c33-4bb2-90c5-8425a68cc5bf}{60}`,
         position: 'after',
         html: '<p>x</p>',
       }),
-    /beside a table/,
+    /paragraph, a heading or a table/,
   );
   assert.throws(
     () => editFrom({ page_id: 'p1', action: 'insert', element_id: table, html: '<p>x</p>' }),
@@ -390,4 +412,78 @@ test('a replace that changes no words says so instead of implying an edit', asyn
 
   assert.match(shown.preview, /Every row reads exactly as it does now/);
   assert.match(shown.preview, /What differs is the markup/);
+});
+
+test('a replacement keeps the formatting it does not specify', () => {
+  // Both halves observed on a real page: a bordered table replaced by a bare
+  // <table> comes back as border:0px, and a heading replaced by a bare <p>
+  // comes back with no span at all — and on these pages the span is the whole
+  // of what made it a heading.
+  const heading =
+    '<p id="x" style="margin-top:0pt"><span style="font-size:16pt;font-weight:bold">Projektzustand</span></p>';
+  const kept = inherit(heading, '<p>Projektzustand 2026</p>');
+
+  assert.match(kept.html, /font-weight:bold/);
+  assert.match(kept.html, /margin-top:0pt/);
+  assert.match(kept.html, /Projektzustand 2026/);
+  assert.ok(!kept.html.includes('id="x"'), 'an id is never copied onto the replacement');
+  assert.equal(kept.notes.length, 2);
+
+  const borders = inherit(
+    '<table id="t" border="1" style="border:1pt solid #a3a3a3"><tr><td>a</td></tr></table>',
+    '<table><tr><td>b</td></tr></table>',
+  );
+  assert.match(borders.html, /border="1"/);
+  assert.match(borders.html, /1pt solid/);
+});
+
+test('a caller that specifies formatting has decided, and inherits nothing', () => {
+  const heading =
+    '<p style="margin-top:0pt"><span style="font-size:16pt;font-weight:bold">Projektzustand</span></p>';
+
+  const own = inherit(heading, '<p style="margin-top:9pt"><span style="color:red">Neu</span></p>');
+  assert.match(own.html, /margin-top:9pt/);
+  assert.ok(!own.html.includes('font-weight:bold'), 'their styling is not merged with ours');
+  assert.deepEqual(own.notes, []);
+
+  // A different kind of element inherits nothing either: a paragraph becoming a
+  // table has nothing to carry across.
+  assert.deepEqual(inherit(heading, '<table><tr><td>a</td></tr></table>').notes, []);
+});
+
+test('what is inherited is shown, not slipped in', async () => {
+  const html =
+    `<html><body><p id="${loose}" style="margin-top:0pt">` +
+    '<span style="font-size:16pt;font-weight:bold">Programm</span></p></body></html>';
+  const { fetchImpl } = server({ html });
+
+  const shown = await withFetch(fetchImpl, () =>
+    previewEdit('t', {
+      page_id: 'p1',
+      action: 'replace',
+      element_id: loose,
+      html: '<p>Programm 2026</p>',
+    }),
+  );
+
+  assert.match(shown.preview, /Keeping .*character styling inside the p it replaces/s);
+  assert.match(shown.preview, /would land as ordinary body text/);
+});
+
+test('a preview keeps the paragraph breaks the markup has', async () => {
+  // asText stripped every tag and left the text run together, so a replacement
+  // made of three paragraphs previewed as one line and read as a different
+  // change from the one being made.
+  const { fetchImpl } = server();
+  const shown = await withFetch(fetchImpl, () =>
+    previewEdit('t', {
+      page_id: 'p1',
+      action: 'replace',
+      element_id: loose,
+      html: '<p>Programm</p><p>Ausfüllkonventionen</p><p>UNKNOWN heißt ungeklärt</p>',
+    }),
+  );
+
+  const after = shown.preview.slice(shown.preview.indexOf('With this:'));
+  assert.match(after, /Programm\nAusfüllkonventionen\nUNKNOWN heißt ungeklärt/);
 });

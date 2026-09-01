@@ -496,6 +496,121 @@ export type EditDraft = {
   source_page: string | null;
 };
 
+/**
+ * The first element of a fragment, taken whole.
+ *
+ * Depth-counted, like everything else here that looks at markup: the first
+ * closing tag is not the end of the element whenever it has children.
+ */
+const firstElement = (
+  html: string,
+): { tag: string; attrs: string; inner: string; whole: string } | undefined => {
+  const open = /<([a-zA-Z][a-zA-Z0-9]*)((?:[^<>"']|"[^"]*"|'[^']*')*)>/.exec(html);
+  if (open === null || open.index !== html.search(/</)) return undefined;
+
+  const tag = open[1].toLowerCase();
+  const step = new RegExp(`<(/?)${tag}\\b[^>]*?(/?)>`, 'gi');
+  step.lastIndex = open.index;
+
+  let depth = 0;
+  let match: RegExpExecArray | null;
+  while ((match = step.exec(html)) !== null) {
+    if (match[2] === '/') continue;
+    depth += match[1] === '/' ? -1 : 1;
+    if (depth === 0) {
+      const end = match.index + match[0].length;
+      return {
+        tag,
+        attrs: open[2],
+        inner: html.slice(open.index + open[0].length, match.index),
+        whole: html.slice(open.index, end),
+      };
+    }
+  }
+
+  return undefined;
+};
+
+const attributeOf = (attrs: string, name: string): string | undefined => {
+  const found = new RegExp(`\\b${name}="([^"]*)"`, 'i').exec(attrs);
+  return found === null ? undefined : found[1];
+};
+
+/**
+ * What a replacement inherits from what it replaces, when it says nothing
+ * itself.
+ *
+ * Verified against a real page rather than reasoned about, because both halves
+ * of this were observed to fail silently:
+ *
+ *   - A bordered table replaced by a bare `<table>` comes back as
+ *     `style="border:0px"`. The borders are not carried; they are removed.
+ *   - A heading replaced by a bare `<p>` comes back with no `<span>` at all.
+ *     On these pages a heading *is* a `<p>` holding one styled span — OneNote
+ *     keeps no `h1`-`h6` — so the whole of what made it a heading is the thing
+ *     that gets dropped.
+ *
+ * Neither shows up in a preview built from text, and neither is recoverable
+ * without the pre-image. So the formatting of the element being replaced is
+ * carried onto the replacement wherever the caller has not specified any, and
+ * the preview says that it happened. Silent inheritance would be a change
+ * nobody was shown, which is the same fault as a truncated preview.
+ *
+ * A caller that supplies its own styling has decided, and nothing is inherited.
+ *
+ * The values copied come out of the musician's own page rather than out of a
+ * model, which is why they are not run back through `validateFragment` — the
+ * same reasoning `scripts/copy-onenote-page.mjs` records for sending a page's
+ * markup back verbatim. Only presentational attributes are copied: an `id` is
+ * Graph's and a `data-id` is the author's, and duplicating either would make
+ * the page address two elements the same way.
+ */
+const INHERITED_ATTRS = ['style', 'lang', 'align', 'width', 'border', 'cellpadding', 'cellspacing'];
+
+export const inherit = (
+  targetHtml: string,
+  contentHtml: string,
+): { html: string; notes: string[] } => {
+  const target = firstElement(targetHtml);
+  const content = firstElement(contentHtml);
+  if (target === undefined || content === undefined) return { html: contentHtml, notes: [] };
+
+  const notes: string[] = [];
+  let attrs = content.attrs;
+
+  if (target.tag === content.tag) {
+    for (const name of INHERITED_ATTRS) {
+      const value = attributeOf(target.attrs, name);
+      if (value === undefined || attributeOf(attrs, name) !== undefined) continue;
+      attrs += ` ${name}="${value}"`;
+      notes.push(`${name} of the ${target.tag} it replaces`);
+    }
+  }
+
+  // Character formatting, which on these pages is where a heading lives. Only
+  // when the target is exactly one styled span and the replacement carries no
+  // styling of its own anywhere inside it.
+  let inner = content.inner;
+  const wrapper = /^\s*<span\s+style="([^"]*)"\s*>([\s\S]*)<\/span>\s*$/i.exec(target.inner);
+  if (
+    wrapper !== null &&
+    target.tag === content.tag &&
+    !/<span\b/i.test(inner) &&
+    !/\bstyle="/i.test(inner)
+  ) {
+    inner = `<span style="${wrapper[1]}">${inner}</span>`;
+    notes.push(`the character styling inside the ${target.tag} it replaces`);
+  }
+
+  if (notes.length === 0) return { html: contentHtml, notes };
+
+  const rebuilt = `<${content.tag}${attrs}>${inner}</${content.tag}>`;
+  return {
+    html: contentHtml.replace(content.whole, rebuilt),
+    notes,
+  };
+};
+
 /** As in onenote-write.ts: opaque, but concatenated into URLs. */
 const ONENOTE_ID = /^[A-Za-z0-9!._~-]{1,300}$/;
 
@@ -509,6 +624,19 @@ const MAX_TEXT_CHARS = 4_000;
  * and a page is created rather than patched.
  */
 const MAX_HTML_CHARS = 20_000;
+
+/**
+ * What a sibling insert may sit beside.
+ *
+ * `table` and `p` are verified against a real page. `h1`-`h6` are allowed
+ * without being verified, because OneNote emits none of them — a heading on
+ * these pages is a `p` holding a styled span — so there was nothing to aim a
+ * probe at. If one ever appears and Graph refuses it, the error says so.
+ *
+ * Everything else stays out: a `li` or a `div` was never probed, and guessing
+ * is what the ids-move rule exists to punish.
+ */
+const ANCHORABLE = /^(?:p|h[1-6]|table):/;
 
 export const editFrom = (params: Record<string, unknown>): EditDraft => {
   const pageId = params.page_id;
@@ -601,18 +729,21 @@ export const editFrom = (params: Record<string, unknown>): EditDraft => {
     }
   }
 
-  if (action === 'replace' && !targetsTable && html !== null) {
-    throw failure(
-      'Only a table is replaced with markup. This element takes plain text, written ' +
-        'as one paragraph. To restructure a section, replace the table it lives in.',
-    );
-  }
+  // A paragraph replaced by markup, including several elements at once, which
+  // is how a section gets added in the middle of a page: the intro paragraph
+  // becomes itself plus a heading plus a table, in one command. Verified
+  // against a real page — Graph accepts it and interprets it, and this was our
+  // restriction rather than OneNote's. See scripts/spike-onenote-anchors.mjs.
+  //
+  // Nothing is checked about the shape of that content beyond `validateFragment`.
+  // A replace on a paragraph may legitimately yield a table, so there is no
+  // equivalent of the one-table rule above to apply.
 
-  if (action === 'insert' && !targetsTable) {
+  if (action === 'insert' && !ANCHORABLE.test(elementId as string)) {
     throw failure(
-      'insert puts a new block beside a table, and element_id does not name one. ' +
-        'OneNote supports a sibling insert on a table; for anything else the ways to ' +
-        'add content are append, at the end of the page, and replace.',
+      'insert puts a new block beside a paragraph, a heading or a table, and ' +
+        'element_id names none of those. Append reaches the end of the page, and a ' +
+        'replace changes something already there.',
     );
   }
 
@@ -706,6 +837,13 @@ export const editToken = async (draft: EditDraft, preImageHtml: string): Promise
 const asText = (html: string): string =>
   html
     .replace(/<br\s*\/?>/gi, '\n')
+    // Block boundaries, or a change made of several paragraphs previews as one
+    // run-on line — "…Stand Mai 2026.Ausfüllkonventionen…" — which reads as a
+    // different change from the one being made. `<br/>` was handled from the
+    // start and this was not, because a paragraph replace could only ever
+    // produce one paragraph until it could produce markup.
+    .replace(/<\/(?:p|div|h[1-6]|li|tr|table|ul|ol)\s*>/gi, '\n')
+    .replace(/<li\b[^>]*>/gi, '- ')
     .replace(/<[^>]+>/g, '')
     .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
     .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number(dec)))
@@ -715,6 +853,8 @@ const asText = (html: string): string =>
     .replace(/&apos;/g, "'")
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{2,}/g, '\n')
     .trim();
 
 /**
@@ -913,6 +1053,33 @@ export const markRows = (
   return { before: marksBefore, after: marksAfter };
 };
 
+/**
+ * A fragment of several elements, each rendered as what it is.
+ *
+ * A replacement may now be a paragraph, a heading and a table at once, and
+ * running the whole thing through `asText` turned the table back into a column
+ * of loose lines — the same flattening `copy-onenote-page.mjs` refuses for the
+ * same reason. The reader has to be able to see that a table is arriving.
+ */
+export const renderFragment = (html: string): string => {
+  const blocks: string[] = [];
+  let rest = html.trim();
+
+  while (rest !== '') {
+    const element = firstElement(rest);
+    if (element === undefined) {
+      const trailing = asText(rest);
+      if (trailing !== '') blocks.push(trailing);
+      break;
+    }
+
+    blocks.push(element.tag === 'table' ? renderTable(element.whole) : asText(element.whole));
+    rest = rest.slice(rest.indexOf(element.whole) + element.whole.length).trim();
+  }
+
+  return blocks.filter((block) => block !== '').join('\n');
+};
+
 /** Whether a generated id names a table, which decides what may be done to it. */
 export const isTableId = (id: string): boolean => id.startsWith('table:');
 
@@ -1022,16 +1189,14 @@ export async function previewEdit(token: string, params: Record<string, unknown>
   // What the change says, rendered the way the thing it touches is rendered, so
   // the before and the after in a preview are comparable rather than one being
   // rows and the other markup.
-  const proposed =
-    draft.html === null
-      ? (draft.text as string).trim()
-      : rootTag(draft.html) === 'table'
-        ? renderTable(draft.html)
-        : asText(draft.html);
+  const rendered = (html: string): string =>
+    rootTag(html) === 'table' ? renderTable(html) : renderFragment(html);
 
   if (draft.action === 'append') {
     return {
-      preview: `Add to the end of the page:\n\n${proposed}`,
+      preview: `Add to the end of the page:\n\n${
+        draft.html === null ? (draft.text as string).trim() : rendered(draft.html)
+      }`,
       page_id: draft.page_id,
       parts,
       confirmation_token: await editToken(draft, ''),
@@ -1052,17 +1217,31 @@ export async function previewEdit(token: string, params: Record<string, unknown>
   if (draft.action === 'insert') {
     return {
       preview:
-        `Put this ${draft.position} the table that currently reads:\n\n${anchor}\n\n` +
-        `New block:\n\n${proposed}`,
+        `Put this ${draft.position} the ${
+          isTableId(draft.element_id as string) ? 'table' : 'paragraph'
+        } that currently reads:\n\n${anchor}\n\n` +
+        `New block:\n\n${rendered(draft.html as string)}`,
       page_id: draft.page_id,
       parts,
       confirmation_token: await editToken(draft, captured),
       note:
         'Show this to the musician and wait for their yes. Nothing is overwritten ' +
-        'or removed — this adds a block beside the table quoted above. If that ' +
-        'table is not the one they mean, the block will land in the wrong place.',
+        'or removed — this adds a block beside the element quoted above. If that ' +
+        'is not the one they mean, the block will land in the wrong place.',
     };
   }
+
+  // What would actually be sent, formatting carried across included. The
+  // preview shows this rather than the caller's raw markup: the two differ
+  // exactly when something is inherited, and that difference is a change to the
+  // page like any other.
+  const carried =
+    draft.html === null ? { html: '', notes: [] } : inherit(captured, draft.html);
+  const inherited =
+    carried.notes.length === 0
+      ? ''
+      : `\n\nKeeping ${carried.notes.join(', ')}, which this change does not ` +
+        'specify. Without that it would land as ordinary body text.';
 
   // A table replace is shown with its rows matched up, so the reader can see
   // which of them the change actually touches. Without this the interesting
@@ -1070,14 +1249,14 @@ export async function previewEdit(token: string, params: Record<string, unknown>
   // the change approves it on trust — which is the same as not previewing.
   const asTable = isTableId(draft.element_id as string) && draft.html !== null;
   const beforeRows = asTable ? tableRows(captured) : [];
-  const afterRows = asTable ? tableRows(draft.html as string) : [];
+  const afterRows = asTable ? tableRows(carried.html) : [];
   const marks = asTable ? markRows(beforeRows, afterRows) : { before: [], after: [] };
   const touched = asTable ? marks.after.filter((m) => m !== ' ').length : 0;
   const dropped = asTable ? marks.before.filter((m) => m !== ' ').length : 0;
 
   const shown = asTable
     ? `Replace this:\n\n${renderTable(captured, marks.before)}\n\n` +
-      `With this:\n\n${renderTable(draft.html as string, marks.after)}\n\n` +
+      `With this:\n\n${renderTable(carried.html, marks.after)}\n\n` +
       (touched === 0 && dropped === 0
         ? 'Every row reads exactly as it does now. What differs is the markup — ' +
           'borders, widths, or the way a cell is written. Say that plainly rather ' +
@@ -1085,10 +1264,12 @@ export async function previewEdit(token: string, params: Record<string, unknown>
         : `Marked rows are the ones that differ: ${dropped} going, ${touched} arriving. ` +
           'Every unmarked row is being rewritten too — a table is replaced whole — ' +
           'and is only safe because it is carried across unchanged.')
-    : `Replace this:\n\n${anchor}\n\nWith this:\n\n${proposed}`;
+    : `Replace this:\n\n${anchor}\n\nWith this:\n\n${
+        draft.html === null ? (draft.text as string).trim() : rendered(carried.html)
+      }`;
 
   return {
-    preview: shown,
+    preview: `${shown}${inherited}`,
     page_id: draft.page_id,
     parts,
     confirmation_token: await editToken(draft, captured),
@@ -1140,9 +1321,16 @@ export async function applyEdit(
   }
 
   // Plain text becomes exactly one escaped paragraph, as it always has. Markup
-  // goes out as the caller wrote it — validated in `editFrom`, hashed into the
-  // token, and unchanged since the musician saw it rendered.
-  const content = draft.html ?? paragraph(draft.text as string);
+  // goes out validated, with whatever formatting it inherits from the element it
+  // replaces — which is a pure function of the pre-image and the markup, both of
+  // which the confirmation token binds, so what is sent is still exactly what
+  // was previewed.
+  const content =
+    draft.html === null
+      ? paragraph(draft.text as string)
+      : draft.action === 'replace'
+        ? inherit(captured, draft.html).html
+        : draft.html;
 
   const command =
     draft.action === 'append'

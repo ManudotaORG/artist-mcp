@@ -93,6 +93,57 @@ exactly the case where reading it matters.
 The confirmation token still binds the **markup**, not the rendering. Two
 different tables can render to the same rows.
 
+## Where a new section may go
+
+The first version of this could only put one beside a table, and could only
+replace a paragraph with plain text. Between those two, a block whose
+neighbours are both paragraphs — which is where the v1.1 `Ausfüllkonventionen`
+belongs, between a page's intro line and its `Projektzustand` heading — had
+nowhere to go at all. Pages could not be brought to v1.1, so their version
+stamps had to stay v1.0.
+
+Both restrictions were ours. Probed against a real page rather than read off
+the reference, which this record has caught out four times
+(`scripts/spike-onenote-anchors.mjs`):
+
+- **`replace` on a `p` accepts markup, including several elements at once.** An
+  intro paragraph can become itself, plus a heading, plus a table, in one
+  command. That is the natural way to add a section mid-page, and it is now
+  allowed.
+- **`insert` anchors on a `p` as well as a `table`**, and lands on the side
+  asked for.
+- **`insert` accepts multi-element content**, so a heading and its table arrive
+  together.
+- **OneNote keeps no `h1`-`h6` on these pages.** A heading *is* a `p` holding
+  one styled `<span>`. `h1`-`h6` are accepted as anchors anyway, unverified,
+  because there was nothing to aim a probe at.
+
+## What a replacement inherits, and why it must
+
+Two silent losses, both observed rather than predicted:
+
+- A bordered table replaced by a bare `<table>` comes back as
+  `style="border:0px"`. The borders are not merely absent from the replacement;
+  they are removed from the page.
+- A heading replaced by a bare `<p>` comes back with no `<span>`. On these pages
+  that span is the whole of what made it a heading, so the element survives and
+  stops being a heading.
+
+Neither is visible in a preview built from text, and neither is recoverable
+except from the pre-image. So **formatting the target has and the replacement
+does not specify is carried across** — the element's own presentational
+attributes, and the styled span wrapper where the target is exactly one. A
+caller that supplies styling of its own has decided, and inherits nothing.
+
+The preview says when it happened. Silent inheritance would be a change nobody
+was shown, which is the fault this record already has one entry for.
+
+Inherited values are not re-validated. They come out of the musician's own page
+rather than out of a model, which is the same reasoning
+`scripts/copy-onenote-page.mjs` records for sending a page's markup back
+verbatim. An `id` and a `data-id` are never copied: duplicating either would
+make the page address two elements the same way.
+
 ## Why markup is refused rather than sanitised
 
 `text` is escaped on the way out, which is what makes it safe to compose from an
@@ -115,6 +166,8 @@ recycle bin, so only the second is recoverable.
   across a write.
 - Nothing is deleted. An `insert` adds and an `append` adds; a `replace`
   overwrites one element and keeps its pre-image.
+- A table is still replaced whole and must still yield exactly one table. What
+  changed is what a *paragraph* may be replaced with, not what a table may.
 
 ## What would reverse this
 

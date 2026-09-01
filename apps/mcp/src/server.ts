@@ -2067,8 +2067,8 @@ const createServer = async (
             "append adds to the end of the page and removes nothing. replace " +
               "overwrites one existing element — a paragraph, or a whole table — and " +
               "is the destructive one. insert puts a new block before or after an " +
-              "existing table, which is the only way to add a section in the middle " +
-              "of a page rather than at the end",
+              "existing paragraph, heading or table, which is one of the two ways to " +
+              "add a section in the middle of a page rather than at the end",
           ),
         text: z
           .string()
@@ -2081,10 +2081,15 @@ const createServer = async (
           .string()
           .optional()
           .describe(
-            "The new content as markup, which is how a table has to be written: one " +
-              "whole <table> for a replace, any block for an insert. Tables, rows, " +
-              "cells, paragraphs, headings, lists and simple emphasis only — anything " +
-              "else is refused and nothing is written",
+            "The new content as markup. A table has to be written this way, as one " +
+              "whole <table>. A paragraph may be too, and may become SEVERAL elements " +
+              "at once — replacing an intro paragraph with itself plus a heading plus " +
+              "a table is how a section is added in the middle of a page. Tables, " +
+              "rows, cells, paragraphs, headings, lists and simple emphasis only; " +
+              "anything else is refused and nothing is written. Formatting the target " +
+              "has and this does not specify is carried across, and the preview says " +
+              "when that happened — a heading on these pages is a paragraph holding a " +
+              "styled span, so markup that specifies none of its own keeps it",
           ),
         element_id: z
           .string()
@@ -2096,7 +2101,7 @@ const createServer = async (
         position: z
           .enum(["before", "after"])
           .optional()
-          .describe("For insert only: which side of that table the new block goes on"),
+          .describe("For insert only: which side of that element the new block goes on"),
         source_page: z
           .string()
           .optional()
@@ -2172,7 +2177,7 @@ const createServer = async (
         "the musician wrote or one another app created — Microsoft refuses those, " +
         "not this tool — and it cannot delete anything. 'append' adds to the end " +
         "and removes nothing. 'insert' adds a block before or after an existing " +
-        "table and removes nothing. 'replace' overwrites one element and is " +
+        "paragraph, heading or table and removes nothing. 'replace' overwrites one element and is " +
         "destructive: OneNote keeps no page version and what it replaced is " +
         "recoverable only from this install's own write log, so never describe it " +
         "as undoable in OneNote. Replacing a TABLE overwrites every row of it at " +
