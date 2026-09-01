@@ -608,6 +608,13 @@ test('a named change gets an index of the page, not the page', async () => {
   // Naming one gets an index: shorter, and saying that it is shorter.
   assert.equal(named.abbreviated, true);
   assert.ok(named.parts.find((x) => x.element_id === loose).text.endsWith('…'));
+  // A table in an index is described by its shape. Its cells run together on
+  // one line read as a single row of four, which is a worse description of the
+  // page than none.
+  assert.match(
+    named.parts.find((x) => x.kind === 'table').text,
+    /^1 row × 2 columns, starting "Honorar \| 1200"$/,
+  );
   assert.ok(
     named.parts.every((part) => !part.text.includes('\n')),
     'an index is one line per part',

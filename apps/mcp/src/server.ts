@@ -2068,8 +2068,10 @@ const createServer = async (
           .describe("The page to change, by id from list_notes or read_note. The id, not the title"),
         action: z
           .enum(["append", "replace", "insert"])
+          .optional()
           .describe(
-            "append adds to the end of the page and removes nothing. replace " +
+            "One change. Leave it out when passing `changes`, which carries several. " +
+              "append adds to the end of the page and removes nothing. replace " +
               "overwrites one existing element — a paragraph, or a whole table — and " +
               "is the destructive one. insert puts a new block before or after an " +
               "existing paragraph, heading or table, which is one of the two ways to " +
@@ -2164,7 +2166,12 @@ const createServer = async (
                 parts
                   .map((p) =>
                     p.kind === "table"
-                      ? `  ${p.element_id}  (a table — replace it whole, with html)\n${p.text}`
+                      ? `  ${p.element_id}  (a table — replace it whole, with html)\n${
+                          // Rendered rows lay themselves out; a one-line label
+                          // has to be indented under its id like every other
+                          // entry, or the index reads as a broken table.
+                          abbreviated ? `    ${p.text}` : p.text
+                        }`
                       : `  ${p.element_id}${
                           p.inside_table === null
                             ? ""
@@ -2221,7 +2228,10 @@ const createServer = async (
         "chose in chat to break a tie between pages that still disagree.",
       {
         page_id: z.string().describe("Exactly what the preview showed"),
-        action: z.enum(["append", "replace", "insert"]).describe("Exactly what the preview showed"),
+        action: z
+          .enum(["append", "replace", "insert"])
+          .optional()
+          .describe("Exactly what the preview showed. Leave it out when passing `changes`"),
         text: z.string().optional().describe("Exactly what the preview was given"),
         html: z.string().optional().describe("Exactly what the preview was given, byte for byte"),
         element_id: z

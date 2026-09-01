@@ -840,6 +840,13 @@ export const editFrom = (params: Record<string, unknown>): EditDraft => {
     return { page_id: pageId, changes, source_page: source === '' ? null : (source as string) ?? null };
   }
 
+  if (params.action === undefined) {
+    throw failure(
+      'Say what to change: either `action` with its text or html for one change, or ' +
+        '`changes` for several applied together in one write.',
+    );
+  }
+
   return {
     page_id: pageId,
     changes: [changeFrom(params, 'this change')],
@@ -1213,7 +1220,7 @@ export const readEditableParts = async (
         // the diff, and it is rendered in full further down. This is the list a
         // caller looks an id up in, and returning twenty tables in full on the
         // twentieth edit of one page is most of what a session spends.
-        text: full ? text : label(text),
+        text: full ? text : label(element === undefined ? '' : element, id),
         // A paragraph in a cell is listed, because it is there and hiding it
         // would be a lie about the page. But Graph supports no update action on
         // `tr` or `td`, so what a replace aimed at it does is not something this
@@ -1232,9 +1239,30 @@ export const readEditableParts = async (
 /** How much of an element the index shows: enough to recognise, never enough to approve. */
 const LABEL_CHARS = 60;
 
-const label = (text: string): string => {
+const oneLine = (text: string): string => {
   const line = text.replace(/\s+/g, ' ').trim();
   return line.length > LABEL_CHARS ? `${line.slice(0, LABEL_CHARS - 1)}…` : line;
+};
+
+/**
+ * One line that says which element this is.
+ *
+ * A table gets its shape rather than its cells run together: flattening two
+ * rows to `| Honorar | 1200 | | Anreise | UNKNOWN |` reads as one row of four
+ * cells, which is a worse description of the page than saying nothing. The
+ * shape plus the first row is what a caller actually recognises a table by.
+ */
+const label = (elementHtml: string, id: string): string => {
+  if (!isTableId(id)) return oneLine(asText(elementHtml));
+
+  const rows = tableRows(elementHtml);
+  if (rows.length === 0) return oneLine(asText(elementHtml));
+
+  const columns = Math.max(...rows.map((row) => row.length));
+  return (
+    `${rows.length} row${rows.length === 1 ? '' : 's'} × ${columns} column` +
+    `${columns === 1 ? '' : 's'}, starting "${oneLine(rows[0].join(' | '))}"`
+  );
 };
 
 /** One change rendered as its before and after, which is what gets approved. */
