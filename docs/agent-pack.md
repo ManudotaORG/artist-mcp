@@ -88,11 +88,19 @@ said anything. Measure it rather than guessing:
 pnpm --filter @manudota/artist-mcp context-budget
 ```
 
-It prints two numbers that are not the same kind. Tool descriptions sit in
-context for **every request**; the briefing is sent **once**, when
-`list_agent_workflows` is called. As of this writing an install with no write
-grants starts at about 13,900 tokens, and one holding every grant at about
-17,200 — of which the five in-full policies are the great majority.
+It prints two numbers that are not the same kind, and the difference between
+them is larger than it looks. The **tool list is re-sent with every request**;
+the briefing is sent **once**, when `list_agent_workflows` is called. As of this
+writing an install with no write grants pays 4,337 tokens per request and 11,584
+once; one holding every grant pays 9,375 per request and 12,713 once.
+
+So the tool list outweighs the entire briefing after 1.4 turns at full grants,
+and over a twenty-turn session it is roughly 187,000 tokens against 12,700.
+Trimming a policy is worth doing and is not where the budget is —
+[decision 0007](decisions/0007-the-token-carries-the-payload.md) is about the
+half that costs fifteen times more. Measure the wire payload rather than the
+description strings: input schemas are almost exactly as large again as the
+descriptions, and were missed entirely the first time this was counted.
 
 Two rules keep that from growing by accident.
 
