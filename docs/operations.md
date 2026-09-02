@@ -421,9 +421,11 @@ advances staging to `0.5.1-staging.<run>` without a manual metadata-sync push.
 Retried workflow runs append the attempt number to avoid republishing an
 immutable npm version.
 
-Keep the staging environment variable `NPM_STAGING_PUBLISH_ENABLED` unset until
-the shared trusted publisher exists. Set it to `true` only after npm has the
-exact `release.yml` mapping. Validation remains active while publication is gated.
+The staging environment variable `NPM_STAGING_PUBLISH_ENABLED` gates the
+publish step. It has been `true` since 11 August 2026, once npm had the exact
+`release.yml` mapping, so staging pushes publish a prerelease. Unsetting it
+leaves validation running and publication skipped, which is the state to return
+to if the trusted-publisher mapping ever breaks.
 The staging publication job runs the MCP package tests only. Website validation
 belongs to CI; Vercel performs the deployment build, avoiding a duplicate web
 build in GitHub Actions.

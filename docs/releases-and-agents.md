@@ -53,9 +53,9 @@ to the `staging` dist-tag. The staging version is based on npm `latest`, not a
 possibly stale version committed on the staging branch. A successful production
 release automatically publishes the next staging prerelease from the staging
 branch; ordinary staging pushes do the same. Workflow retries append the run
-attempt so npm versions remain immutable. Leave `NPM_STAGING_PUBLISH_ENABLED`
-unset until the npm mapping is installed, then set it to `true` in the GitHub
-`staging` environment.
+attempt so npm versions remain immutable. `NPM_STAGING_PUBLISH_ENABLED` is `true` in the
+GitHub `staging` environment and has been since the npm mapping was installed;
+unset, the job verifies the package and skips the publish.
 
 No `NPM_TOKEN` is needed. The workflow authenticates with GitHub OIDC.
 

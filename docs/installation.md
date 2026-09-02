@@ -208,7 +208,9 @@ cmd.exe rewrites the comma, so both forms are accepted rather than one being
 insisted on.
 
 `--allow-writes calendar-create,calendar-delete` also lets it remove an event
-it created itself, identified by the `artist` prefix on the event id. An event
+it created itself, identified by the `artist` prefix on the event id, through
+`preview_calendar_delete` and `delete_calendar_event`. Holding both also adds
+`preview_calendar_reschedule` and `reschedule_calendar_event`. An event
 you made, or one shared onto your calendar, is refused — this is an undo for its
 own mistakes, not calendar management. Google keeps a deleted event in that
 calendar's bin for 30 days. Delete needs no extra consent beyond create, because
@@ -303,8 +305,10 @@ preview quotes what will be destroyed, in full — nothing is clipped — and th
 edit is applied against the page as it was read, so a page that moved underneath
 you is refused rather than half-applied.
 
-Three shapes of change are available: `append` after an element, `insert`
-before or after one, and `replace` of one element. The unit is one element,
+It adds `preview_onenote_edit`, which shows the change and what it would
+overwrite, and `edit_onenote_page`, which applies it against the confirmation
+token that preview returned. Three shapes of change are available: `append`
+after an element, `insert` before or after one, and `replace` of one element. The unit is one element,
 never the page body — a mistake costs a paragraph, which is why it can be held
 on to. A table is the exception, because OneNote supports no update to a row or
 a cell: the unit there is the whole table, sent as markup and previewed as rows

@@ -330,7 +330,10 @@ Decisions and their cost: [decisions/0001-opt-in-calendar-writes.md](decisions/0
       entry's args; an unknown name is refused by name, and `init`, `status` and
       the workflow briefing each report what is in force
 - [x] An ungranted write tool is not registered at all — verified: 12 tools
-      without the grant, exactly those two more with it
+      without the grant, exactly those two more with it. Those counts are what
+      that run measured, before the page-attachment tools and the OneNote
+      capabilities existed; the property they check still holds, against 14
+      ungated tools and four capabilities today.
 - [x] Preview then create, with the create bound to the previewed payload by a
       token; unsettled values (`UNKNOWN`, `TBC`, a disputed date) refused in
       code rather than only in a playbook; timed events refused without an IANA
