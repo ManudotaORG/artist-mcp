@@ -349,7 +349,7 @@ const renderChangedSections = (
  */
 const INDEX_ENTRIES = 12;
 
-const serverVersion = '2.2.0'; // x-release-please-version
+const serverVersion = '2.2.1'; // x-release-please-version
 
 const errorResult = (err: unknown) => {
   const message =

@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.2.1](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v2.2.0...artist-mcp-v2.2.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **mcp:** describe source_page once, and on every tool that takes it ([145ccbe](https://github.com/ManudotaORG/artist-mcp/commit/145ccbe2756faf9fd112b1136f6e5f3e05846a24))
+* **mcp:** let an empty calendar search carry its own scope ([019c0d5](https://github.com/ManudotaORG/artist-mcp/commit/019c0d55847bde21ea1725a8ead1aaabb5a3f7f4))
+
+
+### Performance Improvements
+
+* **mcp:** bound the editable index read_note returns ([f4b787e](https://github.com/ManudotaORG/artist-mcp/commit/f4b787e2c0a75b6bb14c5e7c046789f8ede1fdc1))
+* **mcp:** return element ids from read_note, not a discovery call ([06375cd](https://github.com/ManudotaORG/artist-mcp/commit/06375cd851aadf4fb72c483df3e51beded878f05))
+* **mcp:** stop loading rules for tools an install does not have ([7bcdbb7](https://github.com/ManudotaORG/artist-mcp/commit/7bcdbb7b04092899d43e0d7ae136077a11d97f06))
+
 ## [2.2.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v2.1.0...artist-mcp-v2.2.0) (2026-09-02)
 
 
