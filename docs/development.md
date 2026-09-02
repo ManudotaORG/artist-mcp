@@ -36,10 +36,9 @@ in the artist's project.
 ## Prerequisites
 
 - Node.js 20 or newer — that is what `engines.node` enforces and what the
-  package promises users. `.nvmrc` pins `22.22.2` and CI runs 24; the three
-  disagree deliberately for now, and gap 8 in
-  [mvp-brief.md](mvp-brief.md) tracks aligning them before Vercel's
-  1 October 2026 Node 20 cutoff.
+  package promises users. `.nvmrc` pins `22.22.2` while CI, the release
+  workflow and both Vercel projects run 24; nothing breaks on the difference,
+  and gap 8 in [mvp-brief.md](mvp-brief.md) tracks whether to align them.
 - pnpm 11 through Corepack.
 - Supabase CLI authenticated to the intended project.
 - A Supabase project.
