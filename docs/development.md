@@ -355,14 +355,16 @@ environments.
 ## Workflow Markdown
 
 `apps/mcp/agent-pack` contains the root policy, seven narrow roles, four starter
-project types, and five policies. Four of those — intake, answering, evidence
-and divergence — are loaded in full at the start of every session because they
-have to hold whether or not anyone reached for them; local-state is summarised
-like a role. That list lives in `alwaysInFull` in `server.ts`, and "Editing the
-pack" in [releases-and-agents.md](releases-and-agents.md) explains why a rule in
-a role is not in force. One OneNote page is one working unit.
-The roles may read and return a result in chat; they may not write notes, send
-messages, edit calendars, or create background coordination infrastructure.
+project types, and six policies. Five of those — intake, answering, evidence,
+divergence and patch — are loaded in full at the start of every session because
+they have to hold whether or not anyone reached for them; local-state is
+summarised like a role. That list is the `ALWAYS` array behind `alwaysInFull` in
+`server.ts` rather than anything in the pack, and "Editing the pack" in
+[releases-and-agents.md](releases-and-agents.md) explains why a rule in a role is
+not in force. One OneNote page is one working unit.
+The roles read and return a result in chat, and use whichever write capabilities
+the install holds. They never send messages and never create background
+coordination infrastructure, and nothing there deletes a OneNote page.
 
 When workflow Markdown changes, rebuild the registry and run package tests:
 

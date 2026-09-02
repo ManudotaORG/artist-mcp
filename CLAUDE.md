@@ -14,7 +14,7 @@ Scope is deliberately narrow. The workflow layer is defined in
 project types are loaded at runtime, and every result stays in chat.
 
 **If you find yourself adding writes, sends, or synchronization, stop.** That
-rule stands, with two exceptions, and neither is a precedent.
+rule stands, with four exceptions, and none of them is a precedent.
 
 An install granted `--allow-writes calendar-create` may create a single Google
 Calendar event, previewed and confirmed, and one granted `calendar-delete` may
@@ -29,22 +29,25 @@ before touching that path — it says what was decided, what it cost, and what
 would reverse it.
 
 An install granted `onenote-create` may create a new OneNote page, previewed
-and confirmed. **It cannot edit or delete any page, including one it created**,
-and that is not a rule this repository keeps — the scope is `Notes.Create`,
-which cannot express an edit or a delete, verified as a 403 on both against a
-page the token had just created itself. This is the inverse of the calendar
-situation, where no insert-only scope exists and the boundary had to become our
-code. The price is that a created page is permanent as far as this tool is
-concerned: there is no undo, and the musician removes it in OneNote themselves.
-Read [docs/decisions/0003-onenote-writes.md](docs/decisions/0003-onenote-writes.md)
-before touching that path. **Editing an existing page is still out, and is no longer out permanently.**
-`Notes.ReadWrite` would indeed hand back edit and delete over every page and put
-the boundary in our code again — but it is not the only door.
-`Notes.ReadWrite.CreatedByApp` is enforced by Microsoft against *this* app's own
-pages, verified as `401` on a page the musician wrote, and under it a
-paragraph-level replace is both surgical and recoverable from a pre-image.
+and confirmed. That capability alone cannot edit or delete any page, including
+one it created, and that is not a rule this repository keeps — the scope is
+`Notes.Create`, which cannot express an edit or a delete, verified as a 403 on
+both against a page the token had just created itself. This is the inverse of
+the calendar situation, where no insert-only scope exists and the boundary had
+to become our code. Read
+[docs/decisions/0003-onenote-writes.md](docs/decisions/0003-onenote-writes.md)
+before touching that path.
+
+**Editing is a separate grant, and it shipped.** `Notes.ReadWrite` would hand
+back edit and delete over every page and put the boundary in our code again —
+but it was not the only door. An install granted `onenote-edit` holds
+`Notes.ReadWrite.CreatedByApp`, which Microsoft enforces against *this* app's
+own pages, verified as `401` on a page the musician wrote, and under it an
+element-level replace is both surgical and recoverable from a pre-image captured
+before every write — no capture, no write.
 [docs/decisions/0004-onenote-page-maintenance.md](docs/decisions/0004-onenote-page-maintenance.md)
-accepts that in principle and nothing is built yet.
+was built and verified end to end on 2026-08-31, and that live run is what found
+its last two defects; nothing else did.
 [0006](docs/decisions/0006-replacing-a-whole-table.md) extends it to tables,
 which is where a filled-in page actually keeps its content: OneNote supports no
 update to a row or a cell, so the unit is the whole table, written as markup and
@@ -172,8 +175,9 @@ docs/           the brief
   Without it, users find a tool they never agreed to in their list, since
   registration is gated on the grant and not on the token's scope.
 - **A rule in a role is not in force.** Roles arrive in the briefing as a
-  one-line summary; only project types and the policies in `alwaysInFull` load
-  in full. Three bugs came from rules sitting where no session could see them.
+  one-line summary; only project types and the policies in the `ALWAYS` array
+  behind `alwaysInFull` in `server.ts` — not a field in the pack — load in full.
+  Three bugs came from rules sitting where no session could see them.
   Read "Editing the pack" in
   [docs/releases-and-agents.md](docs/releases-and-agents.md) before touching the
   pack — that one, plus a headline is a rule, a tool description outranks a

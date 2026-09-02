@@ -42,7 +42,10 @@ There is no `develop` branch and no forking needed for maintainers.
   from `release`. A direct push is rejected, and would skip the commit-message
   check, which runs only on pull requests.
 - Outside contributors: fork, branch from `release`, and open the pull request
-  against `release`.
+  against `release`. Be aware that pull-request CI runs only when the target is
+  `staging` or `main`, so a pull request against `release` is not checked
+  automatically — including the commit-message check. Run `pnpm test` locally
+  before opening one, and expect a maintainer to run it again.
 
 Before pushing:
 
