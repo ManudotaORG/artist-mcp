@@ -13,11 +13,22 @@ import { getSiteUrl } from '@/lib/siteUrl';
  * redirect, reusing the provider endpoints, scopes and token exchange rather
  * than restating them.
  *
- * It uses **separate client registrations** from the published package. The
- * package's clients are desktop clients whose Google secret is served openly by
- * /api/client-config — harmless there because PKCE is what protects a desktop
- * client, and not harmless at all for a web client that can keep a secret. One
- * registration serving both would have to be the weaker of the two.
+ * Google uses a **separate client registration** from the published package.
+ * The package's Google client is a desktop client whose secret is served openly
+ * by /api/client-config — harmless there because PKCE is what protects a
+ * desktop client, and not harmless at all for a web client that can keep a
+ * secret. One Google registration serving both would have to be the weaker of
+ * the two.
+ *
+ * Microsoft is **one registration for both surfaces**, carrying a web redirect
+ * per environment and the package's loopback redirect as a public client. It
+ * can be shared precisely because there is no secret to weaken: the package's
+ * Microsoft client is a true public client. Sharing it is what makes
+ * Notes.ReadWrite.CreatedByApp mean the same thing on both surfaces — Graph
+ * scopes that ownership to the app registration, so two ids would mean hosted
+ * and local could not edit each other's pages. ARTIST_MCP_WEB_MS_CLIENT_ID and
+ * the package's default client id are deliberately the same value; keep them
+ * that way.
  *
  * Unconfigured, connecting is refused rather than half-attempted. A deployment
  * without these values has no web client to consent against, and discovering

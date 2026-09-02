@@ -1,88 +1,10 @@
-# Releases, environments, and artist workflows
+# The agent pack
 
-## GitHub environments
+What ships in `apps/mcp/agent-pack`, how a change to it reaches a user, and
+what a day of testing taught about editing it. Release mechanics are in
+[releases.md](releases.md).
 
-CI runs for pull requests and pushes to `release` and `main`. Staging receives
-only commits already validated on `release`; its npm workflow retests only the
-MCP package. Vercel's native Git integration builds the website from `staging`,
-so GitHub Actions does not duplicate that build. CI does not bind to a
-deployment environment and receives no runtime secrets. Protect `main` and
-require the `Lint and build` check before merge.
-
-The production and staging Vercel projects are both connected to this GitHub
-repository. Production tracks only `main`, staging tracks only `staging`, and
-Preview branch tracking is disabled on both projects.
-The production footer shows the checked-in stable package version. The staging
-footer resolves the public npm `staging` dist-tag with a one-minute cache so it
-shows the exact published prerelease rather than stale branch metadata.
-
-## Automatic npm releases
-
-The npm package has two branch-backed channels:
-
-- `staging` publishes a unique prerelease such as
-  `0.1.1-staging.123` with the npm dist-tag `staging`.
-- `main` is managed by Release Please and publishes stable releases with the
-  npm dist-tag `latest`.
-
-Install an explicitly promoted staging snapshot with:
-
-```bash
-npx @manudota/artist-mcp@staging agents install
-```
-
-Release Please tracks `apps/mcp`. Conventional commits on `main` update a
-release pull request; merging it creates the GitHub release and publishes
-`@manudota/artist-mcp` from `.github/workflows/release.yml`.
-Manual runs update or inspect the Release Please state but never republish an
-existing stable npm version; stable publication requires a newly created
-release.
-
-Because npm supports one trusted publisher per package, both channels publish
-from one branch-aware workflow. In the npm package settings, configure:
-
-- Organization or user: `ManudotaORG`
-- Repository: `artist-mcp`
-- Workflow filename: `release.yml`
-- Environment: leave blank so both branch-gated jobs can exchange OIDC tokens
-- Allowed action: `npm publish`
-
-The jobs still use distinct GitHub environments: `main` uses `production` and
-publishes `latest`; `staging` uses `staging` and publishes a unique prerelease
-to the `staging` dist-tag. The staging version is based on npm `latest`, not a
-possibly stale version committed on the staging branch. A successful production
-release automatically publishes the next staging prerelease from the staging
-branch; ordinary staging pushes do the same. Workflow retries append the run
-attempt so npm versions remain immutable. Leave `NPM_STAGING_PUBLISH_ENABLED`
-unset until the npm mapping is installed, then set it to `true` in the GitHub
-`staging` environment.
-
-No `NPM_TOKEN` is needed. The workflow authenticates with GitHub OIDC.
-
-## Production patch notes
-
-Production releases can announce themselves through Telegram after the stable
-npm package publishes. The formatter groups conventional Release Please notes,
-removes duplicate bullets, escapes Telegram HTML, and splits messages below the
-Telegram message limit. Staging snapshots never send patch notes.
-
-Create a Telegram bot with BotFather, add it to the destination chat, and store
-these secrets in the GitHub `production` environment:
-
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID`
-
-After both secrets are present, set the production environment variable
-`TELEGRAM_PATCH_NOTES_ENABLED=true`. The stable release workflow sends notes
-after npm publication. To resend an existing release, run the **Send production
-patch notes** workflow with its tag. Leave the variable unset while configuring
-the bot so releases and manual runs cannot fail or send partial messages.
-
-The implementation lives in `scripts/format-release-notes.mjs` and
-`scripts/publish-release-notes.sh`. Formatter behavior is covered by the root
-test suite.
-
-## Read-only artist workflow pack
+## What is in the pack
 
 Install the bundled MVP pack in the current repository:
 
@@ -91,7 +13,7 @@ npx @manudota/artist-mcp agents install
 ```
 
 It adds a root `AGENTS.md`, seven narrow roles, four starter project types, and
-five policies under `.artist/`. Installation is idempotent. A
+six policies under `.artist/`. Installation is idempotent. A
 differing root `AGENTS.md` is kept; the command explains how to reference
 `.artist/` manually. Differing workflow files stop the install before anything
 is written.
@@ -99,18 +21,117 @@ is written.
 The roles are Orchestrator, Archivist, Registrar, Project Manager, Envoy,
 Auditor, and Janitor. The starter project types are Concert, Large Concert,
 Studio Session, and Rehearsal. The policies are Intake, Answering, Evidence,
-Divergence, and Local State; every one but Local State is loaded in full at the
-start of a session rather than summarised.
+Divergence, Patch, and Local State; every one but Local State is loaded in full
+at the start of a session rather than summarised. That list is `ALWAYS` in
+`apps/mcp/src/server.ts`, not a field in the pack — adding a policy does not
+load it in full until that array says so.
 
 One OneNote page is one working unit. The pack can read that page and produce a
-recommendation, plan, draft, audit, or cleanup summary in chat. It cannot write
-to OneNote, send outreach, edit calendars, or persist project state.
+recommendation, plan, draft, audit, or cleanup summary in chat, and can use
+whichever write capabilities the install was granted — no others, because a
+capability that was not granted registers no tool for a playbook to invoke. It
+never sends outreach and never persists project state, and no capability deletes
+a OneNote page.
 
 Agents may optionally keep small, disposable working context in
 `.artist/local/`, which is gitignored. They choose the smallest useful local
 format, but may not store secrets, copy source systems, or turn local files into
 claims, queues, locks, reviews, or other coordination infrastructure. The
 backend never stores this local state.
+
+## Changing it
+
+Workflow Markdown is executable policy, not documentation. When it changes,
+rebuild the registry and run the package tests:
+
+```bash
+pnpm --filter @manudota/artist-mcp test
+```
+
+The build regenerates `agent-pack/registry.json` with a SHA-256 per entry, and a
+test asserts the committed registry still matches what the derivation produces.
+The runtime uses the registry and playbooks bundled into the installed npm
+version.
+
+Ids, kinds and descriptions are derived in `src/agent-registry.ts`, which is why
+`tsc` runs *before* `apps/mcp/scripts/build-agent-registry.mjs` — the script
+imports the compiled module rather than reimplementing the rule. Keep it that
+way: the runtime reads directories through the same derivation, and a second
+copy would drift into giving one file two different ids.
+
+Working against `init --editable` means two copies of every playbook. Check they
+have not diverged in the direction you did not intend:
+
+```bash
+pnpm --filter @manudota/artist-mcp check-pack ~/artist-mcp
+```
+
+An edit made in the editable directory runs correctly there and ships to nobody:
+the registry is generated from the bundle, while a local pack is checksummed
+from the directory as it is read. `artist-mcp agents status` prints the entries
+in force and where each came from.
+
+At runtime the server exposes `list_agent_workflows` and `load_agent_workflow`,
+reading the registry and Markdown bundled with the installed npm version. That
+is what keeps stable, staging, older and local versions isolated from later
+playbook changes. `ARTIST_MCP_REGISTRY_URL` points the server at a remote
+registry instead, for testing only: remote Markdown paths resolve relative to
+that URL, and a failure falls back to the installed bundle. A broken *local*
+directory does not fall back — see below.
+
+## What the pack costs a session
+
+Everything loaded in full is in every session's context before the musician has
+said anything. Measure it rather than guessing:
+
+```bash
+pnpm --filter @manudota/artist-mcp context-budget
+```
+
+It prints two numbers that are not the same kind, and the difference between
+them is larger than it looks. The **tool list is re-sent with every request**;
+the briefing is sent **once**, when `list_agent_workflows` is called. As of this
+writing an install with no write grants pays 4,337 tokens per request and 11,584
+once; one holding every grant pays 9,375 per request and 12,713 once.
+
+So the tool list outweighs the entire briefing after 1.4 turns at full grants,
+and over a twenty-turn session it is roughly 187,000 tokens against 12,700.
+Trimming a policy is worth doing and is not where the budget is: half of every
+request is write tooling.
+[Decision 0007](decisions/0007-the-token-carries-the-payload.md) is a rejected
+attempt at that half, kept for its measurements — read it before proposing
+anything there, because it also records what would have to change for the
+answer to differ. Measure the wire payload rather than the
+description strings: input schemas are almost exactly as large again as the
+descriptions, and were missed entirely the first time this was counted.
+
+Two rules keep that from growing by accident.
+
+**A section that describes a tool the install does not have is not loaded.** A
+heading may carry `<!-- needs:onenote-edit -->`, and then it and everything
+under it, down to the next heading of the same or higher level, load only for an
+install holding that grant. `policy:patch` uses it for three sections: without
+`onenote-edit` there is no `edit_onenote_page` to call, so the rules for
+choosing which page may be applied to, and how to write table markup, were being
+loaded by every read-only session for a tool that was not registered. Removing
+them saves about 1,200 tokens per session.
+
+The marker is deliberately the *only* conditional thing about a playbook, and
+the test for adding one is not "is this section long" but "is the tool it
+describes absent". Everything else stays in force, because three bugs in this
+pack came from rules sitting where no session could see them. An unknown
+capability name throws rather than being ignored: a typo that silently deletes a
+section is exactly that class of bug wearing a helpful face.
+`test/grant-scoped-sections.test.mjs` guards both directions.
+
+**Mechanics belong at the point of use, not in the briefing.** The house markup
+for a OneNote table — the `border` attribute, the cell styling, what a header
+row carries — is returned by `preview_onenote_edit` alongside the page's parts
+whenever a table is in play, one call before the markup is composed. It is
+cheaper there, and it is also *stronger* there: a tool's own output outranks a
+playbook, and it arrives at the moment it applies. What stays in `policy:patch`
+is the part that is a decision rather than a mechanism — that a cell left out of
+the markup is a value destroyed.
 
 ## Editing the pack: what a day of testing taught
 
@@ -187,18 +208,6 @@ the start of every session. The briefing went from 13k to 37k characters in a
 day, and a third of that growth was one rule written in several places. A rule
 earns its place by naming a failure it prevents; where two rules prevent the
 same failure, merge them.
-
-## Runtime registry
-
-The MCP server exposes `list_agent_workflows` and `load_agent_workflow`. The
-registry is generated from the Markdown files during package build and each
-entry includes a SHA-256 checksum. At runtime the server reads the registry and
-Markdown bundled with the installed npm version. This keeps stable, staging,
-older, and local package versions isolated from later playbook changes.
-
-Set `ARTIST_MCP_REGISTRY_URL` only when explicitly testing a remote registry.
-Remote Markdown paths resolve relative to that registry URL, and failures fall
-back to the installed bundle.
 
 ## Playbooks a user edits
 

@@ -1,274 +1,28 @@
-# MVP brief
+# Scope
 
-Build one thing: a multi-tenant web app where a user connects their Microsoft account, plus an MCP server — published to npm — that can read that user's OneNote notes and apply read-only musician workflow playbooks. One OneNote page is one working unit, and every result stays in Claude or Codex chat.
+What this project is, what shipped, what is deliberately out, and what is
+deferred. The setup checklists and the architecture snapshot that this file
+began as are in [history.md](history.md) — they are a record of how it was
+built, not a description of what it is.
 
-(This line originally said OneDrive. The confirmation question at the bottom was answered "OneNote notebooks" — see the note there.)
+## What it is
 
-## How to use this document
+A multi-tenant web app where a user connects their Microsoft account, plus an
+MCP server — published to npm — that reads that user's OneNote notes and applies
+musician workflow playbooks. One OneNote page is one working unit, and every
+result stays in Claude or Codex chat. Reading is the default; four write
+capabilities exist and each is granted by name at install time.
 
-This is a working checklist, not a reference. **Edit this file as you go and tick each box when it's done.**
+## What shipped
 
-- Part 1 boxes are for the **human**: accounts, keys, tooling. Nothing in Part 2 can be tested until these are ticked.
-- Part 2 boxes are for whoever writes the code, **human or agent**.
-- Tick when it's done *and verified*, not when it's started. A ticked box means someone can rely on it.
-- Don't tick ahead. If something is blocked, leave the box empty and write `BLOCKED —` and the reason next to it.
-- **Agent:** after each unit of work, edit this file to tick what you completed, then carry on. Don't wait until the end. If you finish a section, say which boxes you ticked.
-
----
-
-# Part 1 — Set this up first (human)
-
-Nothing will run until this is done. Keep a scratch file open and paste every value into it as you go.
-
-## 1. Local tooling
-
-- [x] Node 20 or newer installed (`node -v`) — v24.19.0
-- [x] pnpm enabled (`corepack enable`, then `corepack prepare pnpm@latest --activate`) — 11.21.0
-- [x] Supabase CLI installed and logged in — 2.113.0, authenticated. (Note: `npm i -g supabase` is no longer supported; use `brew install supabase/tap/supabase`)
-- [x] npm account created and logged in (`npm login`) — `manudota`
-- [x] npm organisation created for the scope — not needed: `@manudota` is the personal scope, which publishes fine with `publishConfig.access: public`. Package is `@manudota/artist-mcp`
-- [x] Claude Desktop installed and signed in
-
-No Docker needed — we're using a hosted Supabase project, not a local one.
-
-## 2. Supabase project
-
-- [x] Project created at supabase.com, nearby region, **database password saved** (shown once) — `artist-mcp`, eu-west-2
-- [x] Written down: Project URL, anon key, service_role key (Project Settings → API) — pulled via CLI into `apps/web/.env.local`
-- [x] Written down: project ref (from the URL) — `zxiemadwrkcoovvpscfb`
-- [x] Email provider enabled (Authentication → Providers) — this is magic-link sign-in — proven: a sign-in email was delivered
-- [x] Site URL set to `http://localhost:3000` and `http://localhost:3000/**` added to redirect URLs — proven: the emailed link reached `/auth/confirm`
-
-The built-in email sender is rate-limited but fine for testing. Don't set up SMTP yet.
-
-## 3. Microsoft app registration
-
-portal.azure.com → **Microsoft Entra ID** → **App registrations** → **New registration**.
-
-- [x] Scope question below answered — do this before registering anything
-- [x] Registration created with **supported account types** = any org directory + personal Microsoft accounts
-- [x] Redirect URI added: platform **Web**, `http://localhost:3000/api/auth/microsoft/callback` — Web is required; a client secret cannot be used with the SPA platform type
-- [x] Application (client) ID written down (Overview)
-- [x] Client secret created, **Value copied immediately** — validated against Microsoft before use
-- [x] Delegated permissions added: `Notes.Read`, `offline_access`, `User.Read` — consent granted; a refresh token came back, so `offline_access` took
-
-## 4. Environment
-
-### Why there's an env file at all
-
-The app needs values that can't live in the code: the Microsoft client secret, the Supabase service role key, the encryption key. If those sit in a source file they end up in git, and git history is permanent — rotating a secret that's been pushed means revoking it at the provider, not deleting a commit.
-
-`.env.local` is gitignored by Next.js out of the box. That's its whole job: values that stay on the machine they're on.
-
-It's also how the same code runs in different places. Your machine points at `localhost:3000`; production will point at a real domain. Nothing in the code changes, only the env.
-
-And in Next.js the prefix is load-bearing. Anything named `NEXT_PUBLIC_*` gets baked into the JavaScript sent to the browser, where anyone can read it. Everything else is server-only. That split is why the client secret and the service role key must not have the prefix — it's a security boundary, not a naming convention.
-
-### Why three separate places
-
-Three runtimes, three environments, none of which can see each other's variables:
-
-- **Next.js** runs on your machine. Reads `.env.local`.
-- **Edge functions** run on Supabase's servers. No access to your laptop, so their secrets are set with the CLI.
-- **The MCP server** runs on the *end user's* machine. One variable, written by the installer.
-
-Same secret in two runtimes means setting it in both. There's no shared file.
-
-### Tasks
-
-- [x] `apps/web/.env.local` created with all seven values below — all seven set; client id + secret validated against Microsoft
-- [x] `TOKEN_ENCRYPTION_KEY` generated (`openssl rand -base64 32`)
-- [x] Verified no secret carries a `NEXT_PUBLIC_` prefix
-- [x] `supabase link --project-ref <your-ref>` run
-- [x] Edge function secrets set — all three set
-
-Watch for AADSTS53003: a Conditional Access policy blocks app-only
-(`client_credentials`) token issuance for this app. The delegated flow this app
-actually uses is a different path and may be unaffected — but if consent fails
-with 53003, sign in with a personal Microsoft account rather than a work one.
-- [x] `.env.example` committed with keys and no values
-
-```
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-MS_CLIENT_ID=
-MS_CLIENT_SECRET=
-MS_REDIRECT_URI=http://localhost:3000/api/auth/microsoft/callback
-TOKEN_ENCRYPTION_KEY=
-```
-
-## 5. Connecting Claude Desktop
-
-Do this last — the connection key doesn't exist until the web app is running and Microsoft is connected.
-
-(Recorded as it happened. There is no connection key now: `init` asks for nothing, and `connect` signs in on this machine. The steps below are history, not instructions — follow [installation.md](installation.md).)
-
-- [x] `npx @manudota/artist-mcp init` run, key pasted, config written
-- [x] Claude Desktop restarted (it doesn't reload config on its own) — restarted after the `npx` entry was written; `list_notes` works from the published package
-
-Config file locations, if you need to look:
-
-- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-
----
-
-# Part 2 — What to build
-
-## Stack
-
-```
-apps/web        Next.js (App Router), Tailwind, shadcn/ui
-apps/mcp        Node MCP server + install CLI, published to npm
-supabase/       migrations and edge functions
-```
-
-- [x] Turborepo monorepo scaffolded with pnpm workspaces
-- [x] `apps/web` created with Next.js App Router, Tailwind, shadcn/ui initialised
-- [x] `apps/mcp` created
-- [x] `supabase/` directory with migrations and functions
-
-## Database
-
-- [x] `connections` table — `id, user_id, provider, refresh_token, created_at, updated_at`
-- [x] `mcp_keys` table — `id, user_id, key_hash, created_at, last_used_at`
-- [x] RLS enabled on both, policy `auth.uid() = user_id`
-- [x] `refresh_token` encrypted with pgcrypto using `TOKEN_ENCRYPTION_KEY`
-- [x] Verified: signed in as user A, cannot read user B's rows — migration applied; anon key reads both tables as empty and both privileged functions return `42501 permission denied`, after the `PUBLIC` grant was revoked. The two-real-users half was going to come from acceptance step 6; it is moot instead, because both tables are dormant and unwritten. There are no rows to isolate, and no deployed credential that could read them.
-
-Note: the first migration's `revoke ... from anon, authenticated` was a no-op —
-Postgres grants EXECUTE to PUBLIC on every new function and both roles inherit
-it, so the `security definer` functions were callable with the anon key.
-Migration `20260810010000` revokes from PUBLIC and grants to `service_role`
-only. Caught by testing the endpoint, not by reading the SQL.
-
-RLS keeps other users out; encryption is for a database dump. Store a key hash, never the key.
-
-## The web app
-
-- [x] Supabase Auth magic-link sign-in working — signed in as manolotelleria@gmail.com. Handles both link shapes: `?code=` (Supabase's default email template, PKCE) and `?token_hash=` (custom template). The default template sends `code`, which an earlier version rejected.
-- [x] One page: **Connect Microsoft** button, status line, connection key display — both signed-out and signed-in states render correctly
-- [x] `GET /api/auth/microsoft` — redirect with client id, redirect URI, scopes, `state`, PKCE — redirects home when signed out; `state` and verifier set as httpOnly cookies
-- [x] `GET /api/auth/microsoft/callback` — verifies `state`, exchanges code server-side, writes encrypted refresh token — forged `state` and denied consent both rejected with an error, no exchange attempted
-- [x] Connection key generated, shown once, revocable — generated (`amcp_` + 43 chars), shown once, revoked. Verified the DB stores only sha256: the browser-computed hash of the displayed key matched `key_hash`, and no column holds the plaintext.
-
-Rate limits: the built-in email sender allows very few messages per hour. For
-testing, mint a link with the admin API instead — no email, no limit:
-`POST /auth/v1/admin/generate_link {"type":"magiclink","email":...}` with the
-service role key, then visit `/auth/confirm?token_hash=<hashed_token>&type=magiclink`.
-That path also skips PKCE, so it works in any browser.
-- [x] Verified: browser never receives a Microsoft token — the code exchange is server-side in the callback route; the stored value is pgcrypto ciphertext (`\xc30d0407…`) and decrypts to a 437-char `M.C5…` token only via the service role
-
-Built against Next.js 16.3.0, which differs from older conventions in two ways
-that mattered: `cookies()` and `searchParams` are async, and the `middleware`
-file convention is renamed to `proxy` (`src/proxy.ts`, exporting `proxy`).
-This shadcn `Button` also has no `asChild` slot — use `buttonVariants()` on an
-anchor instead.
-
-Scopes: `Notes.Read`, `offline_access`, `User.Read`. **`offline_access` is not optional** — without it Microsoft returns no refresh token and everything dies after an hour.
-
-## The edge function
-
-- [x] `POST /functions/v1/graph` deployed — live; bad key → 401, unknown op → 400, missing key → 401 all verified by curl
-- [x] Resolves connection key → user, reads that user's refresh token
-- [x] Exchanges refresh token with Microsoft for an access token
-- [x] Operations whitelisted: `list_notes`, `read_note`, `verify` — nothing else
-- [x] Graph URL built server-side; no URL or path accepted from the caller
-- [x] Rotated refresh token written back on **every** call
-- [x] Rate limiting per key — 30/min, in-isolate (see note in the function)
-- [x] `last_used_at` updated
-
-Exercised end to end against a real Microsoft account: `verify` returns ok,
-`list_notes` returns real OneNote pages with sections and modified dates, and
-`read_note` returns readable text. Token rotation confirmed — the stored
-ciphertext changed after a call, so the write-back works.
-
-Gotcha worth keeping: edge functions verify a Supabase JWT by default, and the
-caller presents a connection key instead. `supabase/config.toml` sets
-`verify_jwt = false` for this function, or every request 401s before our code
-runs. Auth is the sha256 lookup against `mcp_keys` inside the function.
-
-Microsoft rotates refresh tokens — every exchange returns a new one and kills the old. Miss the write-back and the connection dies silently after the first request.
-
-**Treat `/v1/` as a public contract.** Once the package is on npm, installed copies keep calling it on their own upgrade schedule. Don't change the request shape — add `/v2/`.
-
-## The package
-
-One package, one `bin` entry, three modes.
-
-- [x] No arguments → runs the MCP server over stdio
-- [x] `init` → the installer
-- [x] `uninstall` → removes the entry from the Claude config
-- [x] Tool: `list_notes` — OneNote pages, with title, section, modified date; narrows by notebook, by `since`, and by `limit` — verified over a real MCP client, which passed `{notebook, since}` to the tool rather than fetching everything and filtering, and got back the 2 pages of 11 modified in the window
-- [x] Tool: `map_notes` — the opening of every page in one notebook, from Graph's page previews, so a notebook can be triaged before anything is read. Measured against two real notebooks: 4 KB against 349 KB and about half the wall-clock, but still one call per page, so the saving is context rather than calls. A page with no usable preview is read in full instead and the answer says which — the preview is capped near 300 characters and is always a plain prefix, verified across 17 pages
-- [x] Tool: `read_note` — takes a note id (not a path; OneNote pages are addressed by id), returns text content, in parts when the page exceeds the attachment text cap. Parts rather than page ranges, because a OneNote page records no pages; a normal page is unaffected byte for byte
-- [x] `status` reports the install, not only the connections: which config, whether the entry exists, published package or local build, and whether the recorded playbook directory still resolves — the failure it exists for is a moved checkout, which used to surface as every workflow tool failing inside Claude
-- [x] Tools: `list_agent_workflows`, `load_agent_workflow` — discover and load checksummed Markdown roles and project types, with a bundled offline fallback
-- [x] Verified: no Graph calls made locally, no Microsoft token or service role key ever on the client — driven with a real MCP client over stdio: both tools listed, `list_notes` returned 6 pages, `read_note` 2,358 chars, malformed id rejected
-
-OneNote's Graph endpoints return transient 503/504 often — roughly one call in
-three failed. `graphGet` now retries 5xx and 429 twice with backoff; 6/6 clean
-after. Slightly beyond the brief's "no error handling" line, and deliberate:
-without it `read_note` fails intermittently for no reason.
-
-`init` steps:
-
-- [x] Prompts for the connection key
-- [x] Calls `verify`; on a bad key, says so and exits without writing config — verified against the live endpoint; config left untouched
-- [x] Finds the Claude Desktop config for the current OS, creates it if missing
-- [x] Adds the `artist-notes` entry, leaving other MCP servers untouched — `google` and `onenote` survived init and uninstall; config byte-identical to the pre-test backup afterwards
-- [x] Tells the user to restart Claude Desktop
-
-## Publishing
-
-- [x] `"publishConfig": { "access": "public" }` set — scoped packages default to private and first publish will fail
-- [x] `"engines": { "node": ">=20" }`
-- [x] Shebang on the entry point, built file executable
-- [x] `files` field or `.npmignore` so only `dist` ships
-- [x] Build runs on `prepublishOnly`
-- [x] Edge function URL baked in as a default, overridable by env for testing — real project URL baked in; `ARTIST_MCP_ENDPOINT` overrides
-- [x] Published at `0.1.0` — publish confirmed by npm's email and by `npm access` (package exists, owner `manudota`, status `public`). Required 2FA; a security key means no `--otp` code, so it goes through `npm publish` and its browser handshake, not `pnpm publish`.
-- [x] Verified: `npx @manudota/artist-mcp init` works from a directory outside the repo — run from an empty temp dir with no checkout: bad key refused without writing, valid key wrote the `npx` entry, and the installed package served `list_notes` and `read_note` over a real MCP client
-
-Registry propagation lagged well behind the publish: `npm access` reported the
-package public while the packument and tarball still 404'd for ~15 minutes.
-`npm access` is the reliable signal right after publishing, not `npm view`.
-- [x] No workspace-internal imports anywhere in `apps/mcp`
-
-## Acceptance test
-
-Run this end to end. Every box ticked, or it isn't done.
-
-- [x] 1. Sign in to the web app
-- [x] 2. Click **Connect Microsoft**, approve consent, land back showing connected
-- [x] 3. Copy the connection key, run `npx @manudota/artist-mcp init`, paste it, restart Claude
-- [x] 4. Ask Claude Desktop to list the OneNote notes — it does
-- [x] 5. Ask it to read one — it does (full page: milestones, tasks, musician table)
-- [x] 6. A second user, on a different machine, installs from npm and sees only
-  their own notes — run with two real Microsoft accounts on two machines, and
-  confirmed done by the maintainer
-
-The runbook that used to sit beside this has been deleted, and step 6 no longer
-means what it originally did. It was written for the hosted design: a connection
-key pasted at install, resolved server-side to that user's refresh token. The
-multi-tenancy question was whether one key could reach another user's notes.
-
-There is no such path now. Each machine holds its own tokens and calls the
-providers directly, so there is no shared credential and no server-side
-resolution to isolate — see [#22](https://github.com/ManudotaORG/artist-mcp/issues/22).
-Two users are two independent installs. What the test proved is recorded in the
-known gaps below; what remains worth checking is that the published package
-installs and runs, which is ordinary release verification rather than a security
-gate, and which `npm pack` plus running the published binary covers.
-
-## Read-only workflow layer
+The last stale entry here is corrected in place rather than quietly dropped, so
+the correction stays visible.
 
 - [x] Installable Markdown pack with Orchestrator, Archivist, Registrar, Project Manager, Envoy, Auditor, and Janitor roles
 - [x] Starter project types: Concert, Large Concert, Studio Session, and Rehearsal
 - [x] One OneNote page treated as one working unit
 - [x] Registry generated during package build with SHA-256 checksums
-- [x] Results shown only in chat; no write, send, sync, calendar, or background execution capability
+- [x] Results shown only in chat; no send, sync or background execution capability. This originally also said "no write" and "no calendar": four write capabilities have since shipped, each opt-in per install — see "Not in scope" below.
 
 ### Playbooks a user can edit — beyond the original brief, deliberate
 
@@ -286,7 +40,7 @@ a fixed pack means every adjustment is a package release.
 - [x] A missing or broken local directory fails loudly rather than falling back to the bundle the way an unreachable remote registry does
 - [x] Files capped at 64 KiB, empty files refused, paths contained against the local root
 - [x] Derivation shared by the build script and the runtime, with a test asserting the committed registry still matches it — two copies would give the same file different ids, and a user's edit would then shadow nothing
-- [x] Policies that must hold unprompted load in full, not as summaries: `answering`, `evidence`, `divergence`, `patch` alongside `intake`. Found the hard way — the rule protecting the user's mailbox lived in `AGENTS.md`, which the server never loads, and a Desktop session read Gmail and Calendar unasked. A rule in a role is not in force; see "Editing the pack" in `docs/releases-and-agents.md`
+- [x] Policies that must hold unprompted load in full, not as summaries: `answering`, `evidence`, `divergence`, `patch` alongside `intake`. Found the hard way — the rule protecting the user's mailbox lived in `AGENTS.md`, which the server never loads, and a Desktop session read Gmail and Calendar unasked. A rule in a role is not in force; see "Editing the pack" in `docs/agent-pack.md`
 - [x] The MCP handshake tells the client to load the playbooks, so they are in force on a client with no repository to read `AGENTS.md` from — which is Claude Desktop, the surface `init` configures. Without it `list_agent_workflows` was a tool nothing called, and a session read the notebook, reasoned well, and followed no policy at all. A day of testing was spent diagnosing playbook wording on that basis; the stdio test fails without the fix
 - [x] `AGENTS.md` restates no rules. It is the one copy nothing checksums and nothing loads, and every summary in it drifted — three always-loaded policies after there were five, and phrasing `policy:divergence` was rewritten to forbid, months stale. It now names where the rules are and stops
 - [x] `policy:patch` closes the loop from an agreed recommendation to the page: the smallest fragment that records the decision, the destination named as the page words it, unsettled fields left `UNKNOWN` including the cells beside the one that changed, and never a claim the page was updated. Verified in Claude Desktop against the messy notebook — a cross-reference offered unprompted on a suspected twin and adapted to a pair whose identity facts conflict, and a consolidated page carrying two settled values with the two the musician was unsure of left `UNKNOWN`, every fact naming its source page, both originals untouched. Each pasted into OneNote with its bordered tables intact
@@ -330,7 +84,10 @@ Decisions and their cost: [decisions/0001-opt-in-calendar-writes.md](decisions/0
       entry's args; an unknown name is refused by name, and `init`, `status` and
       the workflow briefing each report what is in force
 - [x] An ungranted write tool is not registered at all — verified: 12 tools
-      without the grant, exactly those two more with it
+      without the grant, exactly those two more with it. Those counts are what
+      that run measured, before the page-attachment tools and the OneNote
+      capabilities existed; the property they check still holds, against 14
+      ungated tools and four capabilities today.
 - [x] Preview then create, with the create bound to the previewed payload by a
       token; unsettled values (`UNKNOWN`, `TBC`, a disputed date) refused in
       code rather than only in a playbook; timed events refused without an IANA
@@ -338,7 +95,7 @@ Decisions and their cost: [decisions/0001-opt-in-calendar-writes.md](decisions/0
       per write in `~/.artist-mcp/writes.log`
 - [x] The pack and the docs corrected in the same work, not deferred — every
       "read-only" claim across `CLAUDE.md`, `README.md`, `PRODUCT.md`, the brief,
-      `releases-and-agents.md` and four pack files
+      `agent-pack.md` and four pack files
 - [x] Deleting, narrowed to events this tool created: the `artist` id prefix is
       the whole basis, checked before the event is even fetched, so a gig the
       musician typed in or one shared onto their calendar is unreachable. The
@@ -485,30 +242,38 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
    so a test asserts the committed copy still matches what the derivation
    produces — a review signal rather than noise.
 
-8. **Node 20 reaches Vercel's build cutoff on 1 October 2026.** Vercel emailed
-   on 14 August 2026: Node 20 is end-of-life, and after that date new builds
-   using it fail. The mail named one affected project, `nextjs` in
-   `highnets-projects` — **not** `artist-mcp` or `artist-mcp-staging` — so on the
-   evidence available neither of this project's deployments is on 20. That has
-   not been confirmed: the Node version is a Vercel dashboard setting and cannot
-   be read from this repository.
+8. **Node 20 reaches Vercel's build cutoff on 1 October 2026 — settled for the
+   deployments, open for the repo's own versions.** Vercel emailed on
+   14 August 2026: Node 20 is end-of-life, and after that date new builds using
+   it fail. The mail named one affected project, `nextjs` in
+   `highnets-projects` — **not** `artist-mcp` or `artist-mcp-staging`.
+
+   Confirmed on 2 September 2026: `vercel project ls --scope highnets-projects`
+   reports both `artist-mcp` and `artist-mcp-staging` on **24.x**. Neither was
+   ever on 20, and the cutoff is no longer a risk to either deployment. The
+   version is a dashboard setting, so that command — not this repository — is
+   where to read it.
 
    Nothing here overrides it, which is the part worth knowing. Vercel warns that
    an explicit `engines.node` in `package.json` beats the dashboard, and
    `apps/web` sets none — so whatever the dashboard says is what builds, and a
    repo change would not fix a project left on 20.
 
-   Separately, the versions this repo names disagree: `.nvmrc` pins `22.22.2`,
-   CI and the release workflow both use `24`, the root and `apps/mcp`
-   `engines.node` say `>=20`, and the README tells users "Node 20 or newer".
+   Separately, the versions this repo names still disagree: `.nvmrc` pins
+   `22.22.2`, CI, the release workflow and both Vercel projects use `24`, the
+   root and `apps/mcp` `engines.node` say `>=20`, and the README tells users
+   "Node 20 or newer". `.nvmrc` is now the odd one out against everything that
+   actually builds.
    The `engines` floor is a real compatibility promise about *users'* machines
    rather than untidiness, so raising it decides who can still install the
    package — but it currently promises support on a runtime with no security
    updates. Aligning `.nvmrc` with the 24 that CI actually uses is the smaller,
    separate half.
 
-   Action before 1 October 2026: read the Node version on both Vercel projects
-   and upgrade either one still on 20 from the dashboard.
+   Remaining action, no longer dated: decide whether `.nvmrc` should follow the
+   24 that CI and both Vercel projects actually run, and whether `engines.node`
+   should still promise a runtime with no security updates. Nothing is failing
+   on either count.
 
 9. **Staging builds misreported their own version over MCP.** Fixed. `set-staging-version.mjs`
    rewrites `package.json` and nothing else, while `src/server.ts` carries the
@@ -532,17 +297,3 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
    a glance then, since this gap was found by checking a tarball rather than by a
    test.
 
-## Confirm before registering the Microsoft app
-
-Are the notes **OneNote notebooks** or **files in a OneDrive folder**? This brief assumes files. If it's OneNote the scope becomes `Notes.Read` and it's a different API — ask before registering, because changing scopes later means dragging users back through consent.
-
-Also: personal Microsoft accounts or work accounts? That decides supported account types in step 3.
-
-- [x] Both questions answered before anything in section 3 is ticked
-
-**Answered 2026-08-10: OneNote notebooks, and both account types.**
-
-So the scope is `Notes.Read`, not `Files.Read`, and the API is `/me/onenote/*`.
-Supported account types = "any organizational directory and personal Microsoft
-accounts". Sections 3, "The web app" and "The package" have been corrected
-below to match — the original text assumed OneDrive files.

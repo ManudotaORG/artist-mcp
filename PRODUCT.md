@@ -20,12 +20,12 @@ The product adds narrow, installable musician-workflow playbooks to live OneNote
 
 ## Operating Context
 
-Users move between live performance, studio work, and practical production administration. Their OneNote pages contain project facts, milestones, tasks, and contacts. Claude or Codex coordinates the read-only workflow; the user reviews and performs every external action.
+Users move between live performance, studio work, and practical production administration. Their OneNote pages contain project facts, milestones, tasks, and contacts. Claude or Codex coordinates the workflow; the user reviews every change it proposes and performs every other external action themselves.
 
 ## Capabilities and Constraints
 
 - Microsoft OAuth with `Notes.Read`, `offline_access`, and `User.Read`.
-- Google OAuth with `gmail.readonly` and `calendar.events.readonly`, offline access, as a separate and optional connection. The narrower events scope is deliberate: calendar metadata, sharing and settings are not read.
+- Google OAuth with `gmail.readonly`, `calendar.events.readonly` and `calendar.calendarlist.readonly`, offline access, as a separate and optional connection. A granted calendar capability widens the events scope to `calendar.events`. The narrower events scope is deliberate: calendar metadata, sharing and settings are not read.
 - One OneNote page is one working unit.
 - Read-only OneNote page listing and reading.
 - Read-only Gmail search and message reading, as supporting evidence for a OneNote working unit. An email thread is never itself a working unit.
@@ -34,8 +34,8 @@ Users move between live performance, studio work, and practical production admin
 - Either connection stands alone: a user may connect OneNote, Gmail, or both, and disconnecting one leaves the other working.
 - Checksummed runtime registry of seven roles and four starter project types, or a directory of the musician's own layered over it.
 - Results appear only in chat.
-- No writes to any source apart from the opt-ins below: no OneNote edits, message sending, replying, drafting, labelling, calendar event editing, RSVP responses, background jobs, synchronization, or workflow state in Supabase.
-- Two exceptions, opt-in per install and off by default: creating a single Google Calendar event, previewed and confirmed, and deleting an event this tool itself created — never one the musician made or that was shared with them. A gig that lives on a page and never reaches the calendar makes the musician the sync layer, which is the thing this product exists to stop being true. It went first because a wrong calendar event is deleted in two seconds and a corrupted OneNote page is not. See [docs/decisions/0001-opt-in-calendar-writes.md](docs/decisions/0001-opt-in-calendar-writes.md).
+- No writes to any source apart from the opt-ins below: no message sending, replying, drafting, labelling, RSVP responses, deletion of anything the musician wrote, background jobs, synchronization, or workflow state in Supabase.
+- Four exceptions, opt-in per install by name and off by default: creating a single Google Calendar event; deleting an event this tool itself created — never one the musician made or that was shared with them; creating a OneNote page; and editing a OneNote page this tool itself created, which Microsoft enforces rather than this code. Each is previewed and confirmed before it goes through, and a capability that was not granted registers no tool at all. A gig that lives on a page and never reaches the calendar makes the musician the sync layer, which is the thing this product exists to stop being true. It went first because a wrong calendar event is deleted in two seconds and a corrupted OneNote page is not. See [docs/decisions](docs/decisions), records 0001 and 0003 to 0006.
 - No availability computation or scheduling suggestions; reading a calendar is not planning against it.
 - Operator access is not a limit for the published package: sign-in happens on the user's own machine, the refresh tokens stay there, and no deployed credential can read them. [#22](https://github.com/ManudotaORG/artist-mcp/issues/22) removed the mechanism that made it one.
 - It *is* a limit for the hosted server, deliberately and visibly. [#55](https://github.com/ManudotaORG/artist-mcp/issues/55) added a remote MCP for clients that cannot run a local process, and acting for someone while their machine is off means holding their credentials. Tokens are encrypted at rest with a key the database never holds, and only the service role can decrypt them — which narrows who can read them without reducing it to nobody. Hosted users are told exactly that before they consent, access is arranged directly rather than signed up for, and the published package has no way to be pointed at a hosted server. The two custody models are separate offerings, not one product with a setting.

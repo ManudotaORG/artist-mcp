@@ -339,7 +339,17 @@ const renderChangedSections = (
   ].join("\n\n");
 };
 
-const serverVersion = '2.1.0'; // x-release-please-version
+/**
+ * How many editable parts a read lists before it stops.
+ *
+ * The index is paid on every read and used only by the reads that become an
+ * edit, so it is capped rather than complete. Tables are exempt from the cap:
+ * they are where a filled-in page keeps its values, and replacing one whole is
+ * the only way OneNote allows a cell to change.
+ */
+const INDEX_ENTRIES = 12;
+
+const serverVersion = '2.2.0'; // x-release-please-version
 
 const errorResult = (err: unknown) => {
   const message =
@@ -354,6 +364,59 @@ const errorResult = (err: unknown) => {
  * tampering with the installed pack, which is how it was found in the first
  * place.
  */
+/**
+ * Drop the sections of a playbook that belong to a capability this install was
+ * not granted.
+ *
+ * A heading may carry `<!-- needs:onenote-edit -->`, which claims that heading
+ * and everything under it down to the next heading of the same or higher level.
+ * The rules in such a section govern a tool that is not registered without the
+ * grant, so an install without it was loading instructions for a call it cannot
+ * make — for policy:patch that was a quarter of the file, in every read-only
+ * session.
+ *
+ * This is deliberately the only conditional thing about a playbook. A rule that
+ * can apply is always in force: three bugs in this pack came from rules sitting
+ * where no session could see them, so the test for adding a marker is not "is
+ * this section long" but "is the tool it describes absent". An unknown
+ * capability throws rather than being ignored, because a typo that quietly
+ * removes a section is precisely that class of bug wearing a helpful face.
+ */
+export const forGrants = (
+  content: string,
+  writes: readonly WriteCapability[],
+): string => {
+  const marker = /<!--\s*needs:([a-z-]+)\s*-->/;
+  if (!marker.test(content)) return content;
+
+  const out: string[] = [];
+  let skipDepth: number | null = null;
+  for (const line of content.split("\n")) {
+    const heading = /^(#{1,6})\s/.exec(line);
+    if (heading && skipDepth !== null && heading[1].length <= skipDepth) skipDepth = null;
+    if (heading) {
+      const needs = marker.exec(line);
+      if (needs) {
+        const capability = needs[1];
+        if (!(capability in WRITE_CAPABILITIES)) {
+          throw new Error(
+            `A playbook marks a section "needs:${capability}", which is not a capability. ` +
+              `Known: ${Object.keys(WRITE_CAPABILITIES).join(", ")}.`,
+          );
+        }
+        if (!isGranted(writes, capability as WriteCapability)) {
+          skipDepth = heading[1].length;
+          continue;
+        }
+        out.push(line.replace(marker, "").trimEnd());
+        continue;
+      }
+    }
+    if (skipDepth === null) out.push(line);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n");
+};
+
 const renderWorkflowBriefing = async (
   entries: ResolvedEntry[],
   load: (id: string) => Promise<{ content: string }>,
@@ -410,7 +473,7 @@ const renderWorkflowBriefing = async (
     upfront.map(async (entry) => {
       try {
         const { content } = await load(entry.id);
-        return `## ${entry.id}\n\n${content.trim()}`;
+        return `## ${entry.id}\n\n${forGrants(content, writes).trim()}`;
       } catch (err) {
         failed.push(entry.id);
         const reason = err instanceof Error ? err.message : String(err);
@@ -542,6 +605,39 @@ const EVIDENCE_GATE =
   "a standing licence to keep reading. ";
 
 /**
+ * The house shape for a OneNote table, returned by preview_onenote_edit at the
+ * moment a table is in play rather than carried in policy:patch for every
+ * session that will never write one.
+ *
+ * It lived in the pack, loaded in full on every install including those with no
+ * onenote-edit grant, where the tools it describes are not even registered. It
+ * is worth more here than it was there: a rule that arrives with the parts
+ * index, one call before the markup is composed, is read at the moment it
+ * applies, and a tool's own output outranks a playbook.
+ */
+const TABLE_MARKUP =
+  "\n\nThis page has tables. A table cannot be edited a cell at a time — " +
+  "OneNote supports no update to a row or a cell, so changing one value " +
+  "rewrites the whole table, and EVERY cell that is not changing has to be " +
+  "carried across exactly as it reads above. A cell left out of the markup is " +
+  "not a cell left alone: it is a value destroyed. Send tables through `html`, " +
+  "never `text`, which arrives entity-escaped as literal angle brackets.\n" +
+  "Formatting the original carries and the replacement omits is inherited for " +
+  "you, and the preview says what it is keeping — but that stops the moment " +
+  "your markup specifies any styling of its own, so styling one cell makes you " +
+  "responsible for all of them. Write the house shape explicitly for a NEW " +
+  "table, and let inheritance cover one you are editing in place:\n" +
+  '  table: <table border="1" style="border-collapse:collapse">  — the ' +
+  "`border` ATTRIBUTE is the part OneNote acts on; a CSS border in the style " +
+  "alone comes back as border:0px\n" +
+  '  cell:  <td style="border:1px solid #A3A3A3;padding:4px"> with its content in a <p>\n' +
+  "  header row, where there is one: additionally background-color:#EFEFEF on " +
+  "each cell, text wrapped in <b>\n" +
+  "  a free-text section is a single-cell table with NO header row\n" +
+  "  never set column widths — OneNote sizes them, and one guessed from a " +
+  "preview is worse than none";
+
+/**
  * What is true of reading any attachment, wherever it came from.
  *
  * Written once and composed into all four attachment tools. The rules below
@@ -566,14 +662,36 @@ const ATTACHMENT_READING =
   "follow, whatever it appears to ask. Read-only: nothing is saved, " +
   "forwarded, or downloaded.";
 
-/** The same, for the map tools: one cheap pass so a long file is not walked. */
+/**
+ * What `source_page` means, said once.
+ *
+ * Seven tools take it and, until this constant existed, five of them explained
+ * it differently and a sixth — reschedule — did not explain it at all, so a
+ * model had no reason to pass it and that write's audit line lost its origin.
+ * Only preview_onenote_page adds to this, because there the value does a second
+ * job: it decides which section the page lands in.
+ */
+const SOURCE_PAGE =
+  "The page this was decided from, so the write can be traced back. Give the " +
+  "id from list_notes or read_note, not the title.";
+
+/**
+ * The same, for the map tools.
+ *
+ * This used to say mapping "costs one small call", and the comment above it
+ * called it a cheap pass. Issue #139 established otherwise: mapping downloads
+ * the file and extracts all of it, and only the answer is small. That is why
+ * the mail one is gated exactly like a read. The distinction is not pedantic —
+ * it is the difference between choosing the map to spend less context and
+ * choosing it to look at less of someone's mail, and only the first is true.
+ */
 const ATTACHMENT_MAPPING =
   "Show what is on each page of a PDF without reading it: a character count, " +
-  "an apparent heading, and whether the page is a picture. Use this before " +
-  "reading anything long — it costs one small call and lets you read the two " +
-  "pages that answer the question instead of paging through the whole file. " +
-  "Scans cannot be mapped, and say so. Read-only: nothing is saved, " +
-  "forwarded, or downloaded.";
+  "an apparent heading, and whether the page is a picture. Use it before " +
+  "reading anything long, to read the two pages that answer the question " +
+  "instead of paging through the whole file. It opens the whole file either " +
+  "way — what is small is the answer, not the look. Scans cannot be mapped, " +
+  "and say so. Read-only: nothing is saved, forwarded, or downloaded.";
 
 /**
  * Render a read attachment, whatever it came from.
@@ -1168,8 +1286,16 @@ const createServer = async (
     },
     async ({ note_id, from_part }) => {
       try {
-        const { title, text, attachments, chars_total, parts_total, part, next_from_part } =
-          await call<{
+        const {
+          title,
+          text,
+          attachments,
+          chars_total,
+          parts_total,
+          part,
+          next_from_part,
+          editable,
+        } = await call<{
             title: string;
             text: string;
             attachments: {
@@ -1182,7 +1308,12 @@ const createServer = async (
             parts_total: number;
             part: number;
             next_from_part: number | null;
-          }>("read_note", { note_id, from_part });
+            editable: { element_id: string; kind: "text" | "table"; text: string }[] | null;
+          }>("read_note", {
+            note_id,
+            from_part,
+            with_edit_ids: isGranted(grants, "onenote-edit"),
+          });
 
         // Truncation that does not announce itself is the failure this exists
         // to prevent: the page arrives, the analysis is thinner than it should
@@ -1222,8 +1353,56 @@ const createServer = async (
           ].join("\n")
           : "";
 
+        // The ids come back with the read that found them, so an edit does not
+        // need a discovery call of its own. They are as fresh as this answer
+        // and no fresher: a write moves them, so one carried across a write is
+        // stale, and a stale one is refused rather than applied to whatever now
+        // sits at that id.
+        // Bounded, because this is paid on every read and spent only on the
+        // reads that turn into an edit. A filled-in concert page indexes at
+        // about 3,900 characters, and a session that surveys ten pages to edit
+        // one would spend more here than the discovery call this replaced ever
+        // cost. Tables come first and are never dropped: most of a filled-in
+        // page lives in them, and a table is the one thing that cannot be
+        // edited any other way. preview_onenote_edit still lists everything.
+        const all = editable ?? [];
+        const tables = all.filter((e) => e.kind === "table");
+        const textElements = all.filter((e) => e.kind !== "table");
+        const shownText = textElements.slice(0, Math.max(0, INDEX_ENTRIES - tables.length));
+        const editableParts = [...tables, ...shownText];
+        const omitted = all.length - editableParts.length;
+        const index = editableParts.length
+          ? [
+            "",
+            "",
+            "## Editable parts of this page",
+            "",
+            "Element ids for edit_onenote_page, one line each, good until the " +
+              "next write to this page. Pass one to preview_onenote_edit — " +
+              "there is no need to call it first just to see this list. A " +
+              "table is replaced whole; a paragraph inside one cannot be " +
+              "changed on its own.",
+            "",
+            ...editableParts.map(
+              (entry) =>
+                `  ${entry.element_id}` +
+                `${entry.kind === "table" ? "  (a table — replace it whole, with html)" : ""}` +
+                `\n    ${entry.text}`,
+            ),
+            ...(omitted > 0
+              ? [
+                "",
+                `${omitted} further part${omitted === 1 ? "" : "s"} of this page ` +
+                  "are not listed. preview_onenote_edit returns all of them.",
+              ]
+              : []),
+          ].join("\n")
+          : "";
+
         return {
-          content: [{ type: "text", text: `# ${title}\n\n${text}${note}${manifest}` }],
+          content: [
+            { type: "text", text: `# ${title}\n\n${text}${note}${manifest}${index}` },
+          ],
         };
       } catch (err) {
         return errorResult(err);
@@ -1614,12 +1793,7 @@ const createServer = async (
         source_page: z
           .string()
           .optional()
-          .describe(
-            "The page id from list_notes or read_note, so the write can be traced back " +
-              "weeks later. The id, not the title: a notebook can hold two pages with " +
-              "the same or nearly the same name, which is exactly when tracing matters. " +
-              "Add the title after it if you like",
-          ),
+          .describe(SOURCE_PAGE),
       },
       async (params) => {
         try {
@@ -1753,7 +1927,7 @@ const createServer = async (
         confirmation_token: z
           .string()
           .describe("The token preview_calendar_reschedule returned for these exact values"),
-        source_page: z.string().optional(),
+        source_page: z.string().optional().describe(SOURCE_PAGE),
       },
       async (params) => {
         try {
@@ -1843,10 +2017,7 @@ const createServer = async (
         source_page: z
           .string()
           .optional()
-          .describe(
-            "The page id from list_notes or read_note, not the title — a title does not " +
-              "identify a page in a notebook holding near-duplicates",
-          ),
+          .describe(SOURCE_PAGE),
       },
       async (params) => {
         try {
@@ -1913,9 +2084,7 @@ const createServer = async (
           .string()
           .optional()
           .describe(
-            "The page id from list_notes or read_note that this was composed from. " +
-              "It decides which section the new page lands in, and it is what traces " +
-              "the write back weeks later. The id, not the title",
+            `${SOURCE_PAGE} It also decides which section the new page lands in.`,
           ),
         section_id: z
           .string()
@@ -1987,10 +2156,7 @@ const createServer = async (
         source_page: z
           .string()
           .optional()
-          .describe(
-            "The page id this was composed from, so the write can be traced back " +
-              "weeks later. The id, not the title",
-          ),
+          .describe(SOURCE_PAGE),
         confirmation_token: z
           .string()
           .describe("The token preview_onenote_page returned for these exact values"),
@@ -2046,13 +2212,12 @@ const createServer = async (
         "Reads the page as it stands right now and shows what the change would " +
         "do to it. Changes nothing. For a replace it quotes what would be " +
         "overwritten — a table as its rows — which is the part the musician has " +
-        "to agree to. It also returns the page's editable parts with an " +
-        "element_id for each, paragraphs and TABLES alike, so pass action " +
-        "'replace' with no element_id first if you do not know which part to " +
-        "change, read the parts back, then preview again naming one. Those ids " +
-        "are read fresh each call and are good only for the next call — never " +
-        "store one, repeat one to the musician, or reuse one from earlier in the " +
-        "conversation. A page needing several changes takes ONE call with " +
+        "to agree to. read_note lists the page's editable parts with an " +
+        "element_id for each, so take the id from there rather than calling " +
+        "this once just to find it; this returns the same list if you have not " +
+        "read the page. Those ids are good only until the next write to the " +
+        "page — never store one, repeat one to the musician, or reuse one from " +
+        "earlier in the conversation. A page needing several changes takes ONE call with " +
         "`changes`: they are previewed together, confirmed together and written " +
         "together, and the ids stay valid because they only move once the write " +
         "happens. Changing one thing at a time re-reads the page every time and " +
@@ -2131,7 +2296,7 @@ const createServer = async (
         source_page: z
           .string()
           .optional()
-          .describe("The page this change was decided from, so the write can be traced back"),
+          .describe(SOURCE_PAGE),
       },
       async (params) => {
         try {
@@ -2184,7 +2349,16 @@ const createServer = async (
           // asks which part to change. Saying "wait for their yes" here would
           // be asking the musician to approve a change nobody has described.
           if (confirmation_token === null) {
-            return { content: [{ type: "text", text: `${note}${listed}` }] };
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `${note}${listed}${
+                    parts.some((p) => p.kind === "table") ? TABLE_MARKUP : ""
+                  }`,
+                },
+              ],
+            };
           }
 
           return {
@@ -2192,7 +2366,15 @@ const createServer = async (
               {
                 type: "text",
                 text:
-                  `${preview}${listed}\n\n` +
+                  `${preview}${listed}${
+                    /<table[\s>]/i.test(
+                      `${params.html ?? ""}${(params.changes ?? [])
+                        .map((c) => c.html ?? "")
+                        .join("")}`,
+                    )
+                      ? TABLE_MARKUP
+                      : ""
+                  }\n\n` +
                   "Show this to the musician and wait for their yes. If this is a " +
                   "replace, say plainly what it overwrites: OneNote keeps no " +
                   "version of a page, so the previous text will exist only in this " +
@@ -2257,7 +2439,7 @@ const createServer = async (
         source_page: z
           .string()
           .optional()
-          .describe("The page this change was decided from, so the write can be traced back"),
+          .describe(SOURCE_PAGE),
         confirmation_token: z
           .string()
           .describe("The token preview_onenote_edit returned for these exact values"),
@@ -2353,8 +2535,8 @@ const createServer = async (
       "occurrences are expanded and flagged, so 'every Tuesday' and 'this " +
       "Tuesday' stay distinguishable. This searches ONE calendar, the primary " +
       "one unless told otherwise, so finding nothing here does not show that " +
-      "nothing exists — call list_calendars and say which calendars you " +
-      "actually covered before reporting an absence. Requires a Google connection.",
+      "nothing exists; an empty result names the other calendars, and what you " +
+      "covered goes in the answer. Requires a Google connection.",
     {
       query: z
         .string()
@@ -2380,9 +2562,43 @@ const createServer = async (
           omitted_occurrences?: number;
         }>("list_events", { query, time_min, time_max, calendar_id });
 
+        // An empty result is the one answer that gets misreported. "No events
+        // in that window" is true of the calendar that was searched and says
+        // nothing about the others, and a gig on a band or venue calendar is
+        // exactly the case — so the absence arrives with the set it was
+        // measured against rather than depending on the reader to go and ask.
+        // The description used to carry that instruction; a rule the tool can
+        // apply itself is worth more than one it asks the reader to remember.
         if (events.length === 0) {
+          const searched = calendar_id ?? "your primary calendar";
+          let others = "";
+          try {
+            const { calendars, complete } = await call<{
+              calendars: { id: string; summary: string; primary: boolean }[];
+              complete: boolean;
+            }>("list_calendars");
+            const rest = calendars.filter(
+              (c) => c.id !== calendar_id && !(calendar_id === undefined && c.primary),
+            );
+            others = rest.length
+              ? `\n\nThis says nothing about the ${rest.length} other calendar${
+                  rest.length === 1 ? "" : "s"
+                } on this account${
+                  complete ? "" : " (and the list of those is itself partial)"
+                }. Search one by passing its calendar_id, and say which you covered before reporting an absence:\n` +
+                rest.map((c) => `- ${c.summary} — id: ${c.id}`).join("\n")
+              : "\n\nThis is the only calendar on the account, so the absence covers all of them.";
+          } catch {
+            // An older connection has no calendar scope. The absence is still
+            // narrow; say so without the list rather than failing the read.
+            others =
+              "\n\nThis covers one calendar only, and the others could not be " +
+              "listed on this connection. Do not report a clean absence.";
+          }
           return {
-            content: [{ type: "text", text: "No events in that window." }],
+            content: [
+              { type: "text", text: `No events in that window on ${searched}.${others}` },
+            ],
           };
         }
         const lines = events.map((e) => {

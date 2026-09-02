@@ -18,11 +18,19 @@ material, and a bug report is public. Describe the shape of the problem instead:
 ## Suggesting enhancements
 
 Open an issue first. Scope here is deliberately narrow and stated in
-[CLAUDE.md](CLAUDE.md) and [docs/mvp-brief.md](docs/mvp-brief.md): everything is
-read-only, one OneNote page is one working unit, and Gmail and Calendar are
-supporting evidence rather than working units of their own. Proposals that add
-writes, sending, synchronization, or background execution will be declined on
-principle rather than on quality, so it is worth checking before building.
+[CLAUDE.md](CLAUDE.md) and [docs/scope.md](docs/scope.md): reading is the
+default, one OneNote page is one working unit, and Gmail and Calendar are
+supporting evidence rather than working units of their own.
+
+Writes exist, but they are not open ground. Each of the four capabilities
+(`calendar-create`, `calendar-delete`, `onenote-create`, `onenote-edit`) is
+granted by name at install time, registers no tool unless granted, is previewed
+and confirmed before it goes through, and was preceded by a decision record in
+[docs/decisions](docs/decisions). A proposal that adds a write is expected to
+arrive the same way: as a case for a record, not as a pull request. Proposals
+that add message sending, synchronization, background execution, or any
+capability that deletes a person's content will be declined on principle rather
+than on quality, so it is worth checking before building.
 
 ## Pull requests
 
@@ -34,7 +42,10 @@ There is no `develop` branch and no forking needed for maintainers.
   from `release`. A direct push is rejected, and would skip the commit-message
   check, which runs only on pull requests.
 - Outside contributors: fork, branch from `release`, and open the pull request
-  against `release`.
+  against `release`. Be aware that pull-request CI runs only when the target is
+  `staging` or `main`, so a pull request against `release` is not checked
+  automatically — including the commit-message check. Run `pnpm test` locally
+  before opening one, and expect a maintainer to run it again.
 
 Before pushing:
 
@@ -64,12 +75,29 @@ Say why in the body, not just what. The diff already shows what changed.
 
 ## Style
 
-- Read the closest `AGENTS.md` to the code you are touching. `apps/web` has
-  enforced conventions of its own; `apps/mcp` is plain Node and must not import
-  from other workspace packages, because it ships to npm standalone.
+- Read the closest `AGENTS.md` to the code you are touching.
+  [`apps/web/AGENTS.md`](apps/web/AGENTS.md) has enforced conventions of its own.
+  `apps/mcp` has no `AGENTS.md`: it is plain Node, and its one hard rule is that
+  it must not import from other workspace packages, because it ships to npm
+  standalone.
 - Workflow Markdown under `apps/mcp/agent-pack` is executable policy, not
   documentation. Changing it means regenerating `registry.json` — the build does
   this — and a test asserts the committed registry still matches.
+- **Each user-facing fact has one owner.** Three files once described the tool
+  set at three lengths, and they drifted into three different counts before
+  anyone noticed. They now have distinct jobs, and a change belongs in exactly
+  one of them:
+  - [`docs/installation.md`](docs/installation.md) is the reference. Every
+    tool, every write capability, every channel, troubleshooting: detail goes
+    here and nowhere else.
+  - [`apps/mcp/README.md`](apps/mcp/README.md) is the npm page. It ships in the
+    tarball, so it stays self-sufficient for the core story — what this is,
+    install, tools, writes, custody — and links here for depth.
+  - [`README.md`](README.md) is the repository landing page: what the project
+    is, the two custody models, environments, and where the docs are. It
+    summarises and points; it does not teach.
+
+  If you find yourself writing a fact in a second file, link instead.
 
 ## Questions
 

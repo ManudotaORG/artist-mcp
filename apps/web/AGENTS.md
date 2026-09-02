@@ -192,6 +192,8 @@ h-8 w-6 p-3 gap-2 rounded
 | ------------------------ | --------------------------------------------------------- |
 | Arrow functions          | `func-style` ESLint rule                                  |
 | Direct React imports     | `no-restricted-syntax` ESLint rule                        |
+| Type aliases, not `interface` | `no-restricted-syntax` ESLint rule                   |
+| Import paths resolve, case-sensitively | `import/no-unresolved` ESLint rule, with `@modelcontextprotocol/sdk/` exempt because its subpath exports do not resolve for the plugin |
 | Named props types        | **Documented here** — add custom ESLint plugin if desired |
 | Default export at bottom | **Documented here** — manual review                       |
 | `"use client"` spacing   | **Documented here** — manual review                       |

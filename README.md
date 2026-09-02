@@ -4,19 +4,28 @@
 client can list and read the user's OneNote pages through MCP.
 
 One OneNote page is one working unit. A separate, optional Google connection
-adds read-only Gmail and Calendar as **supporting evidence** for that page —
-they corroborate or fill gaps in it and are never themselves a working unit.
+adds Gmail and Calendar as **supporting evidence** for that page — they
+corroborate or fill gaps in it and are never themselves a working unit.
 Attachments on an evidence email (PDF, image, Word) can be mapped and read the
 same way. Either connection stands alone: connect OneNote, Google, or both, and
 disconnecting one leaves the other working.
 
-Everything is read-only unless you ask for otherwise at install time. Nothing
-is ever written to OneNote, no message is ever sent, and nothing is synced. Two
-opt-ins exist: `artist-mcp init --allow-writes calendar-create` lets it add a
-single Google Calendar event, after showing you the exact event and waiting for
-your yes, and `calendar-delete` lets it remove an event **it created itself** —
-never one you made, or one shared onto your calendar. Without the flag the tools
-are not there at all.
+Reading is the default, and no message is ever sent. Four write capabilities
+exist, each granted by name at install time with
+`artist-mcp init --allow-writes <capability>`, and each showing the exact change
+and waiting for your yes before it goes through:
+
+- `calendar-create` — add a single Google Calendar event.
+- `calendar-delete` — remove an event **it created itself**, never one you made
+  or one shared onto your calendar. Holding both calendar capabilities also
+  allows rescheduling such an event.
+- `onenote-create` — add a new page to a section.
+- `onenote-edit` — change a page **it created itself**. Microsoft enforces that
+  one: the scope cannot reach a page you wrote.
+
+Without the flag the tools are not there at all — a capability you did not grant
+registers nothing for a client to call. No page is ever deleted, and nothing is
+synced.
 
 The project has three parts:
 
@@ -94,114 +103,42 @@ on the OAuth test-user list can consent at all.
 
 - [Install for Claude Desktop or Codex](docs/installation.md)
 - [Run and develop the project locally](docs/development.md)
-- [Operate, publish, and rotate credentials](docs/operations.md)
-- [MVP scope, verification record, and remaining roadmap](docs/mvp-brief.md)
+- [Operate the live services and rotate credentials](docs/operations.md)
+- [Scope, what shipped, and the known gaps](docs/scope.md)
+- [Ship a change: branches, channels, publishing](docs/releases.md)
+- [The agent pack and how to edit it](docs/agent-pack.md)
+- [How it was built — archived checklists and records](docs/history.md)
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
 
 ## Quick start for users
 
-1. Install the server in Claude Desktop or Codex using the instructions below.
-2. Run `connect` and approve `Notes.Read`, `offline_access`, and `User.Read` in
-   the browser window that opens.
-3. Optionally run `connect google` and approve `gmail.readonly` and
-   `calendar.events.readonly`. The narrower events scope is deliberate: calendar
-   metadata, sharing, and settings are not read.
-4. Restart the client and ask: **“List my OneNote notes.”**
-
-### Claude Desktop
-
-Production:
-
 ```bash
-npx @manudota/artist-mcp init
-npx @manudota/artist-mcp connect
+npx @manudota/artist-mcp init          # register the server
+npx @manudota/artist-mcp connect       # sign in to Microsoft in your browser
+npx @manudota/artist-mcp connect google   # optional: Gmail and Calendar
 ```
 
-Then restart Claude Desktop.
+For Codex, replace the first line with
+`codex mcp add artist-notes -- npx -y @manudota/artist-mcp`. Restart the client,
+then ask it: **“List my OneNote notes.”**
 
-Staging:
+`connect` asks for `Notes.Read`, `offline_access` and `User.Read`; `connect
+google` asks for `gmail.readonly`, `calendar.events.readonly` and
+`calendar.calendarlist.readonly`. The narrow events scope is deliberate —
+calendar metadata, sharing and settings are not read. A granted write
+capability widens the matching scope and needs a reconnect.
 
-```bash
-npx @manudota/artist-mcp@staging init
-npx @manudota/artist-mcp@staging connect
-```
-
-Local source, from the repository root:
-
-```bash
-pnpm --filter @manudota/artist-mcp build
-node apps/mcp/dist/index.js init --local
-node apps/mcp/dist/index.js connect
-```
-
-`--local` registers the absolute built entry point, so Claude Desktop continues
-to use this checkout after restart.
-
-### Codex
-
-Production:
-
-```bash
-codex mcp add artist-notes -- npx -y @manudota/artist-mcp
-npx @manudota/artist-mcp connect
-```
-
-Restart Codex after adding the server. See the
-[complete installation guide](docs/installation.md) for verification,
-troubleshooting, reconnecting, and uninstall instructions.
-
-For staging, replace the final package with
-`npx -y @manudota/artist-mcp@staging`. For local source, build first and use:
-
-```bash
-pnpm --filter @manudota/artist-mcp build
-codex mcp add artist-notes -- node "$PWD/apps/mcp/dist/index.js"
-node apps/mcp/dist/index.js connect
-```
-
-### Artist workflow pack
-
-Install the read-only roles and project types into the current project:
-
-```bash
-npx @manudota/artist-mcp agents install
-```
-
-Use `npx @manudota/artist-mcp@staging agents install` for staging, or
-`node apps/mcp/dist/index.js agents install` for the checked-out local build. It
-writes into the directory you run it from and refuses your home directory, where
-the files would sit unread.
-
-One OneNote page is treated as one working unit, with Gmail and Calendar read as
-supporting evidence for it. The playbooks can produce plans, recommendations,
-audits, and drafts in chat; they cannot write to OneNote, send mail, or touch a
-calendar.
-
-### Playbooks you can edit
-
-There are two installs and nothing between them. The one above runs the shipped
-playbooks, verified by checksum. This one copies all of them somewhere you own,
-where every playbook is yours to change:
-
-```bash
-npx @manudota/artist-mcp init --editable
-```
-
-They land in `~/artist-mcp/artist/`, or a directory you name. Add your own
-alongside them — a new file under `project-types/`, `roles/` or `policies/`
-becomes available under an id taken from its filename. Re-run the command after
-upgrading and it adds playbooks new in that version while leaving your edits
-alone.
-
-`artist-mcp agents status [directory]` prints which playbooks are in force and
-where each came from. Editing one changes the advice you get; it cannot widen what
-the server can do, because no tool exists that writes to OneNote, sends mail, or
-changes a calendar.
+**[The installation guide](docs/installation.md) is the reference**, and this is
+the only place the detail lives: the staging and local-source channels, what
+every tool returns, each write capability in full, the workflow pack, editable
+playbooks, verification, troubleshooting, reconnecting and uninstall. The
+summary above is deliberately not a second copy of it.
 
 ## Local development
 
-Requirements: Node 20 or newer, pnpm 11, a Supabase project, and a Microsoft
+Requirements: Node 20 or newer (`engines.node`; `.nvmrc` pins the version this
+is developed against), pnpm 11, a Supabase project, and a Microsoft
 Entra app registration.
 
 ```bash
