@@ -354,6 +354,59 @@ const errorResult = (err: unknown) => {
  * tampering with the installed pack, which is how it was found in the first
  * place.
  */
+/**
+ * Drop the sections of a playbook that belong to a capability this install was
+ * not granted.
+ *
+ * A heading may carry `<!-- needs:onenote-edit -->`, which claims that heading
+ * and everything under it down to the next heading of the same or higher level.
+ * The rules in such a section govern a tool that is not registered without the
+ * grant, so an install without it was loading instructions for a call it cannot
+ * make — for policy:patch that was a quarter of the file, in every read-only
+ * session.
+ *
+ * This is deliberately the only conditional thing about a playbook. A rule that
+ * can apply is always in force: three bugs in this pack came from rules sitting
+ * where no session could see them, so the test for adding a marker is not "is
+ * this section long" but "is the tool it describes absent". An unknown
+ * capability throws rather than being ignored, because a typo that quietly
+ * removes a section is precisely that class of bug wearing a helpful face.
+ */
+export const forGrants = (
+  content: string,
+  writes: readonly WriteCapability[],
+): string => {
+  const marker = /<!--\s*needs:([a-z-]+)\s*-->/;
+  if (!marker.test(content)) return content;
+
+  const out: string[] = [];
+  let skipDepth: number | null = null;
+  for (const line of content.split("\n")) {
+    const heading = /^(#{1,6})\s/.exec(line);
+    if (heading && skipDepth !== null && heading[1].length <= skipDepth) skipDepth = null;
+    if (heading) {
+      const needs = marker.exec(line);
+      if (needs) {
+        const capability = needs[1];
+        if (!(capability in WRITE_CAPABILITIES)) {
+          throw new Error(
+            `A playbook marks a section "needs:${capability}", which is not a capability. ` +
+              `Known: ${Object.keys(WRITE_CAPABILITIES).join(", ")}.`,
+          );
+        }
+        if (!isGranted(writes, capability as WriteCapability)) {
+          skipDepth = heading[1].length;
+          continue;
+        }
+        out.push(line.replace(marker, "").trimEnd());
+        continue;
+      }
+    }
+    if (skipDepth === null) out.push(line);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n");
+};
+
 const renderWorkflowBriefing = async (
   entries: ResolvedEntry[],
   load: (id: string) => Promise<{ content: string }>,
@@ -410,7 +463,7 @@ const renderWorkflowBriefing = async (
     upfront.map(async (entry) => {
       try {
         const { content } = await load(entry.id);
-        return `## ${entry.id}\n\n${content.trim()}`;
+        return `## ${entry.id}\n\n${forGrants(content, writes).trim()}`;
       } catch (err) {
         failed.push(entry.id);
         const reason = err instanceof Error ? err.message : String(err);
@@ -540,6 +593,39 @@ const PLAYBOOK_GATE =
 const EVIDENCE_GATE =
   "Only when the musician asked for this look. One yes covers one look, not " +
   "a standing licence to keep reading. ";
+
+/**
+ * The house shape for a OneNote table, returned by preview_onenote_edit at the
+ * moment a table is in play rather than carried in policy:patch for every
+ * session that will never write one.
+ *
+ * It lived in the pack, loaded in full on every install including those with no
+ * onenote-edit grant, where the tools it describes are not even registered. It
+ * is worth more here than it was there: a rule that arrives with the parts
+ * index, one call before the markup is composed, is read at the moment it
+ * applies, and a tool's own output outranks a playbook.
+ */
+const TABLE_MARKUP =
+  "\n\nThis page has tables. A table cannot be edited a cell at a time — " +
+  "OneNote supports no update to a row or a cell, so changing one value " +
+  "rewrites the whole table, and EVERY cell that is not changing has to be " +
+  "carried across exactly as it reads above. A cell left out of the markup is " +
+  "not a cell left alone: it is a value destroyed. Send tables through `html`, " +
+  "never `text`, which arrives entity-escaped as literal angle brackets.\n" +
+  "Formatting the original carries and the replacement omits is inherited for " +
+  "you, and the preview says what it is keeping — but that stops the moment " +
+  "your markup specifies any styling of its own, so styling one cell makes you " +
+  "responsible for all of them. Write the house shape explicitly for a NEW " +
+  "table, and let inheritance cover one you are editing in place:\n" +
+  '  table: <table border="1" style="border-collapse:collapse">  — the ' +
+  "`border` ATTRIBUTE is the part OneNote acts on; a CSS border in the style " +
+  "alone comes back as border:0px\n" +
+  '  cell:  <td style="border:1px solid #A3A3A3;padding:4px"> with its content in a <p>\n' +
+  "  header row, where there is one: additionally background-color:#EFEFEF on " +
+  "each cell, text wrapped in <b>\n" +
+  "  a free-text section is a single-cell table with NO header row\n" +
+  "  never set column widths — OneNote sizes them, and one guessed from a " +
+  "preview is worse than none";
 
 /**
  * What is true of reading any attachment, wherever it came from.
@@ -2184,7 +2270,16 @@ const createServer = async (
           // asks which part to change. Saying "wait for their yes" here would
           // be asking the musician to approve a change nobody has described.
           if (confirmation_token === null) {
-            return { content: [{ type: "text", text: `${note}${listed}` }] };
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `${note}${listed}${
+                    parts.some((p) => p.kind === "table") ? TABLE_MARKUP : ""
+                  }`,
+                },
+              ],
+            };
           }
 
           return {
@@ -2192,7 +2287,15 @@ const createServer = async (
               {
                 type: "text",
                 text:
-                  `${preview}${listed}\n\n` +
+                  `${preview}${listed}${
+                    /<table[\s>]/i.test(
+                      `${params.html ?? ""}${(params.changes ?? [])
+                        .map((c) => c.html ?? "")
+                        .join("")}`,
+                    )
+                      ? TABLE_MARKUP
+                      : ""
+                  }\n\n` +
                   "Show this to the musician and wait for their yes. If this is a " +
                   "replace, say plainly what it overwrites: OneNote keeps no " +
                   "version of a page, so the previous text will exist only in this " +

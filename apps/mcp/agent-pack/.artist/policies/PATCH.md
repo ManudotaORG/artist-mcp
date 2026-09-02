@@ -3,11 +3,13 @@
 Once the musician has decided something, hand them the smallest fragment that
 records it, and say which part of the page it goes under.
 
-Usually they paste it, and the page is unchanged until they do. On the pages
-this tool made itself it can apply the fragment instead, having shown it and
-been told yes. Which of the two applies is decided in "Whose page is it" below,
-and it is the only thing about a patch that changed: everything else here was
-never a consequence of being unable to write.
+Usually they paste it, and the page is unchanged until they do. Where this
+install was granted `onenote-edit`, it can apply the fragment instead on the
+pages this tool made itself, having shown it and been told yes — and the rules
+for deciding which of the two applies are in this policy only when that grant is
+held, because without it there is no such choice. That is the only thing about a
+patch that changed: everything else here was never a consequence of being unable
+to write.
 
 A recommendation they agreed with and a page that still does not say it is the
 same finding waiting to be re-derived next week. The page is the state. Ending
@@ -41,7 +43,7 @@ they later conclude. Everything above still applies to it. Do not withhold it
 for want of a decision; a twin found today is otherwise unknown tomorrow, and
 the finding dies with the session that made it.
 
-## Whose page is it
+## Whose page is it <!-- needs:onenote-edit -->
 
 An install granted `onenote-edit` can change **pages this tool created** and no
 others. Microsoft refuses the rest, so that is not a rule to keep — but it is
@@ -76,7 +78,7 @@ may have edited since.
 - Where a decision genuinely lands in two places, that is two fragments, each
   named for where it goes. Not one merged block covering both.
 
-### A table is the exception, and only because OneNote makes it one
+### A table is the exception, and only because OneNote makes it one <!-- needs:onenote-edit -->
 
 OneNote supports no change to a single row or cell. The tool can replace a whole
 table and nothing smaller, so where the decision lands in a table the smallest
@@ -195,38 +197,18 @@ Owner is the only cell they settled. Due is `UNKNOWN` because no date was given
 is `UNKNOWN` because "not started" is a reasonable guess and still a guess. The
 page says nothing about any of this until they paste it.
 
-## Table markup
+## Table markup <!-- needs:onenote-edit -->
 
-A table cannot be edited a cell at a time — OneNote supports no update to a row
-or a cell, so changing one value rewrites the whole table. Every cell that is
-not changing has to be carried across exactly as it reads.
+Where a decision lands in a table, `preview_onenote_edit` returns the house
+markup along with the page's parts — the border attribute OneNote actually acts
+on, the cell styling, what a header row carries. Follow what it returns rather
+than anything remembered: it is stated at the moment it applies, and it is the
+authority.
 
-Formatting the original carried and the replacement leaves out is now carried
-across for you, and the preview says which parts it is keeping. Do not rely on
-that silently: it covers the table's own borders and its cells' borders, and it
-stops the moment the markup specifies any styling of its own — style one cell
-and you have taken responsibility for all of them.
-
-So write the house shape explicitly whenever the table is a new one, and let
-inheritance cover the ones you are editing in place. The house shape, which is
-what the artist's own pages already look like:
-
-- The table itself: `<table border="1" style="border-collapse:collapse">`. The
-  `border` attribute is the part OneNote acts on — a CSS `border:1px solid` in
-  the style alone comes back as `border:0px`.
-- Every cell: `<td style="border:1px solid #A3A3A3;padding:4px">`, with the
-  content in a `<p>`.
-- The header row, where the table has one, additionally carries
-  `background-color:#EFEFEF` on each cell and wraps its text in `<b>`. A roster
-  of musicians, a milestones table, a Field/Value block — the first row names the
-  columns and is shaded so it reads as a header rather than as data.
-- A free-text section is a single-cell table and has **no** header row. Shading
-  its only cell would make the whole section look like a heading.
-- Column widths are not set. OneNote sizes them, and a width guessed from a
-  preview is worse than none.
-
-Send this through the `html` parameter, never `text` — a table put through
-`text` arrives entity-escaped and lands on the page as literal angle brackets.
+One thing about it is a decision rather than mechanics, so it stays here: send
+tables through `html`, never `text`. Carrying across every cell that is not
+changing is covered above, under the table exception, because it is a rule about
+what a wrong markup destroys rather than about markup itself.
 
 Where a page needs several changes, give them as `changes` in one call. They are
 previewed together, confirmed together and written together, and if any one of

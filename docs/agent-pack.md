@@ -79,6 +79,49 @@ registry instead, for testing only: remote Markdown paths resolve relative to
 that URL, and a failure falls back to the installed bundle. A broken *local*
 directory does not fall back — see below.
 
+## What the pack costs a session
+
+Everything loaded in full is in every session's context before the musician has
+said anything. Measure it rather than guessing:
+
+```bash
+pnpm --filter @manudota/artist-mcp context-budget
+```
+
+It prints two numbers that are not the same kind. Tool descriptions sit in
+context for **every request**; the briefing is sent **once**, when
+`list_agent_workflows` is called. As of this writing an install with no write
+grants starts at about 13,900 tokens, and one holding every grant at about
+17,200 — of which the five in-full policies are the great majority.
+
+Two rules keep that from growing by accident.
+
+**A section that describes a tool the install does not have is not loaded.** A
+heading may carry `<!-- needs:onenote-edit -->`, and then it and everything
+under it, down to the next heading of the same or higher level, load only for an
+install holding that grant. `policy:patch` uses it for three sections: without
+`onenote-edit` there is no `edit_onenote_page` to call, so the rules for
+choosing which page may be applied to, and how to write table markup, were being
+loaded by every read-only session for a tool that was not registered. Removing
+them saves about 1,200 tokens per session.
+
+The marker is deliberately the *only* conditional thing about a playbook, and
+the test for adding one is not "is this section long" but "is the tool it
+describes absent". Everything else stays in force, because three bugs in this
+pack came from rules sitting where no session could see them. An unknown
+capability name throws rather than being ignored: a typo that silently deletes a
+section is exactly that class of bug wearing a helpful face.
+`test/grant-scoped-sections.test.mjs` guards both directions.
+
+**Mechanics belong at the point of use, not in the briefing.** The house markup
+for a OneNote table — the `border` attribute, the cell styling, what a header
+row carries — is returned by `preview_onenote_edit` alongside the page's parts
+whenever a table is in play, one call before the markup is composed. It is
+cheaper there, and it is also *stronger* there: a tool's own output outranks a
+playbook, and it arrives at the moment it applies. What stays in `policy:patch`
+is the part that is a decision rather than a mechanism — that a cell left out of
+the markup is a value destroyed.
+
 ## Editing the pack: what a day of testing taught
 
 These come from running the pack against a deliberately messy notebook in Claude
