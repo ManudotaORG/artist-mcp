@@ -653,6 +653,19 @@ const ATTACHMENT_READING =
   "forwarded, or downloaded.";
 
 /**
+ * What `source_page` means, said once.
+ *
+ * Seven tools take it and, until this constant existed, five of them explained
+ * it differently and a sixth — reschedule — did not explain it at all, so a
+ * model had no reason to pass it and that write's audit line lost its origin.
+ * Only preview_onenote_page adds to this, because there the value does a second
+ * job: it decides which section the page lands in.
+ */
+const SOURCE_PAGE =
+  "The page this was decided from, so the write can be traced back. Give the " +
+  "id from list_notes or read_note, not the title.";
+
+/**
  * The same, for the map tools.
  *
  * This used to say mapping "costs one small call", and the comment above it
@@ -1751,12 +1764,7 @@ const createServer = async (
         source_page: z
           .string()
           .optional()
-          .describe(
-            "The page id from list_notes or read_note, so the write can be traced back " +
-              "weeks later. The id, not the title: a notebook can hold two pages with " +
-              "the same or nearly the same name, which is exactly when tracing matters. " +
-              "Add the title after it if you like",
-          ),
+          .describe(SOURCE_PAGE),
       },
       async (params) => {
         try {
@@ -1890,7 +1898,7 @@ const createServer = async (
         confirmation_token: z
           .string()
           .describe("The token preview_calendar_reschedule returned for these exact values"),
-        source_page: z.string().optional(),
+        source_page: z.string().optional().describe(SOURCE_PAGE),
       },
       async (params) => {
         try {
@@ -1980,10 +1988,7 @@ const createServer = async (
         source_page: z
           .string()
           .optional()
-          .describe(
-            "The page id from list_notes or read_note, not the title — a title does not " +
-              "identify a page in a notebook holding near-duplicates",
-          ),
+          .describe(SOURCE_PAGE),
       },
       async (params) => {
         try {
@@ -2050,9 +2055,7 @@ const createServer = async (
           .string()
           .optional()
           .describe(
-            "The page id from list_notes or read_note that this was composed from. " +
-              "It decides which section the new page lands in, and it is what traces " +
-              "the write back weeks later. The id, not the title",
+            `${SOURCE_PAGE} It also decides which section the new page lands in.`,
           ),
         section_id: z
           .string()
@@ -2124,10 +2127,7 @@ const createServer = async (
         source_page: z
           .string()
           .optional()
-          .describe(
-            "The page id this was composed from, so the write can be traced back " +
-              "weeks later. The id, not the title",
-          ),
+          .describe(SOURCE_PAGE),
         confirmation_token: z
           .string()
           .describe("The token preview_onenote_page returned for these exact values"),
@@ -2267,7 +2267,7 @@ const createServer = async (
         source_page: z
           .string()
           .optional()
-          .describe("The page this change was decided from, so the write can be traced back"),
+          .describe(SOURCE_PAGE),
       },
       async (params) => {
         try {
@@ -2410,7 +2410,7 @@ const createServer = async (
         source_page: z
           .string()
           .optional()
-          .describe("The page this change was decided from, so the write can be traced back"),
+          .describe(SOURCE_PAGE),
         confirmation_token: z
           .string()
           .describe("The token preview_onenote_edit returned for these exact values"),

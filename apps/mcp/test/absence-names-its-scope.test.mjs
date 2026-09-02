@@ -109,3 +109,40 @@ test('the map tools do not claim to be a cheap look', async () => {
     assert.match(description, /opens the whole file/, `${name} should say what it actually opens`);
   }
 });
+
+/**
+ * Seven tools take `source_page`. They used to explain it five different ways,
+ * and reschedule did not explain it at all — so a model had no reason to pass
+ * it there, and that write's audit line lost the page it came from.
+ */
+test('every tool taking source_page describes it, and describes it the same way', async () => {
+  const server = await createServer(async () => ({}), [
+    'calendar-create',
+    'calendar-delete',
+    'onenote-create',
+    'onenote-edit',
+  ]);
+
+  const described = [];
+  for (const [name, tool] of Object.entries(server._registeredTools)) {
+    const shape = tool.inputSchema;
+    const field = shape?.source_page ?? shape?.shape?.source_page;
+    if (field === undefined) continue;
+    described.push([name, field._def?.description ?? '']);
+  }
+
+  assert.equal(described.length, 7, 'seven tools take source_page');
+  for (const [name, description] of described) {
+    assert.ok(description.length > 0, `${name} leaves source_page undocumented`);
+    assert.match(description, /traced back/, `${name} has drifted from the shared wording`);
+    assert.match(description, /not the title/, `${name} drops the id-not-title rule`);
+  }
+
+  // Exactly one tool may add to it, and only because the value does a second
+  // job there: it chooses the section.
+  const extended = described.filter(([, d]) => d.includes('section'));
+  assert.deepEqual(
+    extended.map(([n]) => n),
+    ['preview_onenote_page'],
+  );
+});
