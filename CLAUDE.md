@@ -174,6 +174,26 @@ docs/           the brief
   `write_grants`**, the way `20260828120000_reset_write_grants.sql` does.
   Without it, users find a tool they never agreed to in their list, since
   registration is gated on the grant and not on the token's scope.
+- **A rule the tool applies beats a rule the description states.** A tool
+  description is re-sent with every request and obeyed only when the model
+  remembers it; a tool's own output is sent once, when the situation is real,
+  and holds whether or not anyone remembered. Where a rule can be moved into
+  what a tool returns, that is cheaper and stronger at the same time, which is
+  rare enough to look for deliberately.
+
+  Three so far. The house markup for a OneNote table left `policy:patch` for
+  `preview_onenote_edit`'s output, where it arrives one call before the markup
+  is composed. `read_note` returns the element ids an edit needs, which deleted
+  a whole discovery call — it and `readEditableParts` fetch the same page and
+  differed only in `includeIDs=true`. And `list_events` used to tell the reader
+  to call `list_calendars` before reporting an absence; the empty result now
+  names the calendars it did not search, so the rule cannot be skipped.
+
+  Measure before assuming where the cost is:
+  `pnpm --filter @manudota/artist-mcp context-budget`. The tool list is roughly
+  fifteen times the briefing over a session, and half of it is write tooling —
+  which is not where anyone looked first, including twice in
+  [docs/decisions/0007](docs/decisions/0007-the-token-carries-the-payload.md).
 - **A rule in a role is not in force.** Roles arrive in the briefing as a
   one-line summary; only project types and the policies in the `ALWAYS` array
   behind `alwaysInFull` in `server.ts` — not a field in the pack — load in full.
