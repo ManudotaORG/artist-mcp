@@ -471,10 +471,15 @@ If a privileged credential appears in chat, logs, source control, or an issue:
 5. Check provider audit logs for unexpected use.
 6. Document the incident through the private security channel.
 
-A user's refresh token never reaches us, so there is no stored credential here
-to leak on their behalf. If a user believes their machine is compromised, the
-fix is theirs and immediate: removing this app from their
-[Microsoft](https://account.live.com/consent/Manage) or
+Which credentials are at stake depends on the custody model. A package user's
+refresh token never reaches us, so there is no stored credential here to leak on
+their behalf. A hosted user's does: it sits encrypted in `connections`, so a
+compromise of `TOKEN_ENCRYPTION_KEY` together with the service key is a
+credential incident for every hosted connection, and is handled as one — see
+"Hosted credential storage" above.
+
+Either way the user's own remedy is immediate and settles it: removing this app
+from their [Microsoft](https://account.live.com/consent/Manage) or
 [Google](https://myaccount.google.com/connections) account invalidates the token
 everywhere it exists.
 
