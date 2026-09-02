@@ -110,104 +110,27 @@ on the OAuth test-user list can consent at all.
 
 ## Quick start for users
 
-1. Install the server in Claude Desktop or Codex using the instructions below.
-2. Run `connect` and approve `Notes.Read`, `offline_access`, and `User.Read` in
-   the browser window that opens.
-3. Optionally run `connect google` and approve `gmail.readonly` and
-   `calendar.events.readonly`, alongside `calendar.calendarlist.readonly` so the
-   calendars can be listed by name. The narrower events scope is deliberate:
-   calendar metadata, sharing, and settings are not read.
-4. Restart the client and ask: **“List my OneNote notes.”**
-
-### Claude Desktop
-
-Production:
-
 ```bash
-npx @manudota/artist-mcp init
-npx @manudota/artist-mcp connect
+npx @manudota/artist-mcp init          # register the server
+npx @manudota/artist-mcp connect       # sign in to Microsoft in your browser
+npx @manudota/artist-mcp connect google   # optional: Gmail and Calendar
 ```
 
-Then restart Claude Desktop.
+For Codex, replace the first line with
+`codex mcp add artist-notes -- npx -y @manudota/artist-mcp`. Restart the client,
+then ask it: **“List my OneNote notes.”**
 
-Staging:
+`connect` asks for `Notes.Read`, `offline_access` and `User.Read`; `connect
+google` asks for `gmail.readonly`, `calendar.events.readonly` and
+`calendar.calendarlist.readonly`. The narrow events scope is deliberate —
+calendar metadata, sharing and settings are not read. A granted write
+capability widens the matching scope and needs a reconnect.
 
-```bash
-npx @manudota/artist-mcp@staging init
-npx @manudota/artist-mcp@staging connect
-```
-
-Local source, from the repository root:
-
-```bash
-pnpm --filter @manudota/artist-mcp build
-node apps/mcp/dist/index.js init --local
-node apps/mcp/dist/index.js connect
-```
-
-`--local` registers the absolute built entry point, so Claude Desktop continues
-to use this checkout after restart.
-
-### Codex
-
-Production:
-
-```bash
-codex mcp add artist-notes -- npx -y @manudota/artist-mcp
-npx @manudota/artist-mcp connect
-```
-
-Restart Codex after adding the server. See the
-[complete installation guide](docs/installation.md) for verification,
-troubleshooting, reconnecting, and uninstall instructions.
-
-For staging, replace the final package with
-`npx -y @manudota/artist-mcp@staging`. For local source, build first and use:
-
-```bash
-pnpm --filter @manudota/artist-mcp build
-codex mcp add artist-notes -- node "$PWD/apps/mcp/dist/index.js"
-node apps/mcp/dist/index.js connect
-```
-
-### Artist workflow pack
-
-Install the roles and project types into the current project:
-
-```bash
-npx @manudota/artist-mcp agents install
-```
-
-Use `npx @manudota/artist-mcp@staging agents install` for staging, or
-`node apps/mcp/dist/index.js agents install` for the checked-out local build. It
-writes into the directory you run it from and refuses your home directory, where
-the files would sit unread.
-
-One OneNote page is treated as one working unit, with Gmail and Calendar read as
-supporting evidence for it. The playbooks can produce plans, recommendations,
-audits, and drafts in chat, and use whichever writes the install was granted —
-no more. No message is ever sent.
-
-### Playbooks you can edit
-
-There are two installs and nothing between them. The one above runs the shipped
-playbooks, verified by checksum. This one copies all of them somewhere you own,
-where every playbook is yours to change:
-
-```bash
-npx @manudota/artist-mcp init --editable
-```
-
-They land in `~/artist-mcp/artist/`, or a directory you name. Add your own
-alongside them — a new file under `project-types/`, `roles/` or `policies/`
-becomes available under an id taken from its filename. Re-run the command after
-upgrading and it adds playbooks new in that version while leaving your edits
-alone.
-
-`artist-mcp agents status [directory]` prints which playbooks are in force and
-where each came from. Editing one changes the advice you get; it cannot widen
-what the server can do, because a capability the install was not granted
-registers no tool, and a playbook cannot call a tool that is not there.
+**[The installation guide](docs/installation.md) is the reference**, and this is
+the only place the detail lives: the staging and local-source channels, what
+every tool returns, each write capability in full, the workflow pack, editable
+playbooks, verification, troubleshooting, reconnecting and uninstall. The
+summary above is deliberately not a second copy of it.
 
 ## Local development
 

@@ -83,6 +83,21 @@ Say why in the body, not just what. The diff already shows what changed.
 - Workflow Markdown under `apps/mcp/agent-pack` is executable policy, not
   documentation. Changing it means regenerating `registry.json` — the build does
   this — and a test asserts the committed registry still matches.
+- **Each user-facing fact has one owner.** Three files once described the tool
+  set at three lengths, and they drifted into three different counts before
+  anyone noticed. They now have distinct jobs, and a change belongs in exactly
+  one of them:
+  - [`docs/installation.md`](docs/installation.md) is the reference. Every
+    tool, every write capability, every channel, troubleshooting: detail goes
+    here and nowhere else.
+  - [`apps/mcp/README.md`](apps/mcp/README.md) is the npm page. It ships in the
+    tarball, so it stays self-sufficient for the core story — what this is,
+    install, tools, writes, custody — and links here for depth.
+  - [`README.md`](README.md) is the repository landing page: what the project
+    is, the two custody models, environments, and where the docs are. It
+    summarises and points; it does not teach.
+
+  If you find yourself writing a fact in a second file, link instead.
 
 ## Questions
 

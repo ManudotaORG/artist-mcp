@@ -148,6 +148,11 @@ checksum. It writes into the directory you run it from, so run it inside the
 project you want the roles in — and it refuses your home directory, where the
 files would sit unread.
 
+The playbooks produce plans, recommendations, audits and drafts in chat, and
+use whichever writes this install was granted — no more. Gmail and Calendar are
+read only when you ask for them: a connected account is not a standing
+instruction to search it.
+
 To see which playbooks the server is actually reading, and where each one came
 from:
 
@@ -161,41 +166,25 @@ npx @manudota/artist-mcp agents status [directory]
 npx @manudota/artist-mcp init --editable
 ```
 
-That copies every playbook to `~/artist-mcp/artist/`, or to a directory you name.
-All of them become yours to edit. Without `--editable`, the shipped playbooks are
-used and verified by checksum; there is nothing in between.
+That copies every playbook to `~/artist-mcp/artist/`, or a directory you name,
+and all of them become yours to edit. Without `--editable` the shipped
+playbooks are used and verified by checksum; there is nothing in between. Add
+your own alongside them — a new file under `artist/project-types/`,
+`artist/roles/` or `artist/policies/` becomes available under an id taken from
+its filename. Edits apply on the next question, with no restart.
 
-Re-run the same command after upgrading. It adds playbooks that are new in that
-version, leaves anything you have edited exactly as it is, and tells you which
-files it treated as yours — so an editable install keeps receiving improvements
-without you tracking files by hand.
-
-The folder is visible, not hidden, so open it and edit the Markdown in whatever
-you like. **Add your own** alongside the shipped ones: a new file under
-`artist/project-types/`, `artist/roles/`, or `artist/policies/` becomes available
-under an id taken from its filename. A new project type is in force immediately,
-because project types are read in full before anything else happens. A new role
-is offered by name and description and loaded when it looks relevant, so if you
-want one used reliably, say so in `artist/roles/ORCHESTRATOR.md` — which is now
-yours too.
-
-Edits are picked up on the next question, with no restart. A conversation that
-already asked for the playbook list will not notice a *new* one, so start a fresh
-conversation after adding a file.
-
-If a playbook cannot be read — empty, unreasonably large, or filed outside those
-three directories — the server says so instead of quietly falling back to the
-shipped version.
+Re-running after an upgrade adds what is new in that version and leaves
+anything you have edited exactly as it is. A playbook that cannot be read is
+reported rather than quietly replaced by the shipped one.
 
 Editing a playbook cannot widen what the server can do. The boundary is not
 written in the Markdown — it holds because a capability you did not grant
-registers no tool, and a playbook cannot call a tool that is not there. An edited
-playbook changes the advice you get, and nothing else.
+registers no tool, and a playbook cannot call a tool that is not there. An
+edited playbook changes the advice you get, and nothing else.
 
-The playbooks produce plans, recommendations, audits, and drafts in chat, and
-they use whichever writes this install was granted — no more. Gmail and Calendar
-are read only when you ask for them: a connected account is not a standing
-instruction to search it.
+The [installation guide](https://github.com/ManudotaORG/artist-mcp/blob/main/docs/installation.md)
+covers the rest: how a new role is offered versus a new project type, what the
+refusals mean, and how to go back to the shipped set.
 
 ## Requirements
 
