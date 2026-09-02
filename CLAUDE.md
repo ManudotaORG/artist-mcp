@@ -44,7 +44,13 @@ the boundary in our code again — but it is not the only door.
 pages, verified as `401` on a page the musician wrote, and under it a
 paragraph-level replace is both surgical and recoverable from a pre-image.
 [docs/decisions/0004-onenote-page-maintenance.md](docs/decisions/0004-onenote-page-maintenance.md)
-accepts that in principle and nothing is built yet. **Deleting stays out.**
+accepts that in principle and nothing is built yet.
+[0006](docs/decisions/0006-replacing-a-whole-table.md) extends it to tables,
+which is where a filled-in page actually keeps its content: OneNote supports no
+update to a row or a cell, so the unit is the whole table, written as markup and
+previewed as rows. That widens what one confirmed change can destroy, and it
+amends `policy:patch`'s smallest-fragment rule rather than quietly breaking it —
+read it before touching either. **Deleting stays out.**
 
 Message sending and synchronization remain out, and the reasoning is in the
 records rather than restated here.

@@ -141,3 +141,116 @@ test('the preview text carries every value the create requires', async () => {
     );
   }
 });
+
+/**
+ * Call a tool over stdio and return what it answered.
+ *
+ * `listTools` above asserts what exists; this asserts what a call is allowed to
+ * look like, which is a different boundary and the one that broke. The batch
+ * parameter was built, unit-tested against the implementation, documented in
+ * the tool's own description — and unreachable, because the schema still
+ * required `action` while the implementation refused `action` beside `changes`.
+ * Every test passed: they all called the implementation directly, and the
+ * defect lived in the gap between the schema and it.
+ */
+const callTool = async (name, args, flags) => {
+  const server = spawn(process.execPath, [entry, ...flags], { stdio: ['pipe', 'pipe', 'pipe'] });
+  try {
+    const send = (msg) => server.stdin.write(`${JSON.stringify(msg)}\n`);
+    send({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'test', version: '1' },
+      },
+    });
+
+    let buffered = '';
+    let asked = false;
+    for await (const chunk of server.stdout) {
+      buffered += chunk;
+      const lines = buffered.split('\n');
+      buffered = lines.pop() ?? '';
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let message;
+        try {
+          message = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (message.id === 1 && !asked) {
+          asked = true;
+          send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+          send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name, arguments: args } });
+        }
+        if (message.id === 2) {
+          return message.result?.content?.[0]?.text ?? JSON.stringify(message);
+        }
+      }
+    }
+    throw new Error('The server closed without answering the call.');
+  } finally {
+    server.kill();
+  }
+};
+
+test('a batch of changes is a call the schema actually accepts', async () => {
+  // No Microsoft connection in CI, so this gets as far as the connection and
+  // stops. That is the point: anything about arguments means the batch cannot
+  // be expressed, which is what happened when `action` stayed required.
+  const answer = await callTool(
+    'preview_onenote_edit',
+    {
+      page_id: 'a-page-id',
+      changes: [
+        {
+          action: 'replace',
+          element_id: 'table:{33f8a242-7c33-4bb2-90c5-8425a68cc5bf}{50}',
+          html: '<table><tr><td><p>Honorar</p></td><td><p>1450</p></td></tr></table>',
+        },
+        { action: 'append', text: 'Stand Mai 2026' },
+      ],
+    },
+    ['--allow-writes', 'onenote-edit'],
+  );
+
+  assert.ok(
+    !/Invalid arguments|Required at|validation error/i.test(answer),
+    `the schema refused a batch: ${answer}`,
+  );
+});
+
+test('the edit half accepts the same batch shape the preview does', async () => {
+  // The two schemas have to agree, or a batch can be previewed and not applied.
+  const answer = await callTool(
+    'edit_onenote_page',
+    {
+      page_id: 'a-page-id',
+      confirmation_token: 'whatever-the-preview-said',
+      changes: [{ action: 'append', text: 'Stand Mai 2026' }],
+    },
+    ['--allow-writes', 'onenote-edit'],
+  );
+
+  assert.ok(
+    !/Invalid arguments|Required at|validation error/i.test(answer),
+    `the schema refused a batch: ${answer}`,
+  );
+});
+
+test('a call with neither a single action nor changes says which to give', async () => {
+  const answer = await callTool(
+    'preview_onenote_edit',
+    { page_id: 'a-page-id' },
+    ['--allow-writes', 'onenote-edit'],
+  );
+
+  assert.ok(
+    !/Invalid arguments|Required at/i.test(answer),
+    'the schema should let this through so the server can explain it',
+  );
+});
