@@ -189,6 +189,16 @@ docs/           the brief
   to call `list_calendars` before reporting an absence; the empty result now
   names the calendars it did not search, so the rule cannot be skipped.
 
+  **The qualifier, which cost a regression to learn: output is paid per call,
+  so this only wins when the calls that pay for it are the calls that use it.**
+  Check that second, and separately from whether the move worked. The table
+  markup passes — `preview_onenote_edit` is called when a table is being
+  written. The calendar absence passes — it fires only on an empty result. The
+  element index failed it: a survey of ten pages paid about 977 tokens a read
+  for ids that only an edit spends, which was worse than the round trip it had
+  removed. It is capped now, tables exempt. A saving measured only on the path
+  that benefits is not measured.
+
   Measure before assuming where the cost is:
   `pnpm --filter @manudota/artist-mcp context-budget`. The tool list is roughly
   fifteen times the briefing over a session, and half of it is write tooling —
