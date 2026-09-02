@@ -95,7 +95,7 @@
       "name": "Auditor",
       "description": "Check a proposed answer or draft against the OneNote evidence before the user acts on it.",
       "file": ".artist/roles/AUDITOR.md",
-      "sha256": "3d2f530728bc6548325f8618228b67827c05663a0f20a2bc0609bdbee7b1dfe9"
+      "sha256": "3c59b7126e191130591befeb229191eb3bbee48894a7af4cf84d1b810e6ab217"
     },
     {
       "id": "role:envoy",
