@@ -89,7 +89,7 @@ harmless. Without `GOOGLE_DESKTOP_CLIENT_SECRET` set, it returns 503 and
 | `DEPLOY_ENV` | Set to `staging` to show staging deployment metadata |
 | `SUPABASE_SERVICE_ROLE_KEY` | Hosted MCP. Reads a connection for a user holding no browser session |
 | `TOKEN_ENCRYPTION_KEY` | Hosted MCP. pgcrypto key, different per environment, unrecoverable if lost |
-| `ARTIST_MCP_WEB_MS_CLIENT_ID` / `_SECRET` | Web OAuth client for connecting Microsoft |
+| `ARTIST_MCP_WEB_MS_CLIENT_ID` / `_SECRET` | Web OAuth client for connecting Microsoft. The id is the **same registration** the published package uses — see `docs/operations.md` |
 | `ARTIST_MCP_WEB_GOOGLE_CLIENT_ID` / `_SECRET` | Web OAuth client for connecting Google |
 
 Unset, the hosted parts refuse rather than half-work: `/api/mcp` cannot resolve

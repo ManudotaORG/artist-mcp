@@ -288,11 +288,23 @@ Both Vercel projects carry these, all Sensitive except the two client IDs:
 | `ARTIST_MCP_WEB_MS_CLIENT_ID` / `_SECRET` | Web OAuth client for connecting Microsoft |
 | `ARTIST_MCP_WEB_GOOGLE_CLIENT_ID` / `_SECRET` | Web OAuth client for connecting Google |
 
-The web clients are **separate registrations from the package's**. The package
-uses desktop clients, and its Google secret is served openly by
+The **Google** web client is a **separate registration from the package's**. The
+package uses a desktop client whose Google secret is served openly by
 `/api/client-config` — harmless there because PKCE protects a desktop client,
-and not harmless at all for a web client. One registration serving both would
-have to be the weaker of the two.
+and not harmless at all for a web client. One Google registration serving both
+would have to be the weaker of the two.
+
+**Microsoft is the opposite: one registration serves both surfaces**, and must.
+`ARTIST_MCP_WEB_MS_CLIENT_ID` and the package's default client id in
+`apps/mcp/src/oauth.ts` are deliberately the same value
+(`4e484257-2c48-4088-84b9-60ea3ca82e88`). It carries a web redirect per
+environment plus the package's `http://localhost:8765/callback` as a public
+client, with "Allow public client flows" enabled. Sharing it costs nothing —
+the package's Microsoft client is a true public client, so there is no secret to
+weaken — and it buys the thing that matters: `Notes.ReadWrite.CreatedByApp`
+scopes page ownership to the **app registration**, so a second id would mean
+hosted and local could not edit each other's OneNote pages, which reads as a bug
+and would not be one. If you ever split them, that is the breakage you get.
 
 A refresh token is bound to the client that obtained it. Hosted connections are
 made by the web flow and must be refreshed by the web client; refreshing one as
