@@ -96,9 +96,12 @@ once; one holding every grant pays 9,375 per request and 12,713 once.
 
 So the tool list outweighs the entire briefing after 1.4 turns at full grants,
 and over a twenty-turn session it is roughly 187,000 tokens against 12,700.
-Trimming a policy is worth doing and is not where the budget is —
-[decision 0007](decisions/0007-the-token-carries-the-payload.md) is about the
-half that costs fifteen times more. Measure the wire payload rather than the
+Trimming a policy is worth doing and is not where the budget is: half of every
+request is write tooling.
+[Decision 0007](decisions/0007-the-token-carries-the-payload.md) is a rejected
+attempt at that half, kept for its measurements — read it before proposing
+anything there, because it also records what would have to change for the
+answer to differ. Measure the wire payload rather than the
 description strings: input schemas are almost exactly as large again as the
 descriptions, and were missed entirely the first time this was counted.
 

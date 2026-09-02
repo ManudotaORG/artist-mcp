@@ -1,6 +1,43 @@
 # 0007 — The confirmation token carries what it confirms
 
-Status: **proposed.** Extends [0001](0001-opt-in-calendar-writes.md), which
+Status: **rejected**, on its own measurements. Kept because the measurements
+are the point: what it found about where this server's context actually goes
+outlived the change it proposed, and the next person to notice that half of
+every request is write tooling should find this rather than re-derive it.
+
+It proposed that a committing tool take only its confirmation token, with the
+token becoming an authenticated encoding of the payload rather than a hash of
+it. Measuring real payloads narrowed it from five writes to three, and the
+narrowing is what killed it.
+
+**Why it was rejected.** The argument for it was never the saving; it was that a
+mismatch between what the preview showed and what the commit writes should be
+impossible to express rather than detected and refused. But the token can only
+carry a payload small enough to be copied verbatim, and the two writes with
+payloads too large are the OneNote ones — which are also the two where a
+mismatch actually destroys something. Replacing a table wrongly costs the
+musician a table of values; creating a wrong calendar event costs an event
+Google keeps in a bin for 30 days.
+
+So the mechanism could only be applied where it mattered least, at the price of
+two shapes of committing tool in one server, to be explained in every document
+that describes a write and held in mind by everyone who adds one. Roughly 790
+tokens a request, about 8% of the tool payload, does not buy that.
+
+**What would reverse this.** A way to bind a payload without carrying it: a
+reference the model can copy in a few characters and the server can resolve
+without storing the musician's content. Server-side storage is not that — see
+"Rejected" below, it fails on custody. If MCP gains a way for one tool to
+reference another's schema, the duplication this record attacks disappears
+without touching the confirmation mechanism at all, which is the better fix and
+is not ours to make.
+
+---
+
+Original text follows, unchanged apart from this header and the measurements
+added under "Measured".
+
+Extends [0001](0001-opt-in-calendar-writes.md), which
 introduced the preview-and-confirm pair, to every write that has since been
 built on it. Nothing here changes what an install may do; it changes what a
 committing tool has to be told, and what a mismatch between preview and commit
