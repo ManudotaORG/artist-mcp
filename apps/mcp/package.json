@@ -1,7 +1,7 @@
 {
   "name": "@manudota/artist-mcp",
   "version": "2.2.0",
-  "description": "MCP server that reads your OneNote notes, with optional Gmail and Calendar as supporting evidence, via a hosted connection.",
+  "description": "MCP server that reads your OneNote notes in Claude Desktop or Codex, with optional Gmail and Calendar as supporting evidence. Signs in on your own machine; writes are opt-in per install.",
   "repository": {
     "type": "git",
     "url": "https://github.com/ManudotaORG/artist-mcp"
