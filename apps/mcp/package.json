@@ -2,9 +2,25 @@
   "name": "@manudota/artist-mcp",
   "version": "2.2.0",
   "description": "MCP server that reads your OneNote notes in Claude Desktop or Codex, with optional Gmail and Calendar as supporting evidence. Signs in on your own machine; writes are opt-in per install.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "onenote",
+    "microsoft-graph",
+    "gmail",
+    "google-calendar",
+    "claude",
+    "claude-desktop",
+    "codex",
+    "musicians"
+  ],
+  "homepage": "https://artist-mcp.vercel.app",
   "repository": {
     "type": "git",
     "url": "https://github.com/ManudotaORG/artist-mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/ManudotaORG/artist-mcp/issues"
   },
   "type": "module",
   "bin": {
