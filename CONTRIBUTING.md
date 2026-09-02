@@ -18,11 +18,19 @@ material, and a bug report is public. Describe the shape of the problem instead:
 ## Suggesting enhancements
 
 Open an issue first. Scope here is deliberately narrow and stated in
-[CLAUDE.md](CLAUDE.md) and [docs/mvp-brief.md](docs/mvp-brief.md): everything is
-read-only, one OneNote page is one working unit, and Gmail and Calendar are
-supporting evidence rather than working units of their own. Proposals that add
-writes, sending, synchronization, or background execution will be declined on
-principle rather than on quality, so it is worth checking before building.
+[CLAUDE.md](CLAUDE.md) and [docs/mvp-brief.md](docs/mvp-brief.md): reading is the
+default, one OneNote page is one working unit, and Gmail and Calendar are
+supporting evidence rather than working units of their own.
+
+Writes exist, but they are not open ground. Each of the four capabilities
+(`calendar-create`, `calendar-delete`, `onenote-create`, `onenote-edit`) is
+granted by name at install time, registers no tool unless granted, is previewed
+and confirmed before it goes through, and was preceded by a decision record in
+[docs/decisions](docs/decisions). A proposal that adds a write is expected to
+arrive the same way: as a case for a record, not as a pull request. Proposals
+that add message sending, synchronization, background execution, or any
+capability that deletes a person's content will be declined on principle rather
+than on quality, so it is worth checking before building.
 
 ## Pull requests
 
@@ -64,9 +72,11 @@ Say why in the body, not just what. The diff already shows what changed.
 
 ## Style
 
-- Read the closest `AGENTS.md` to the code you are touching. `apps/web` has
-  enforced conventions of its own; `apps/mcp` is plain Node and must not import
-  from other workspace packages, because it ships to npm standalone.
+- Read the closest `AGENTS.md` to the code you are touching.
+  [`apps/web/AGENTS.md`](apps/web/AGENTS.md) has enforced conventions of its own.
+  `apps/mcp` has no `AGENTS.md`: it is plain Node, and its one hard rule is that
+  it must not import from other workspace packages, because it ships to npm
+  standalone.
 - Workflow Markdown under `apps/mcp/agent-pack` is executable policy, not
   documentation. Changing it means regenerating `registry.json` — the build does
   this — and a test asserts the committed registry still matches.

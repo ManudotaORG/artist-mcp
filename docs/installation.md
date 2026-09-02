@@ -113,8 +113,10 @@ Then choose a returned page and ask:
 
 > Read the note titled “Test”.
 
-The MCP server exposes twelve read-only tools, and two more only if this
-install was granted a write (see "Letting it add a calendar event" below).
+The MCP server exposes fourteen tools that read, and up to ten more depending
+on which write capabilities this install was granted — see the four sections
+starting at "Letting it add a calendar event" below. Each capability adds a
+pair: one tool that previews the change, one that applies it.
 
 OneNote holds the working unit:
 
@@ -136,6 +138,12 @@ OneNote holds the working unit:
   part it is and how to ask for the next; it is never cut short in silence. A
   OneNote page records no page numbers, so a part is a length of text rather
   than anything the page itself defines.
+- `map_page_attachment` — accepts a page ID and an attachment id from
+  `read_note`, and returns what is on each page of an attached PDF without
+  reading it, the same way `map_gmail_attachment` does for mail.
+- `read_page_attachment` — reads that attachment: images as pictures, PDFs and
+  `.docx` as text, in page ranges. A file attached to a page is evidence about
+  the working unit in the same way an attachment on an evidence email is.
 
 Google is supporting evidence for a page, never a working unit of its own, and
 needs a separate Google connection:
@@ -214,14 +222,17 @@ has to be shown again.
 
 What it deliberately cannot do:
 
-- Update, move or respond to an event. Google grants all of those with the same
-  scope as creating one; the tools to do them do not exist here.
+- Respond to an event, or edit one in place. Google grants both with the same
+  scope as creating one; the tools to do them do not exist here. An install
+  holding *both* calendar capabilities can reschedule an event this tool
+  created, which is a delete and a create in one confirmed step, never a
+  `PATCH` — an event you made stays untouchable.
 - Delete an event it did not create, even with `calendar-delete` granted.
 - Add more than one event per call. There is no "add all the gigs".
 - Write a value the notebook has not settled. `UNKNOWN`, `TBC` and a disputed
   date are refused, with a message saying which field and why.
-- Touch OneNote. Creating a page is a separate capability, below, and no
-  capability can change or delete a page.
+- Touch OneNote. Those are separate capabilities, below, and no capability
+  deletes a page.
 
 ## Letting it add a OneNote page
 
@@ -243,9 +254,11 @@ seconds earlier. So "it cannot change your notes" is enforced by Microsoft
 rather than promised by this code — unlike the calendar, where Google offers no
 insert-only scope and the narrowing had to be written here.
 
-The consequence is worth stating plainly: **a page it creates is permanent as
-far as this tool is concerned.** There is no undo. If a created page is wrong,
-you delete it in OneNote yourself. That is the trade for the guarantee above.
+The consequence is worth stating plainly: **with this capability alone, a page
+it creates is permanent as far as this tool is concerned.** There is no undo. If
+a created page is wrong, you delete it in OneNote yourself. That is the trade
+for the guarantee above. `onenote-edit`, below, is a separate grant that lifts
+the "no changes" half of it — and only for pages this tool created.
 
 Creating adds two tools. `preview_onenote_page` renders the page and names the
 section it would land in; `create_onenote_page` writes it, and only accepts the
@@ -257,8 +270,9 @@ can pass a section explicitly if that is not where it should go.
 
 What it deliberately cannot do:
 
-- Edit, append to or delete any page — including one it created. It is not a
-  way to add a line to an existing page; that stays something you paste.
+- Change any page, including one it created. Adding a line to an existing page
+  needs `onenote-edit`, below, and even that reaches only pages this tool
+  created. Nothing here deletes a page, under any grant.
 - Add more than one page per call.
 - Write a title the notebook has not settled. `TBC` as a *title* is refused,
   because a title is the page's identity and every later session sees it. A
@@ -267,17 +281,61 @@ What it deliberately cannot do:
 - Interpret Markdown or HTML in the body. A blank line starts a paragraph and a
   single newline is a line break; everything else appears as typed.
 
+## Letting it change a page it wrote
+
+Off by default, opt-in per install, and a separate decision again:
+
+```bash
+npx @manudota/artist-mcp init --allow-writes onenote-edit
+artist-mcp connect microsoft
+```
+
+The reconnect is not optional. The scope is
+`Notes.ReadWrite.CreatedByApp`, and Microsoft enforces what it means: a page
+this app created can be changed, a page you wrote is refused with a `401`, and a
+page some other app created is refused with a `403`. As with creating, the
+boundary is the provider's rather than a rule this code keeps.
+
+Adding a capability that changes existing content only made sense with an undo,
+so there is one. Before any change is applied, the content it is about to
+overwrite is captured and written to the audit log alongside the new text. The
+preview quotes what will be destroyed, in full — nothing is clipped — and the
+edit is applied against the page as it was read, so a page that moved underneath
+you is refused rather than half-applied.
+
+Three shapes of change are available: `append` after an element, `insert`
+before or after one, and `replace` of one element. The unit is one element,
+never the page body — a mistake costs a paragraph, which is why it can be held
+on to. A table is the exception, because OneNote supports no update to a row or
+a cell: the unit there is the whole table, sent as markup and previewed as rows
+with the differences marked. Several changes can be given in one call, up to
+twelve, and they are previewed, confirmed and written together — if any one of
+them cannot be applied, none of them is.
+
+What it deliberately cannot do:
+
+- Touch a page this tool did not create. Microsoft refuses it; this is not a
+  check that could be removed here.
+- Delete anything — not a page, not an element. There is no such tool under any
+  grant.
+- Apply a change without a captured pre-image. No capture, no write.
+- Change two things about the same element in one call.
+- Repair markup. Malformed HTML is refused rather than cleaned up and guessed
+  at.
+
 Every write appends a line to `~/.artist-mcp/writes.log` recording what was
-written, where, when, and from which page — so an event can be traced back and
-undone later, when the conversation is long gone.
+written, where, when, and from which page — plus, for a change to an existing
+page, the content it replaced. So a write can be traced back and undone later,
+when the conversation is long gone.
 
-Without the flag, neither tool is registered. Not present and refusing: absent.
-`artist-mcp status` prints a `Writes` line saying which it is, read from the
-Claude Desktop entry rather than from whatever you typed just now.
+Without the capability, its tools are not registered. Not present and refusing:
+absent. `artist-mcp status` prints a `Writes` line saying which capabilities
+this install holds, read from the Claude Desktop entry rather than from whatever
+you typed just now.
 
-To withdraw the grant, re-run `init` without the flag. The token keeps the wider
-scope until you also `artist-mcp disconnect google` and reconnect, but the tool
-is gone either way.
+To withdraw one, re-run `init` without it. The token keeps the wider scope until
+you also disconnect that provider and reconnect, but the tools are gone either
+way.
 
 ## 4. Install the workflow files in a project
 
@@ -345,8 +403,9 @@ rather than quietly using the shipped versions.
 To go back to the shipped playbooks, run `init` again without `--editable`. Your
 directory is left where it is, so the same command re-adopts it later.
 
-Editing a playbook changes the advice you get. It cannot let the server write to
-OneNote, send mail, or change a calendar, because no such tool exists.
+Editing a playbook changes the advice you get. It cannot widen what the server
+can do: a capability this install was not granted registers no tool, and a
+playbook cannot call a tool that is not there.
 
 ## Reconnect or disconnect
 

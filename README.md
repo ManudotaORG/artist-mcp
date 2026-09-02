@@ -4,19 +4,28 @@
 client can list and read the user's OneNote pages through MCP.
 
 One OneNote page is one working unit. A separate, optional Google connection
-adds read-only Gmail and Calendar as **supporting evidence** for that page —
-they corroborate or fill gaps in it and are never themselves a working unit.
+adds Gmail and Calendar as **supporting evidence** for that page — they
+corroborate or fill gaps in it and are never themselves a working unit.
 Attachments on an evidence email (PDF, image, Word) can be mapped and read the
 same way. Either connection stands alone: connect OneNote, Google, or both, and
 disconnecting one leaves the other working.
 
-Everything is read-only unless you ask for otherwise at install time. Nothing
-is ever written to OneNote, no message is ever sent, and nothing is synced. Two
-opt-ins exist: `artist-mcp init --allow-writes calendar-create` lets it add a
-single Google Calendar event, after showing you the exact event and waiting for
-your yes, and `calendar-delete` lets it remove an event **it created itself** —
-never one you made, or one shared onto your calendar. Without the flag the tools
-are not there at all.
+Reading is the default, and no message is ever sent. Four write capabilities
+exist, each granted by name at install time with
+`artist-mcp init --allow-writes <capability>`, and each showing the exact change
+and waiting for your yes before it goes through:
+
+- `calendar-create` — add a single Google Calendar event.
+- `calendar-delete` — remove an event **it created itself**, never one you made
+  or one shared onto your calendar. Holding both calendar capabilities also
+  allows rescheduling such an event.
+- `onenote-create` — add a new page to a section.
+- `onenote-edit` — change a page **it created itself**. Microsoft enforces that
+  one: the scope cannot reach a page you wrote.
+
+Without the flag the tools are not there at all — a capability you did not grant
+registers nothing for a client to call. No page is ever deleted, and nothing is
+synced.
 
 The project has three parts:
 
@@ -105,8 +114,9 @@ on the OAuth test-user list can consent at all.
 2. Run `connect` and approve `Notes.Read`, `offline_access`, and `User.Read` in
    the browser window that opens.
 3. Optionally run `connect google` and approve `gmail.readonly` and
-   `calendar.events.readonly`. The narrower events scope is deliberate: calendar
-   metadata, sharing, and settings are not read.
+   `calendar.events.readonly`, alongside `calendar.calendarlist.readonly` so the
+   calendars can be listed by name. The narrower events scope is deliberate:
+   calendar metadata, sharing, and settings are not read.
 4. Restart the client and ask: **“List my OneNote notes.”**
 
 ### Claude Desktop
@@ -162,7 +172,7 @@ node apps/mcp/dist/index.js connect
 
 ### Artist workflow pack
 
-Install the read-only roles and project types into the current project:
+Install the roles and project types into the current project:
 
 ```bash
 npx @manudota/artist-mcp agents install
@@ -175,8 +185,8 @@ the files would sit unread.
 
 One OneNote page is treated as one working unit, with Gmail and Calendar read as
 supporting evidence for it. The playbooks can produce plans, recommendations,
-audits, and drafts in chat; they cannot write to OneNote, send mail, or touch a
-calendar.
+audits, and drafts in chat, and use whichever writes the install was granted —
+no more. No message is ever sent.
 
 ### Playbooks you can edit
 
@@ -195,9 +205,9 @@ upgrading and it adds playbooks new in that version while leaving your edits
 alone.
 
 `artist-mcp agents status [directory]` prints which playbooks are in force and
-where each came from. Editing one changes the advice you get; it cannot widen what
-the server can do, because no tool exists that writes to OneNote, sends mail, or
-changes a calendar.
+where each came from. Editing one changes the advice you get; it cannot widen
+what the server can do, because a capability the install was not granted
+registers no tool, and a playbook cannot call a tool that is not there.
 
 ## Local development
 
