@@ -339,7 +339,7 @@ const renderChangedSections = (
   ].join("\n\n");
 };
 
-const serverVersion = '2.1.0'; // x-release-please-version
+const serverVersion = '2.2.0'; // x-release-please-version
 
 const errorResult = (err: unknown) => {
   const message =

@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.2.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v2.1.0...artist-mcp-v2.2.0) (2026-09-02)
+
+
+### Features
+
+* **mcp:** batch a page's changes into one write, and index the rest ([562569d](https://github.com/ManudotaORG/artist-mcp/commit/562569de4d65db6dfd31830b093c6f97388abda9))
+* **mcp:** replace a paragraph with markup, and anchor an insert on one ([282e7e6](https://github.com/ManudotaORG/artist-mcp/commit/282e7e600659556995094a758219698e7f9e1248))
+* **mcp:** replace a whole table, and place a block beside one ([da88797](https://github.com/ManudotaORG/artist-mcp/commit/da887975a1aeba7d3e3fe00f0c5a52ea8d1ae902))
+* **mcp:** table editing on release, for the local install ([bdb8a67](https://github.com/ManudotaORG/artist-mcp/commit/bdb8a6743a002e1a38a7c5c64a3fe30ac41e3c15))
+
+
+### Bug Fixes
+
+* **mcp:** carry a table's borders, which takes the attribute not the style ([7563944](https://github.com/ManudotaORG/artist-mcp/commit/7563944647114f3c06525eb981d28cb6f3b6f323))
+* **mcp:** make the batch parameter reachable through the tool ([9374f18](https://github.com/ManudotaORG/artist-mcp/commit/9374f1804e9a7e6799d9ef86ef9a47b4bb48c526))
+* **mcp:** stop truncating the preview of a table replace ([40f5a87](https://github.com/ManudotaORG/artist-mcp/commit/40f5a876c6d1ecc09aa76c3fff9333110ff00ad9))
+
 ## [2.1.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v2.0.0...artist-mcp-v2.1.0) (2026-08-31)
 
 
