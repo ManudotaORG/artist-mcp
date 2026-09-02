@@ -13,4 +13,4 @@ in common beyond the language.
 
 Project scope, the constraints that matter, and the things that bite are in
 [CLAUDE.md](CLAUDE.md). The build and verification record is
-[docs/mvp-brief.md](docs/mvp-brief.md).
+[docs/scope.md](docs/scope.md).

@@ -4,7 +4,7 @@ An npm-published MCP server that reads a user's OneNote notes, signing in to
 Microsoft and Google on the user's own machine, plus a small web app for sign-in
 and the install instructions.
 
-**The build checklist is [docs/mvp-brief.md](docs/mvp-brief.md). Read it before
+**Scope, what shipped, and the open gaps are [docs/scope.md](docs/scope.md). Read it before
 starting work.** It is the source of truth for scope and for what is actually
 done — a ticked box means done *and verified*, and blocked items say why.
 Update it as you go rather than at the end.
@@ -179,7 +179,7 @@ docs/           the brief
   behind `alwaysInFull` in `server.ts` — not a field in the pack — load in full.
   Three bugs came from rules sitting where no session could see them.
   Read "Editing the pack" in
-  [docs/releases-and-agents.md](docs/releases-and-agents.md) before touching the
+  [docs/agent-pack.md](docs/agent-pack.md) before touching the
   pack — that one, plus a headline is a rule, a tool description outranks a
   playbook, and extracting a concern means deleting it where it came from in the
   same edit.
@@ -192,9 +192,9 @@ docs/           the brief
   playbook in a user's directory has been accepted, not left awaiting updates, so
   refreshing it would silently alter rules in force on a file they own. Tracking
   seed hashes to make that possible was considered and rejected — see
-  `docs/releases-and-agents.md`. Deleting a copy and re-running is the explicit
+  `docs/agent-pack.md`. Deleting a copy and re-running is the explicit
   way back to the shipped version.
 - **A local playbook directory must never fall back silently.** An unreachable
   remote registry falls back to the bundle; a broken local directory does not.
   The user said which rules govern their work, and quietly running different
-  ones misreports what is in force. See `docs/releases-and-agents.md`.
+  ones misreports what is in force. See `docs/agent-pack.md`.

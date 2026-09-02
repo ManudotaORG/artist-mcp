@@ -18,7 +18,7 @@ material, and a bug report is public. Describe the shape of the problem instead:
 ## Suggesting enhancements
 
 Open an issue first. Scope here is deliberately narrow and stated in
-[CLAUDE.md](CLAUDE.md) and [docs/mvp-brief.md](docs/mvp-brief.md): reading is the
+[CLAUDE.md](CLAUDE.md) and [docs/scope.md](docs/scope.md): reading is the
 default, one OneNote page is one working unit, and Gmail and Calendar are
 supporting evidence rather than working units of their own.
 

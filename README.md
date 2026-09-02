@@ -103,8 +103,11 @@ on the OAuth test-user list can consent at all.
 
 - [Install for Claude Desktop or Codex](docs/installation.md)
 - [Run and develop the project locally](docs/development.md)
-- [Operate, publish, and rotate credentials](docs/operations.md)
-- [MVP scope, verification record, and remaining roadmap](docs/mvp-brief.md)
+- [Operate the live services and rotate credentials](docs/operations.md)
+- [Scope, what shipped, and the known gaps](docs/scope.md)
+- [Ship a change: branches, channels, publishing](docs/releases.md)
+- [The agent pack and how to edit it](docs/agent-pack.md)
+- [How it was built — archived checklists and records](docs/history.md)
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
 

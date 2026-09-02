@@ -1,88 +1,10 @@
-# Releases, environments, and artist workflows
+# The agent pack
 
-## GitHub environments
+What ships in `apps/mcp/agent-pack`, how a change to it reaches a user, and
+what a day of testing taught about editing it. Release mechanics are in
+[releases.md](releases.md).
 
-CI runs for pull requests and pushes to `release` and `main`. Staging receives
-only commits already validated on `release`; its npm workflow retests only the
-MCP package. Vercel's native Git integration builds the website from `staging`,
-so GitHub Actions does not duplicate that build. CI does not bind to a
-deployment environment and receives no runtime secrets. Protect `main` and
-require the `Lint and build` check before merge.
-
-The production and staging Vercel projects are both connected to this GitHub
-repository. Production tracks only `main`, staging tracks only `staging`, and
-Preview branch tracking is disabled on both projects.
-The production footer shows the checked-in stable package version. The staging
-footer resolves the public npm `staging` dist-tag with a one-minute cache so it
-shows the exact published prerelease rather than stale branch metadata.
-
-## Automatic npm releases
-
-The npm package has two branch-backed channels:
-
-- `staging` publishes a unique prerelease such as
-  `0.1.1-staging.123` with the npm dist-tag `staging`.
-- `main` is managed by Release Please and publishes stable releases with the
-  npm dist-tag `latest`.
-
-Install an explicitly promoted staging snapshot with:
-
-```bash
-npx @manudota/artist-mcp@staging agents install
-```
-
-Release Please tracks `apps/mcp`. Conventional commits on `main` update a
-release pull request; merging it creates the GitHub release and publishes
-`@manudota/artist-mcp` from `.github/workflows/release.yml`.
-Manual runs update or inspect the Release Please state but never republish an
-existing stable npm version; stable publication requires a newly created
-release.
-
-Because npm supports one trusted publisher per package, both channels publish
-from one branch-aware workflow. In the npm package settings, configure:
-
-- Organization or user: `ManudotaORG`
-- Repository: `artist-mcp`
-- Workflow filename: `release.yml`
-- Environment: leave blank so both branch-gated jobs can exchange OIDC tokens
-- Allowed action: `npm publish`
-
-The jobs still use distinct GitHub environments: `main` uses `production` and
-publishes `latest`; `staging` uses `staging` and publishes a unique prerelease
-to the `staging` dist-tag. The staging version is based on npm `latest`, not a
-possibly stale version committed on the staging branch. A successful production
-release automatically publishes the next staging prerelease from the staging
-branch; ordinary staging pushes do the same. Workflow retries append the run
-attempt so npm versions remain immutable. `NPM_STAGING_PUBLISH_ENABLED` is `true` in the
-GitHub `staging` environment and has been since the npm mapping was installed;
-unset, the job verifies the package and skips the publish.
-
-No `NPM_TOKEN` is needed. The workflow authenticates with GitHub OIDC.
-
-## Production patch notes
-
-Production releases can announce themselves through Telegram after the stable
-npm package publishes. The formatter groups conventional Release Please notes,
-removes duplicate bullets, escapes Telegram HTML, and splits messages below the
-Telegram message limit. Staging snapshots never send patch notes.
-
-Create a Telegram bot with BotFather, add it to the destination chat, and store
-these secrets in the GitHub `production` environment:
-
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID`
-
-After both secrets are present, set the production environment variable
-`TELEGRAM_PATCH_NOTES_ENABLED=true`. The stable release workflow sends notes
-after npm publication. To resend an existing release, run the **Send production
-patch notes** workflow with its tag. Leave the variable unset while configuring
-the bot so releases and manual runs cannot fail or send partial messages.
-
-The implementation lives in `scripts/format-release-notes.mjs` and
-`scripts/publish-release-notes.sh`. Formatter behavior is covered by the root
-test suite.
-
-## Read-only artist workflow pack
+## What is in the pack
 
 Install the bundled MVP pack in the current repository:
 
@@ -116,6 +38,46 @@ Agents may optionally keep small, disposable working context in
 format, but may not store secrets, copy source systems, or turn local files into
 claims, queues, locks, reviews, or other coordination infrastructure. The
 backend never stores this local state.
+
+## Changing it
+
+Workflow Markdown is executable policy, not documentation. When it changes,
+rebuild the registry and run the package tests:
+
+```bash
+pnpm --filter @manudota/artist-mcp test
+```
+
+The build regenerates `agent-pack/registry.json` with a SHA-256 per entry, and a
+test asserts the committed registry still matches what the derivation produces.
+The runtime uses the registry and playbooks bundled into the installed npm
+version.
+
+Ids, kinds and descriptions are derived in `src/agent-registry.ts`, which is why
+`tsc` runs *before* `apps/mcp/scripts/build-agent-registry.mjs` — the script
+imports the compiled module rather than reimplementing the rule. Keep it that
+way: the runtime reads directories through the same derivation, and a second
+copy would drift into giving one file two different ids.
+
+Working against `init --editable` means two copies of every playbook. Check they
+have not diverged in the direction you did not intend:
+
+```bash
+pnpm --filter @manudota/artist-mcp check-pack ~/artist-mcp
+```
+
+An edit made in the editable directory runs correctly there and ships to nobody:
+the registry is generated from the bundle, while a local pack is checksummed
+from the directory as it is read. `artist-mcp agents status` prints the entries
+in force and where each came from.
+
+At runtime the server exposes `list_agent_workflows` and `load_agent_workflow`,
+reading the registry and Markdown bundled with the installed npm version. That
+is what keeps stable, staging, older and local versions isolated from later
+playbook changes. `ARTIST_MCP_REGISTRY_URL` points the server at a remote
+registry instead, for testing only: remote Markdown paths resolve relative to
+that URL, and a failure falls back to the installed bundle. A broken *local*
+directory does not fall back — see below.
 
 ## Editing the pack: what a day of testing taught
 
@@ -192,18 +154,6 @@ the start of every session. The briefing went from 13k to 37k characters in a
 day, and a third of that growth was one rule written in several places. A rule
 earns its place by naming a failure it prevents; where two rules prevent the
 same failure, merge them.
-
-## Runtime registry
-
-The MCP server exposes `list_agent_workflows` and `load_agent_workflow`. The
-registry is generated from the Markdown files during package build and each
-entry includes a SHA-256 checksum. At runtime the server reads the registry and
-Markdown bundled with the installed npm version. This keeps stable, staging,
-older, and local package versions isolated from later playbook changes.
-
-Set `ARTIST_MCP_REGISTRY_URL` only when explicitly testing a remote registry.
-Remote Markdown paths resolve relative to that registry URL, and failures fall
-back to the installed bundle.
 
 ## Playbooks a user edits
 

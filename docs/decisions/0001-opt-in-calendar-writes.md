@@ -6,7 +6,8 @@ Calendar and only for Google Calendar. Raised by issue #85.
 ## What the old rule said
 
 `CLAUDE.md` said: "If you find yourself adding writes, sends, or
-synchronization, stop." `docs/mvp-brief.md` said the read-only boundary **does
+synchronization, stop." `docs/mvp-brief.md`, now split into `docs/scope.md` and
+`docs/history.md`, said the read-only boundary **does
 not rest on the Markdown**, because no write tool exists.
 
 Both were true and both were load-bearing. Every "never write, send, book" line
@@ -305,7 +306,7 @@ write path existed anywhere in the codebase. Now it rests on four layers:
 4. The playbooks, which describe 1–3 and add the disputed-value rule.
 
 Layer 4 is the only one a user can edit. Layers 2 and 3 are now the real floor,
-and they are ours to hold. The sentence in `docs/mvp-brief.md` claiming the boundary
+and they are ours to hold. The sentence in what is now `docs/scope.md` claiming the boundary
 does not rest on the Markdown becomes false the moment the first write tool
 ships, and is replaced as part of issue #85 rather than as a follow-up. An
 unreplaced version is the `AGENTS.md` drift again.

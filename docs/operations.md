@@ -385,93 +385,29 @@ key is not the same as no exposure.
 The current `TOKEN_ENCRYPTION_KEY` values were generated fresh in August 2026,
 one per environment. The old one was never recorded and nothing needs it.
 
-## Publish the MCP package
+## Publishing
 
-Release Please owns production versioning. Conventional commits merged to
-`main` update its release PR; merging that PR creates the GitHub release and
-the `release.yml` workflow publishes through npm trusted publishing and GitHub
-OIDC. Do not publish production versions manually from a maintainer laptop.
+Releases, npm channels, the trusted-publisher mapping and what to do when a
+publish fails are in [releases.md](releases.md).
 
-Protect `main` and `staging` with the `Lint and build` status check. Promote
-through pull requests so neither environment can receive an unvalidated direct
-push. `release` remains the integration branch and validates its pushes without
-requiring pull requests targeting it.
+## Hosted isolation test
 
-Before merging the release PR, verify from a clean worktree:
-
-```bash
-pnpm build
-pnpm lint
-pnpm --filter @manudota/artist-mcp pack
-```
-
-Inspect the tarball contents before publishing. The package must ship only the
-required `dist` and `agent-pack` files, keep the executable shebang, target Node
-20 or newer, and publish publicly. npm permits one trusted publisher per
-package. It must match `ManudotaORG/artist-mcp`, workflow filename `release.yml`,
-allow `npm publish`, and leave npm's environment field blank. The workflow
-binds its stable job to GitHub `production` and its snapshot job to `staging`.
-
-Every push explicitly promoted to the `staging` branch publishes a unique
-prerelease through the staging job in `.github/workflows/release.yml` under the
-npm `staging` dist-tag. This remains separate from stable `latest` publication.
-A successful stable publication also runs that job against the staging branch,
-using npm `latest` as its version base. This guarantees that releasing `0.5.0`
-advances staging to `0.5.1-staging.<run>` without a manual metadata-sync push.
-Retried workflow runs append the attempt number to avoid republishing an
-immutable npm version.
-
-The staging environment variable `NPM_STAGING_PUBLISH_ENABLED` gates the
-publish step. It has been `true` since 11 August 2026, once npm had the exact
-`release.yml` mapping, so staging pushes publish a prerelease. Unsetting it
-leaves validation running and publication skipped, which is the state to return
-to if the trusted-publisher mapping ever breaks.
-The staging publication job runs the MCP package tests only. Website validation
-belongs to CI; Vercel performs the deployment build, avoiding a duplicate web
-build in GitHub Actions.
-
-An npm `404` during an OIDC publish usually means the package's trusted
-publisher does not exactly match the repository or workflow filename above. It
-does not mean the tarball is missing.
-
-After publishing, test from a clean temporary directory:
-
-```bash
-npx @manudota/artist-mcp init
-npx @manudota/artist-mcp agents install
-```
-
-If production Telegram patch notes are enabled, the release workflow fetches
-the newly created GitHub release, formats and deduplicates its notes, then sends
-them only after the npm `latest` publication succeeds. Telegram credentials are
-scoped to the `production` GitHub environment. Use the manual
-`telegram-release-notes.yml` workflow to retry a specific existing tag without
-republishing npm.
-
-Verify the MCP tools with a real client: `list_notes`, `map_notes` and
-`read_note` against OneNote, `map_page_attachment` and `read_page_attachment`
-against a page with a file on it, `list_emails`, `read_email`,
-`map_gmail_attachment`, `read_gmail_attachment`, `list_calendars`,
-`list_events` and `read_event` against Google, and `list_agent_workflows` and
-`load_agent_workflow` against the pack. Where the build under test holds write
-capabilities, exercise each preview and its committing tool as well. Registry
-and playbook content come from the installed npm package by default, preserving
-the version selected by the user. `ARTIST_MCP_REGISTRY_URL` is a development/testing override, not a
-publishing-job or end-user requirement. `ARTIST_MCP_ENDPOINT` no longer exists:
-it addressed the removed Graph function, and nothing reads it.
-
-## Acceptance test
-
-The release is not fully accepted until all of these pass:
+This tests the **hosted** server, where one process serves many people. It does
+not apply to the published package, where each user runs their own process
+against their own token file.
 
 1. User A signs into the web app and connects Microsoft.
-2. User A installs with a generated key and can list and read OneNote pages.
-3. User B repeats the process on a different machine with a separate account.
+2. User A is issued a key with `node scripts/issue-mcp-key.mjs <email>` and can
+   list and read their OneNote pages through `/api/mcp`.
+3. User B repeats the process with a separate account.
 4. User B sees only user B's notes.
 5. User A cannot read user B's database rows or OneNote content.
+6. A write capability granted to user A appears for A and for nobody else.
 
-Record the result in [mvp-brief.md](mvp-brief.md). Do not tick the final
-multi-tenant acceptance item based only on code inspection.
+Run it against staging after any change to token custody, key resolution, or
+how grants reach `createServer`. Do not accept it on code inspection alone: the
+failure this catches is one user's state reaching another's session, which
+every test that runs one user at a time will pass.
 
 ## Incident response
 
