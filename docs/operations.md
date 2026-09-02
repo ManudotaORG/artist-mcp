@@ -98,12 +98,19 @@ into staging:
 | `DEPLOY_ENV`               | `production`                                                | `staging`                                                           |
 | `NEXT_PUBLIC_SITE_URL`     | `https://artist-mcp.vercel.app`                             | `https://artist-mcp-staging.vercel.app`                             |
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://zxiemadwrkcoovvpscfb.supabase.co`                  | `https://cakkwvxwlkdfzqjbvrpa.supabase.co`                          |
-| `MS_REDIRECT_URI`          | `https://artist-mcp.vercel.app/api/auth/microsoft/callback` | `https://artist-mcp-staging.vercel.app/api/auth/microsoft/callback` |
-| `GOOGLE_REDIRECT_URI`      | `https://artist-mcp.vercel.app/api/auth/google/callback`    | `https://artist-mcp-staging.vercel.app/api/auth/google/callback`    |
-| npm MCP default            | production Graph function                                   | staging Graph function for `-staging.*` versions                    |
+| Microsoft redirect URI     | `https://artist-mcp.vercel.app/api/auth/microsoft/callback` | `https://artist-mcp-staging.vercel.app/api/auth/microsoft/callback` |
+| Google redirect URI        | `https://artist-mcp.vercel.app/api/auth/google/callback`    | `https://artist-mcp-staging.vercel.app/api/auth/google/callback`    |
 
-Both Vercel projects require their matching Supabase browser key and
-`GOOGLE_DESKTOP_CLIENT_SECRET`, and nothing else that is secret.
+The last two rows are **not** environment variables. Nothing reads a
+`MS_REDIRECT_URI` or `GOOGLE_REDIRECT_URI`: `redirectUriFor` in
+`apps/web/src/lib/connect.ts` derives each callback from
+`NEXT_PUBLIC_SITE_URL`. They are listed because each value must be registered
+with the provider for that environment, and a wrong `NEXT_PUBLIC_SITE_URL`
+silently produces a redirect the provider will refuse.
+
+Both Vercel projects require their matching Supabase browser key,
+`GOOGLE_DESKTOP_CLIENT_SECRET` and the hosted secrets in the deployment table
+below, and nothing else that is secret.
 `NEXT_PUBLIC_SITE_URL` is mandatory in hosted builds; only local development may
 fall back to `http://localhost:3000`.
 
@@ -288,11 +295,23 @@ Both Vercel projects carry these, all Sensitive except the two client IDs:
 | `ARTIST_MCP_WEB_MS_CLIENT_ID` / `_SECRET` | Web OAuth client for connecting Microsoft |
 | `ARTIST_MCP_WEB_GOOGLE_CLIENT_ID` / `_SECRET` | Web OAuth client for connecting Google |
 
-The web clients are **separate registrations from the package's**. The package
-uses desktop clients, and its Google secret is served openly by
+The **Google** web client is a **separate registration from the package's**. The
+package uses a desktop client whose Google secret is served openly by
 `/api/client-config` — harmless there because PKCE protects a desktop client,
-and not harmless at all for a web client. One registration serving both would
-have to be the weaker of the two.
+and not harmless at all for a web client. One Google registration serving both
+would have to be the weaker of the two.
+
+**Microsoft is the opposite: one registration serves both surfaces**, and must.
+`ARTIST_MCP_WEB_MS_CLIENT_ID` and the package's default client id in
+`apps/mcp/src/oauth.ts` are deliberately the same value
+(`4e484257-2c48-4088-84b9-60ea3ca82e88`). It carries a web redirect per
+environment plus the package's `http://localhost:8765/callback` as a public
+client, with "Allow public client flows" enabled. Sharing it costs nothing —
+the package's Microsoft client is a true public client, so there is no secret to
+weaken — and it buys the thing that matters: `Notes.ReadWrite.CreatedByApp`
+scopes page ownership to the **app registration**, so a second id would mean
+hosted and local could not edit each other's OneNote pages, which reads as a bug
+and would not be one. If you ever split them, that is the breakage you get.
 
 A refresh token is bound to the client that obtained it. Hosted connections are
 made by the web flow and must be refreshed by the web client; refreshing one as
@@ -366,87 +385,29 @@ key is not the same as no exposure.
 The current `TOKEN_ENCRYPTION_KEY` values were generated fresh in August 2026,
 one per environment. The old one was never recorded and nothing needs it.
 
-## Publish the MCP package
+## Publishing
 
-Release Please owns production versioning. Conventional commits merged to
-`main` update its release PR; merging that PR creates the GitHub release and
-the `release.yml` workflow publishes through npm trusted publishing and GitHub
-OIDC. Do not publish production versions manually from a maintainer laptop.
+Releases, npm channels, the trusted-publisher mapping and what to do when a
+publish fails are in [releases.md](releases.md).
 
-Protect `main` and `staging` with the `Lint and build` status check. Promote
-through pull requests so neither environment can receive an unvalidated direct
-push. `release` remains the integration branch and validates its pushes without
-requiring pull requests targeting it.
+## Hosted isolation test
 
-Before merging the release PR, verify from a clean worktree:
-
-```bash
-pnpm build
-pnpm lint
-pnpm --filter @manudota/artist-mcp pack
-```
-
-Inspect the tarball contents before publishing. The package must ship only the
-required `dist` and `agent-pack` files, keep the executable shebang, target Node
-20 or newer, and publish publicly. npm permits one trusted publisher per
-package. It must match `ManudotaORG/artist-mcp`, workflow filename `release.yml`,
-allow `npm publish`, and leave npm's environment field blank. The workflow
-binds its stable job to GitHub `production` and its snapshot job to `staging`.
-
-Every push explicitly promoted to the `staging` branch publishes a unique
-prerelease through the staging job in `.github/workflows/release.yml` under the
-npm `staging` dist-tag. This remains separate from stable `latest` publication.
-A successful stable publication also runs that job against the staging branch,
-using npm `latest` as its version base. This guarantees that releasing `0.5.0`
-advances staging to `0.5.1-staging.<run>` without a manual metadata-sync push.
-Retried workflow runs append the attempt number to avoid republishing an
-immutable npm version.
-
-Keep the staging environment variable `NPM_STAGING_PUBLISH_ENABLED` unset until
-the shared trusted publisher exists. Set it to `true` only after npm has the
-exact `release.yml` mapping. Validation remains active while publication is gated.
-The staging publication job runs the MCP package tests only. Website validation
-belongs to CI; Vercel performs the deployment build, avoiding a duplicate web
-build in GitHub Actions.
-
-An npm `404` during an OIDC publish usually means the package's trusted
-publisher does not exactly match the repository or workflow filename above. It
-does not mean the tarball is missing.
-
-After publishing, test from a clean temporary directory:
-
-```bash
-npx @manudota/artist-mcp init
-npx @manudota/artist-mcp agents install
-```
-
-If production Telegram patch notes are enabled, the release workflow fetches
-the newly created GitHub release, formats and deduplicates its notes, then sends
-them only after the npm `latest` publication succeeds. Telegram credentials are
-scoped to the `production` GitHub environment. Use the manual
-`telegram-release-notes.yml` workflow to retry a specific existing tag without
-republishing npm.
-
-Verify the MCP tools with a real client: `list_notes`, `map_notes` and
-`read_note` against OneNote, `list_emails`, `read_email`, `read_gmail_attachment`, `list_events` and
-`read_event` against Google, and `list_agent_workflows` and `load_agent_workflow` against the pack. Registry
-and playbook content come from the installed npm package by default, preserving
-the version selected by the user. `ARTIST_MCP_REGISTRY_URL` and
-`ARTIST_MCP_ENDPOINT` are development/testing overrides, not publishing-job or
-end-user requirements.
-
-## Acceptance test
-
-The release is not fully accepted until all of these pass:
+This tests the **hosted** server, where one process serves many people. It does
+not apply to the published package, where each user runs their own process
+against their own token file.
 
 1. User A signs into the web app and connects Microsoft.
-2. User A installs with a generated key and can list and read OneNote pages.
-3. User B repeats the process on a different machine with a separate account.
+2. User A is issued a key with `node scripts/issue-mcp-key.mjs <email>` and can
+   list and read their OneNote pages through `/api/mcp`.
+3. User B repeats the process with a separate account.
 4. User B sees only user B's notes.
 5. User A cannot read user B's database rows or OneNote content.
+6. A write capability granted to user A appears for A and for nobody else.
 
-Record the result in [mvp-brief.md](mvp-brief.md). Do not tick the final
-multi-tenant acceptance item based only on code inspection.
+Run it against staging after any change to token custody, key resolution, or
+how grants reach `createServer`. Do not accept it on code inspection alone: the
+failure this catches is one user's state reaching another's session, which
+every test that runs one user at a time will pass.
 
 ## Incident response
 
@@ -459,10 +420,15 @@ If a privileged credential appears in chat, logs, source control, or an issue:
 5. Check provider audit logs for unexpected use.
 6. Document the incident through the private security channel.
 
-A user's refresh token never reaches us, so there is no stored credential here
-to leak on their behalf. If a user believes their machine is compromised, the
-fix is theirs and immediate: removing this app from their
-[Microsoft](https://account.live.com/consent/Manage) or
+Which credentials are at stake depends on the custody model. A package user's
+refresh token never reaches us, so there is no stored credential here to leak on
+their behalf. A hosted user's does: it sits encrypted in `connections`, so a
+compromise of `TOKEN_ENCRYPTION_KEY` together with the service key is a
+credential incident for every hosted connection, and is handled as one — see
+"Hosted credential storage" above.
+
+Either way the user's own remedy is immediate and settles it: removing this app
+from their [Microsoft](https://account.live.com/consent/Manage) or
 [Google](https://myaccount.google.com/connections) account invalidates the token
 everywhere it exists.
 

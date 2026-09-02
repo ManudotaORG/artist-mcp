@@ -222,6 +222,13 @@ recoverability grounds** — not because the scope is too broad, which is no
 longer true and will be rediscovered as untrue by whoever reads the permission
 error next.
 
+> Superseded for replacing by [0004](0004-onenote-page-maintenance.md), on the
+> grounds this paragraph names as its own reversal condition. The recoverability
+> objection was measured against a *body* replace, which rewrites the page and
+> leaves no pre-image worth keeping. An element-level replace has one, and 0004
+> makes capturing it mandatory. **Deleting stays out, permanently and on these
+> same grounds.**
+
 Appending is the interesting case this reframing exposes. It carries phase 1's
 risk profile rather than delete's, so a future page-maintenance capability is
 not automatically disqualified — but it needs its own record, and it must be

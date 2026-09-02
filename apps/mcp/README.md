@@ -6,7 +6,10 @@ optional Gmail and Google Calendar as supporting evidence.
 One OneNote page is one working unit. Email and calendar entries corroborate or
 fill gaps in that page and are never themselves the thing being worked on.
 
-Everything is read-only. No writes to any source, no sending, no sync.
+Reading is the default, and nothing is sent or synced. An install can be
+granted a narrow write capability at install time; a capability you did not
+grant registers no tool, so there is nothing for the model to call. See
+[Writes](#writes).
 
 ## Where your credentials live
 
@@ -60,13 +63,15 @@ Then ask your client:
 
 ## Tools
 
-Eleven read-only tools. OneNote holds the working unit:
+Fourteen tools are always available. OneNote holds the working unit:
 
 | Tool | Returns |
 | --- | --- |
 | `list_notes` | Page titles, sections, modification dates, and page IDs. Narrows by notebook, by modified date, or to a count |
 | `map_notes` | The opening of every page in one notebook, so it can be triaged before any page is read. A page with no usable preview is read in full instead, and the answer says which |
 | `read_note` | Readable page text for one page ID, in parts when the page is too long for one answer |
+| `map_page_attachment` | What is on each page of a file attached to a OneNote page, without reading it |
+| `read_page_attachment` | That attachment's content — images as pictures, PDFs and `.docx` as text, in page ranges |
 
 Google is supporting evidence, and needs the separate Google connection:
 
@@ -76,6 +81,7 @@ Google is supporting evidence, and needs the separate Google connection:
 | `read_email` | Message body, plus what is attached by name, type, and size |
 | `map_gmail_attachment` | What is on each page of a PDF, without reading it |
 | `read_gmail_attachment` | Images as pictures; PDFs and `.docx` as text, in page ranges |
+| `list_calendars` | The calendars this account can see, which is primary, and your access to each |
 | `list_events` | Calendar events in a window, recurrences expanded and flagged |
 | `read_event` | Description and attendees for one event |
 
@@ -97,18 +103,55 @@ connection needs reconnecting, and `connect google` restores it. Microsoft is
 unaffected. Tracked in
 [#94](https://github.com/ManudotaORG/artist-mcp/issues/94).
 
+## Writes
+
+Every write is off unless you ask for it at install time, and each one is a
+named capability passed to `init`:
+
+```bash
+npx @manudota/artist-mcp init --allow-writes onenote-create,calendar-create
+```
+
+| Capability | What it allows |
+| --- | --- |
+| `calendar-create` | Add a single event to a Google Calendar |
+| `calendar-delete` | Remove an event this tool itself created; it cannot touch one you made |
+| `onenote-create` | Add a new page to a section |
+| `onenote-edit` | Change a page this tool itself created — append, or replace part of one. Microsoft enforces this: the scope cannot reach a page you wrote |
+
+Granting `calendar-create` and `calendar-delete` together also allows
+rescheduling an event this tool created.
+
+Three things hold for all of them. A capability you did not grant registers no
+tool at all, so it cannot be invoked, argued for, or reached by mistake. Every
+write is preceded by a preview of the exact change, and the write only goes
+through with the token that preview returns. And every write is recorded in
+`~/.artist-mcp/writes.log`, with the previous content for anything it changed.
+
+**Nothing deletes a OneNote page**, and no message is ever sent. Those are scope
+commitments, not capabilities that happen to be off.
+
+Adding or removing a capability means re-running `init` and reconnecting the
+provider, since the OAuth scopes change. `artist-mcp status` prints what this
+install currently holds.
+
 ## Workflow pack
 
 ```bash
 npx @manudota/artist-mcp agents install
 ```
 
-Installs read-only roles (Orchestrator, Archivist, Registrar, Project Manager,
+Installs the roles (Orchestrator, Archivist, Registrar, Project Manager,
 Envoy, Auditor, Janitor) and project types (Concert, Large Concert, Studio
 Session, Rehearsal) as plain Markdown, loaded at runtime and verified by
 checksum. It writes into the directory you run it from, so run it inside the
 project you want the roles in — and it refuses your home directory, where the
 files would sit unread.
+
+The playbooks produce plans, recommendations, audits and drafts in chat, and
+use whichever writes this install was granted — no more. Gmail and Calendar are
+read only when you ask for them: a connected account is not a standing
+instruction to search it.
 
 To see which playbooks the server is actually reading, and where each one came
 from:
@@ -123,41 +166,25 @@ npx @manudota/artist-mcp agents status [directory]
 npx @manudota/artist-mcp init --editable
 ```
 
-That copies every playbook to `~/artist-mcp/artist/`, or to a directory you name.
-All of them become yours to edit. Without `--editable`, the shipped playbooks are
-used and verified by checksum; there is nothing in between.
+That copies every playbook to `~/artist-mcp/artist/`, or a directory you name,
+and all of them become yours to edit. Without `--editable` the shipped
+playbooks are used and verified by checksum; there is nothing in between. Add
+your own alongside them — a new file under `artist/project-types/`,
+`artist/roles/` or `artist/policies/` becomes available under an id taken from
+its filename. Edits apply on the next question, with no restart.
 
-Re-run the same command after upgrading. It adds playbooks that are new in that
-version, leaves anything you have edited exactly as it is, and tells you which
-files it treated as yours — so an editable install keeps receiving improvements
-without you tracking files by hand.
+Re-running after an upgrade adds what is new in that version and leaves
+anything you have edited exactly as it is. A playbook that cannot be read is
+reported rather than quietly replaced by the shipped one.
 
-The folder is visible, not hidden, so open it and edit the Markdown in whatever
-you like. **Add your own** alongside the shipped ones: a new file under
-`artist/project-types/`, `artist/roles/`, or `artist/policies/` becomes available
-under an id taken from its filename. A new project type is in force immediately,
-because project types are read in full before anything else happens. A new role
-is offered by name and description and loaded when it looks relevant, so if you
-want one used reliably, say so in `artist/roles/ORCHESTRATOR.md` — which is now
-yours too.
+Editing a playbook cannot widen what the server can do. The boundary is not
+written in the Markdown — it holds because a capability you did not grant
+registers no tool, and a playbook cannot call a tool that is not there. An
+edited playbook changes the advice you get, and nothing else.
 
-Edits are picked up on the next question, with no restart. A conversation that
-already asked for the playbook list will not notice a *new* one, so start a fresh
-conversation after adding a file.
-
-If a playbook cannot be read — empty, unreasonably large, or filed outside those
-three directories — the server says so instead of quietly falling back to the
-shipped version.
-
-Editing a playbook cannot widen what the server can do. The read-only boundary
-is not written in the Markdown — it holds because no tool exists that writes to
-OneNote, sends mail, or changes a calendar. An edited playbook changes the advice
-you get, and nothing else.
-
-The playbooks produce plans, recommendations, audits, and drafts in chat. They
-cannot write to OneNote, send mail, or touch a calendar. Gmail and Calendar are
-read only when you ask for them — a connected account is not a standing
-instruction to search it.
+The [installation guide](https://github.com/ManudotaORG/artist-mcp/blob/main/docs/installation.md)
+covers the rest: how a new role is offered versus a new project type, what the
+refusals mean, and how to go back to the shipped set.
 
 ## Requirements
 

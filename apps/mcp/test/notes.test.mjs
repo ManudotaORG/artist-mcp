@@ -176,6 +176,9 @@ test('a note is returned as text, not markup', async () => {
     parts_total: 1,
     part: 1,
     next_from_part: null,
+    // Null rather than an empty list: this install was not asked for edit ids,
+    // which is a different thing from a page having no editable parts.
+    editable: null,
   });
 });
 

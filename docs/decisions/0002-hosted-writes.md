@@ -1,8 +1,22 @@
 # 0002 — Hosted writes are per user, or they are not worth having
 
-Status: accepted, not yet built. Extends
+Status: **accepted and built.** Extends
 [0001](0001-opt-in-calendar-writes.md) to the hosted custody model. Raised by
-issue #98.
+issue 98.
+
+Where it landed: grants are stored per user by `set_write_grants` and read back
+by `write_grants_for` (migration `20260826090000_write_grants.sql`), surfaced as
+one switch on the dashboard, widened at connect time by `scopesFor` in
+`apps/web/src/app/api/auth/[provider]/route.ts`, and passed into `createServer`
+by `apps/web/src/app/api/mcp/route.ts` — a parameter, never process state, which
+is the point that made a shared process safe to grant on. Writes are recorded by
+`record_write` (`20260826100000_write_audit.sql`) rather than the local log file,
+which is useless on serverless. The switch grants every capability there is, so
+adding one requires a migration clearing `write_grants`; both resets exist.
+
+One thing this record raised is still open: the hosted side does not persist the
+scope a connection was actually granted, so nothing can say after the fact what a
+given connection may do. That is issue 114, not this record.
 
 ## Why 0001 does not settle this
 

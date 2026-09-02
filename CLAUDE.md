@@ -4,7 +4,7 @@ An npm-published MCP server that reads a user's OneNote notes, signing in to
 Microsoft and Google on the user's own machine, plus a small web app for sign-in
 and the install instructions.
 
-**The build checklist is [docs/mvp-brief.md](docs/mvp-brief.md). Read it before
+**Scope, what shipped, and the open gaps are [docs/scope.md](docs/scope.md). Read it before
 starting work.** It is the source of truth for scope and for what is actually
 done — a ticked box means done *and verified*, and blocked items say why.
 Update it as you go rather than at the end.
@@ -14,7 +14,7 @@ Scope is deliberately narrow. The workflow layer is defined in
 project types are loaded at runtime, and every result stays in chat.
 
 **If you find yourself adding writes, sends, or synchronization, stop.** That
-rule stands, with two exceptions, and neither is a precedent.
+rule stands, with four exceptions, and none of them is a precedent.
 
 An install granted `--allow-writes calendar-create` may create a single Google
 Calendar event, previewed and confirmed, and one granted `calendar-delete` may
@@ -29,22 +29,25 @@ before touching that path — it says what was decided, what it cost, and what
 would reverse it.
 
 An install granted `onenote-create` may create a new OneNote page, previewed
-and confirmed. **It cannot edit or delete any page, including one it created**,
-and that is not a rule this repository keeps — the scope is `Notes.Create`,
-which cannot express an edit or a delete, verified as a 403 on both against a
-page the token had just created itself. This is the inverse of the calendar
-situation, where no insert-only scope exists and the boundary had to become our
-code. The price is that a created page is permanent as far as this tool is
-concerned: there is no undo, and the musician removes it in OneNote themselves.
-Read [docs/decisions/0003-onenote-writes.md](docs/decisions/0003-onenote-writes.md)
-before touching that path. **Editing an existing page is still out, and is no longer out permanently.**
-`Notes.ReadWrite` would indeed hand back edit and delete over every page and put
-the boundary in our code again — but it is not the only door.
-`Notes.ReadWrite.CreatedByApp` is enforced by Microsoft against *this* app's own
-pages, verified as `401` on a page the musician wrote, and under it a
-paragraph-level replace is both surgical and recoverable from a pre-image.
+and confirmed. That capability alone cannot edit or delete any page, including
+one it created, and that is not a rule this repository keeps — the scope is
+`Notes.Create`, which cannot express an edit or a delete, verified as a 403 on
+both against a page the token had just created itself. This is the inverse of
+the calendar situation, where no insert-only scope exists and the boundary had
+to become our code. Read
+[docs/decisions/0003-onenote-writes.md](docs/decisions/0003-onenote-writes.md)
+before touching that path.
+
+**Editing is a separate grant, and it shipped.** `Notes.ReadWrite` would hand
+back edit and delete over every page and put the boundary in our code again —
+but it was not the only door. An install granted `onenote-edit` holds
+`Notes.ReadWrite.CreatedByApp`, which Microsoft enforces against *this* app's
+own pages, verified as `401` on a page the musician wrote, and under it an
+element-level replace is both surgical and recoverable from a pre-image captured
+before every write — no capture, no write.
 [docs/decisions/0004-onenote-page-maintenance.md](docs/decisions/0004-onenote-page-maintenance.md)
-accepts that in principle and nothing is built yet.
+was built and verified end to end on 2026-08-31, and that live run is what found
+its last two defects; nothing else did.
 [0006](docs/decisions/0006-replacing-a-whole-table.md) extends it to tables,
 which is where a filled-in page actually keeps its content: OneNote supports no
 update to a row or a cell, so the unit is the whole table, written as markup and
@@ -171,11 +174,42 @@ docs/           the brief
   `write_grants`**, the way `20260828120000_reset_write_grants.sql` does.
   Without it, users find a tool they never agreed to in their list, since
   registration is gated on the grant and not on the token's scope.
+- **A rule the tool applies beats a rule the description states.** A tool
+  description is re-sent with every request and obeyed only when the model
+  remembers it; a tool's own output is sent once, when the situation is real,
+  and holds whether or not anyone remembered. Where a rule can be moved into
+  what a tool returns, that is cheaper and stronger at the same time, which is
+  rare enough to look for deliberately.
+
+  Three so far. The house markup for a OneNote table left `policy:patch` for
+  `preview_onenote_edit`'s output, where it arrives one call before the markup
+  is composed. `read_note` returns the element ids an edit needs, which deleted
+  a whole discovery call — it and `readEditableParts` fetch the same page and
+  differed only in `includeIDs=true`. And `list_events` used to tell the reader
+  to call `list_calendars` before reporting an absence; the empty result now
+  names the calendars it did not search, so the rule cannot be skipped.
+
+  **The qualifier, which cost a regression to learn: output is paid per call,
+  so this only wins when the calls that pay for it are the calls that use it.**
+  Check that second, and separately from whether the move worked. The table
+  markup passes — `preview_onenote_edit` is called when a table is being
+  written. The calendar absence passes — it fires only on an empty result. The
+  element index failed it: a survey of ten pages paid about 977 tokens a read
+  for ids that only an edit spends, which was worse than the round trip it had
+  removed. It is capped now, tables exempt. A saving measured only on the path
+  that benefits is not measured.
+
+  Measure before assuming where the cost is:
+  `pnpm --filter @manudota/artist-mcp context-budget`. The tool list is roughly
+  fifteen times the briefing over a session, and half of it is write tooling —
+  which is not where anyone looked first, including twice in
+  [docs/decisions/0007](docs/decisions/0007-the-token-carries-the-payload.md).
 - **A rule in a role is not in force.** Roles arrive in the briefing as a
-  one-line summary; only project types and the policies in `alwaysInFull` load
-  in full. Three bugs came from rules sitting where no session could see them.
+  one-line summary; only project types and the policies in the `ALWAYS` array
+  behind `alwaysInFull` in `server.ts` — not a field in the pack — load in full.
+  Three bugs came from rules sitting where no session could see them.
   Read "Editing the pack" in
-  [docs/releases-and-agents.md](docs/releases-and-agents.md) before touching the
+  [docs/agent-pack.md](docs/agent-pack.md) before touching the
   pack — that one, plus a headline is a rule, a tool description outranks a
   playbook, and extracting a concern means deleting it where it came from in the
   same edit.
@@ -188,9 +222,9 @@ docs/           the brief
   playbook in a user's directory has been accepted, not left awaiting updates, so
   refreshing it would silently alter rules in force on a file they own. Tracking
   seed hashes to make that possible was considered and rejected — see
-  `docs/releases-and-agents.md`. Deleting a copy and re-running is the explicit
+  `docs/agent-pack.md`. Deleting a copy and re-running is the explicit
   way back to the shipped version.
 - **A local playbook directory must never fall back silently.** An unreachable
   remote registry falls back to the bundle; a broken local directory does not.
   The user said which rules govern their work, and quietly running different
-  ones misreports what is in force. See `docs/releases-and-agents.md`.
+  ones misreports what is in force. See `docs/agent-pack.md`.

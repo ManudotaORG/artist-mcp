@@ -47,7 +47,7 @@
       "name": "Patch",
       "description": "Once the musician has decided something, hand them the smallest fragment that records it, and say which part of the page it goes under.",
       "file": ".artist/policies/PATCH.md",
-      "sha256": "47029fd651ab2458ecc4b60dd73b16decf3f5c5506f20f4f61a71ca69f3f38e0"
+      "sha256": "ed2b2656b5bfdbfbdddc327614ac52d63d856a42805f44ae7d685f7db0ad4cba"
     },
     {
       "id": "project-type:concert",
@@ -95,7 +95,7 @@
       "name": "Auditor",
       "description": "Check a proposed answer or draft against the OneNote evidence before the user acts on it.",
       "file": ".artist/roles/AUDITOR.md",
-      "sha256": "3d2f530728bc6548325f8618228b67827c05663a0f20a2bc0609bdbee7b1dfe9"
+      "sha256": "3c59b7126e191130591befeb229191eb3bbee48894a7af4cf84d1b810e6ab217"
     },
     {
       "id": "role:envoy",
