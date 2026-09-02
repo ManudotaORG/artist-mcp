@@ -98,12 +98,19 @@ into staging:
 | `DEPLOY_ENV`               | `production`                                                | `staging`                                                           |
 | `NEXT_PUBLIC_SITE_URL`     | `https://artist-mcp.vercel.app`                             | `https://artist-mcp-staging.vercel.app`                             |
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://zxiemadwrkcoovvpscfb.supabase.co`                  | `https://cakkwvxwlkdfzqjbvrpa.supabase.co`                          |
-| `MS_REDIRECT_URI`          | `https://artist-mcp.vercel.app/api/auth/microsoft/callback` | `https://artist-mcp-staging.vercel.app/api/auth/microsoft/callback` |
-| `GOOGLE_REDIRECT_URI`      | `https://artist-mcp.vercel.app/api/auth/google/callback`    | `https://artist-mcp-staging.vercel.app/api/auth/google/callback`    |
-| npm MCP default            | production Graph function                                   | staging Graph function for `-staging.*` versions                    |
+| Microsoft redirect URI     | `https://artist-mcp.vercel.app/api/auth/microsoft/callback` | `https://artist-mcp-staging.vercel.app/api/auth/microsoft/callback` |
+| Google redirect URI        | `https://artist-mcp.vercel.app/api/auth/google/callback`    | `https://artist-mcp-staging.vercel.app/api/auth/google/callback`    |
 
-Both Vercel projects require their matching Supabase browser key and
-`GOOGLE_DESKTOP_CLIENT_SECRET`, and nothing else that is secret.
+The last two rows are **not** environment variables. Nothing reads a
+`MS_REDIRECT_URI` or `GOOGLE_REDIRECT_URI`: `redirectUriFor` in
+`apps/web/src/lib/connect.ts` derives each callback from
+`NEXT_PUBLIC_SITE_URL`. They are listed because each value must be registered
+with the provider for that environment, and a wrong `NEXT_PUBLIC_SITE_URL`
+silently produces a redirect the provider will refuse.
+
+Both Vercel projects require their matching Supabase browser key,
+`GOOGLE_DESKTOP_CLIENT_SECRET` and the hosted secrets in the deployment table
+below, and nothing else that is secret.
 `NEXT_PUBLIC_SITE_URL` is mandatory in hosted builds; only local development may
 fall back to `http://localhost:3000`.
 
@@ -440,12 +447,16 @@ scoped to the `production` GitHub environment. Use the manual
 republishing npm.
 
 Verify the MCP tools with a real client: `list_notes`, `map_notes` and
-`read_note` against OneNote, `list_emails`, `read_email`, `read_gmail_attachment`, `list_events` and
-`read_event` against Google, and `list_agent_workflows` and `load_agent_workflow` against the pack. Registry
+`read_note` against OneNote, `map_page_attachment` and `read_page_attachment`
+against a page with a file on it, `list_emails`, `read_email`,
+`map_gmail_attachment`, `read_gmail_attachment`, `list_calendars`,
+`list_events` and `read_event` against Google, and `list_agent_workflows` and
+`load_agent_workflow` against the pack. Where the build under test holds write
+capabilities, exercise each preview and its committing tool as well. Registry
 and playbook content come from the installed npm package by default, preserving
-the version selected by the user. `ARTIST_MCP_REGISTRY_URL` and
-`ARTIST_MCP_ENDPOINT` are development/testing overrides, not publishing-job or
-end-user requirements.
+the version selected by the user. `ARTIST_MCP_REGISTRY_URL` is a development/testing override, not a
+publishing-job or end-user requirement. `ARTIST_MCP_ENDPOINT` no longer exists:
+it addressed the removed Graph function, and nothing reads it.
 
 ## Acceptance test
 

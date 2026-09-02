@@ -35,7 +35,11 @@ in the artist's project.
 
 ## Prerequisites
 
-- Node.js 20 or newer (`.nvmrc` records the preferred version).
+- Node.js 20 or newer — that is what `engines.node` enforces and what the
+  package promises users. `.nvmrc` pins `22.22.2` and CI runs 24; the three
+  disagree deliberately for now, and gap 8 in
+  [mvp-brief.md](mvp-brief.md) tracks aligning them before Vercel's
+  1 October 2026 Node 20 cutoff.
 - pnpm 11 through Corepack.
 - Supabase CLI authenticated to the intended project.
 - A Supabase project.
@@ -67,7 +71,19 @@ Set every variable:
 | `GOOGLE_REFRESH_TOKEN_DAYS`     | Server only    | Refresh-token lifetime, served alongside it |
 | `DEPLOY_ENV`                    | Server only    | Optional; `staging` shows staging metadata |
 
-Only the first two may use the `NEXT_PUBLIC_` prefix. Never commit `.env.local`
+The hosted MCP needs five more, all server-only, all documented in
+`apps/web/.env.example`. Unset, `/api/mcp` refuses to serve rather than serving
+something half-working — which is the right state for a checkout that is only
+working on the package:
+
+| Variable                          | Purpose                                              |
+| --------------------------------- | ---------------------------------------------------- |
+| `SUPABASE_SERVICE_ROLE_KEY`       | Reads a connection for a user holding no browser session; bypasses RLS by design |
+| `TOKEN_ENCRYPTION_KEY`            | Encrypts stored tokens at rest; never stored in the database |
+| `ARTIST_MCP_WEB_MS_CLIENT_ID`/`_SECRET`     | Web OAuth client for connecting Microsoft from the browser. Deliberately the same registration the package uses — see the note in `.env.example` |
+| `ARTIST_MCP_WEB_GOOGLE_CLIENT_ID`/`_SECRET` | Web OAuth client for Google, which is a separate registration from the package's desktop one |
+
+Only the `NEXT_PUBLIC_` pair may carry that prefix. Never commit `.env.local`
 or real values.
 
 The provider client secrets that used to live here are gone: the web app no
@@ -90,7 +106,7 @@ precisely so that is one environment change rather than a release every install
 has to take. Existing connections keep the date they were given, which stays
 correct: a token issued under Testing still dies on day seven. See #94.
 
-The MCP package reads three optional overrides during development:
+The MCP package reads four optional overrides during development:
 `ARTIST_MCP_TOKENS` to point the token store somewhere other than
 `~/.artist-mcp/tokens.json`, `ARTIST_MCP_SITE` to fetch client configuration
 from a site other than the one its version implies, and
@@ -185,9 +201,11 @@ every table in `public` — one without RLS is a public endpoint.
 These tables hold real encrypted credentials for hosted accounts. See the
 hosted credential storage section of [operations.md](operations.md).
 
-The Graph edge function is gone. Its source remains under `supabase/functions`
-for reference, and it is not deployed — an installed copy calls the providers
-directly and there is nothing for it to resolve.
+The Graph edge function is gone: removed along with its source, its tests and
+its CI job, so `supabase/` holds only `config.toml` and `migrations/`. An
+installed copy calls the providers directly and there is nothing for it to
+resolve; hosted users are served by `apps/web/src/app/api/mcp/route.ts`. A
+reference to that function anywhere is stale.
 
 See [operations.md](operations.md) before deploying migrations or a new npm
 package.

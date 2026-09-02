@@ -211,7 +211,8 @@ registers no tool, and a playbook cannot call a tool that is not there.
 
 ## Local development
 
-Requirements: Node 20 or newer, pnpm 11, a Supabase project, and a Microsoft
+Requirements: Node 20 or newer (`engines.node`; `.nvmrc` pins the version this
+is developed against), pnpm 11, a Supabase project, and a Microsoft
 Entra app registration.
 
 ```bash
