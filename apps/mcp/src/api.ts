@@ -448,7 +448,15 @@ export const onenotePageContent = async (
  */
 export const onenotePatchPage = async (
   pageId: string,
-  commands: readonly { target: string; action: string; content: string }[],
+  commands: readonly {
+    target: string;
+    action: string;
+    content: string;
+    // Only an `insert` carries one, and only Graph's own vocabulary is
+    // accepted: a misspelled position is not rejected by the API, it is
+    // ignored, and the content lands somewhere nobody previewed.
+    position?: 'before' | 'after';
+  }[],
   token: string,
   etag: string | null,
 ): Promise<void> => {

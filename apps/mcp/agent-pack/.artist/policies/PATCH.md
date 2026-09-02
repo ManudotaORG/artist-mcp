@@ -76,6 +76,26 @@ may have edited since.
 - Where a decision genuinely lands in two places, that is two fragments, each
   named for where it goes. Not one merged block covering both.
 
+### A table is the exception, and only because OneNote makes it one
+
+OneNote supports no change to a single row or cell. The tool can replace a whole
+table and nothing smaller, so where the decision lands in a table the smallest
+fragment it can *apply* is the entire table.
+
+That does not loosen anything above; it moves the care somewhere else. **Every
+cell that is not changing has to be carried across exactly as it reads now** —
+copy them from the rows the preview lists rather than retyping them from memory,
+because a cell left out of the markup is not a cell left alone, it is a value
+destroyed. `UNKNOWN` stays `UNKNOWN` in those words, and a column the musician
+never fills stays empty.
+
+Say what the change is, not what the mechanism is. "Changing Honorar to 1450" is
+the decision; that the whole table is rewritten to do it is worth one sentence,
+because they are approving the loss of everything in it if the markup is wrong.
+
+A patch to be pasted is unaffected: they place a row themselves, so it stays one
+row.
+
 A whole page is a fragment only when the whole page is what they settled — the
 consolidated page in `policy:divergence`, once every conflicting field has been
 decided, which goes somewhere new rather than over either original. Wanting a
@@ -174,6 +194,49 @@ Owner is the only cell they settled. Due is `UNKNOWN` because no date was given
 — pegging it to the Oct 2027 contract date would be inventing one — and Status
 is `UNKNOWN` because "not started" is a reasonable guess and still a guess. The
 page says nothing about any of this until they paste it.
+
+## Table markup
+
+A table cannot be edited a cell at a time — OneNote supports no update to a row
+or a cell, so changing one value rewrites the whole table. Every cell that is
+not changing has to be carried across exactly as it reads.
+
+Formatting the original carried and the replacement leaves out is now carried
+across for you, and the preview says which parts it is keeping. Do not rely on
+that silently: it covers the table's own borders and its cells' borders, and it
+stops the moment the markup specifies any styling of its own — style one cell
+and you have taken responsibility for all of them.
+
+So write the house shape explicitly whenever the table is a new one, and let
+inheritance cover the ones you are editing in place. The house shape, which is
+what the artist's own pages already look like:
+
+- The table itself: `<table border="1" style="border-collapse:collapse">`. The
+  `border` attribute is the part OneNote acts on — a CSS `border:1px solid` in
+  the style alone comes back as `border:0px`.
+- Every cell: `<td style="border:1px solid #A3A3A3;padding:4px">`, with the
+  content in a `<p>`.
+- The header row, where the table has one, additionally carries
+  `background-color:#EFEFEF` on each cell and wraps its text in `<b>`. A roster
+  of musicians, a milestones table, a Field/Value block — the first row names the
+  columns and is shaded so it reads as a header rather than as data.
+- A free-text section is a single-cell table and has **no** header row. Shading
+  its only cell would make the whole section look like a heading.
+- Column widths are not set. OneNote sizes them, and a width guessed from a
+  preview is worse than none.
+
+Send this through the `html` parameter, never `text` — a table put through
+`text` arrives entity-escaped and lands on the page as literal angle brackets.
+
+Where a page needs several changes, give them as `changes` in one call. They are
+previewed together, confirmed together and written together, and if any one of
+them cannot be applied then none of them is. Changing one thing at a time makes
+the tool re-read the page between every change.
+
+Reading the page back afterwards is still worth doing on anything structural. It
+is no longer a way of telling a display artifact from a real mangling — the
+preview shows paragraph breaks and table rows as they are — but it is the only
+thing that confirms what the page now holds.
 
 ## Boundaries
 

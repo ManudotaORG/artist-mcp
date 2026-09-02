@@ -268,6 +268,11 @@ test('no module outside the sanctioned list exports a write-shaped helper', asyn
     // permissible at all, so it is deliberately visible in this list.
     'onenote-patch.ts:replaceCommand',
     'onenote-patch.ts:appendCommand',
+    // The third command builder, and the one that reaches the middle of a page.
+    // It destroys nothing — a sibling insert leaves the anchor table where it
+    // is — but it is named here for the same reason as the other two: the guard
+    // matches the shape, not the effect.
+    'onenote-patch.ts:insertCommand',
     'onenote-patch.ts:preImage',
   ];
   const found = [];
