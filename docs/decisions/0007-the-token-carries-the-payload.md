@@ -58,16 +58,18 @@ already holds. The server decodes the token, verifies the HMAC, and writes what
 it finds — the same values the preview rendered, because they are the bytes the
 preview signed.
 
-`create_calendar_event`, `create_onenote_page`, `edit_onenote_page`,
-`delete_calendar_event` and `reschedule_calendar_event` each reduce to
-`{ confirmation_token, source_page? }`.
+`create_calendar_event`, `delete_calendar_event` and
+`reschedule_calendar_event` each reduce to `{ confirmation_token, source_page? }`.
+`create_onenote_page` and `edit_onenote_page` keep the shape they have — see
+"Measured" below, which is what decided that.
 
 Two things follow, and the second is the reason to do it rather than the
 saving.
 
-**It is smaller.** Those five tools are 8,789 characters today and about 2,250
-after — roughly 6,500 characters, **~1,600 tokens off every request**, about 17%
-of the tool payload at full grants.
+**It is smaller.** The three calendar committing tools are 4,467 characters
+today and about 1,300 after — roughly 3,200 characters, **~790 tokens off every
+request**, about 8% of the tool payload at full grants. It would have been
+~1,600 across all five; the measurement below is why it is not.
 
 **A mismatch stops being possible.** Today a commit that names different values
 than the preview showed is detected and refused: the guard is a comparison, and
@@ -92,15 +94,55 @@ prefer a boundary that cannot be crossed to one that is checked.
   refuses without one. Decoding a payload from a token does not relax 0004's
   "no capture, no write".
 
-## What has to be verified before this is accepted
+## Measured: the token's size decides the scope
+
+The first check was the deciding one, and it narrows this record from five
+writes to three.
+
+A token today is 52 characters — a base32hex SHA-256, trivially copied. Under
+this record it is the payload itself, so it grows with what is being written.
+Encoded base64url with an appended HMAC, for realistic payloads:
+
+| Committing tool | Payload | Token | vs today |
+| --- | --- | --- | --- |
+| `delete_calendar_event` | 81 | **152** | 3x |
+| `create_calendar_event` (a gig with location and contact) | 326 | **483** | 9x |
+| `reschedule_calendar_event` | 374 | **547** | 11x |
+| `create_onenote_page` (a short filled template) | 2,579 | **3,483** | 67x |
+| `edit_onenote_page` (replacing a 4-column, 5-row table) | 4,034 | **5,423** | 104x |
+
+The OneNote figures are fatal, and `edit_onenote_page` is the worst because
+`editToken` binds **the pre-images as well as the changes** — replacing one
+table means carrying two tables, the new markup and the content being
+overwritten. Re-reading the page at commit time to re-derive the pre-image
+would halve it and still leave ~2,700 characters.
+
+Two things follow from a token that size. It appears twice, in the preview
+result and again in the commit call, so one table edit costs about 2,712 tokens
+of context against a saving of 1,600 per request. That alone might still pay
+over a long session. What does not pay is the second thing: **the model has to
+reproduce a 5,423-character opaque blob verbatim**, and a single corrupted
+character fails the HMAC. The edit is then refused *after* the musician has said
+yes — which is precisely the worst-moment failure this record rejects the
+storage variant for. Reintroducing it by another route is not an improvement.
+
+**So this record applies to the three calendar writes and not to the two OneNote
+ones.** At 152 to 547 characters a token stays copyable, in the range of an
+ordinary JWT. The saving narrows from ~1,600 tokens a request to about **790**,
+and `preview_onenote_edit`/`edit_onenote_page` keep the shape they have.
+
+That leaves two shapes of committing tool in one server, which is a real cost:
+the asymmetry has to be explained wherever writes are documented. It is the same
+kind of asymmetry the OneNote and calendar capabilities already carry — one
+boundary enforced by the provider, one by this code — and it is justified the
+same way, by what the payload actually is rather than by a preference for
+symmetry.
+
+## What else has to be verified before this is accepted
 
 Not yet built. This record is the argument, not the evidence, and the standard
 0004 set is a live run rather than a green suite.
 
-- The token for a whole-table replace is large: the payload is the table's
-  markup. Measure a real one. A token that no longer fits comfortably in a tool
-  result argues for keeping the pair as it is for `onenote-edit` alone and
-  taking the saving on the four smaller writes.
 - Confirm the HMAC key. Locally the install can mint a random secret per
   process. Hosted is stateless per request across many users, so it needs a
   stable key; `TOKEN_ENCRYPTION_KEY` already exists for tokens at rest, and
