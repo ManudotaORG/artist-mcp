@@ -132,3 +132,69 @@ test('read_note says nothing about ids without the grant', async () => {
   assert.doesNotMatch(text, /element id/i);
   assert.match(text, /Fee agreed at 1450/, 'the page itself still reads the same');
 });
+
+/**
+ * The index is paid on every read and used only by the reads that become an
+ * edit. A filled-in concert page indexed at about 3,900 characters, so a
+ * session surveying ten pages to edit one spent more here than the discovery
+ * call this replaced ever cost. It is capped, and tables are exempt.
+ */
+const guid = (n) => `${String(n).padStart(8, '0')}-1c4b-4a9e-9d3f-2b8c7e5a1f04`;
+
+const pageOf = (paragraphs, tables) => [
+  ...Array.from({ length: paragraphs }, (_, i) => ({
+    element_id: `p:{${guid(i)}}{${i}}`,
+    kind: 'text',
+    text: `A line recording something about the gig, number ${i}`,
+  })),
+  ...Array.from({ length: tables }, (_, t) => ({
+    element_id: `table:{${guid(100 + t)}}{${t}}`,
+    kind: 'table',
+    text: 'Field | Value',
+  })),
+];
+
+const indexFor = async (editable) => {
+  const server = await createServer(
+    async () => ({
+      title: 'Concert',
+      text: 'body',
+      attachments: [],
+      chars_total: 4,
+      parts_total: 1,
+      part: 1,
+      next_from_part: null,
+      editable,
+    }),
+    ['onenote-edit'],
+  );
+  return (await server._registeredTools.read_note.handler({ note_id: 'p1' })).content
+    .map((c) => c.text)
+    .join('');
+};
+
+test('a long page lists a bounded index and says what it left out', async () => {
+  const parts = pageOf(30, 4);
+  const text = await indexFor(parts);
+
+  assert.ok(text.length < 2200, `index should stay bounded, was ${text.length}`);
+  assert.match(text, /further parts of this page are not listed/);
+  assert.match(text, /preview_onenote_edit returns all of them/);
+});
+
+test('every table survives the cap, because a table cannot be edited any other way', async () => {
+  const parts = pageOf(30, 4);
+  const text = await indexFor(parts);
+
+  for (const table of parts.filter((p) => p.kind === 'table')) {
+    assert.ok(text.includes(table.element_id), `dropped ${table.element_id}`);
+  }
+});
+
+test('a short page is listed whole, with nothing said about omissions', async () => {
+  const parts = pageOf(3, 1);
+  const text = await indexFor(parts);
+
+  for (const part of parts) assert.ok(text.includes(part.element_id));
+  assert.doesNotMatch(text, /not listed/);
+});

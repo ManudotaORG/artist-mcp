@@ -339,6 +339,16 @@ const renderChangedSections = (
   ].join("\n\n");
 };
 
+/**
+ * How many editable parts a read lists before it stops.
+ *
+ * The index is paid on every read and used only by the reads that become an
+ * edit, so it is capped rather than complete. Tables are exempt from the cap:
+ * they are where a filled-in page keeps its values, and replacing one whole is
+ * the only way OneNote allows a cell to change.
+ */
+const INDEX_ENTRIES = 12;
+
 const serverVersion = '2.2.0'; // x-release-please-version
 
 const errorResult = (err: unknown) => {
@@ -1348,7 +1358,19 @@ const createServer = async (
         // and no fresher: a write moves them, so one carried across a write is
         // stale, and a stale one is refused rather than applied to whatever now
         // sits at that id.
-        const editableParts = editable ?? [];
+        // Bounded, because this is paid on every read and spent only on the
+        // reads that turn into an edit. A filled-in concert page indexes at
+        // about 3,900 characters, and a session that surveys ten pages to edit
+        // one would spend more here than the discovery call this replaced ever
+        // cost. Tables come first and are never dropped: most of a filled-in
+        // page lives in them, and a table is the one thing that cannot be
+        // edited any other way. preview_onenote_edit still lists everything.
+        const all = editable ?? [];
+        const tables = all.filter((e) => e.kind === "table");
+        const textElements = all.filter((e) => e.kind !== "table");
+        const shownText = textElements.slice(0, Math.max(0, INDEX_ENTRIES - tables.length));
+        const editableParts = [...tables, ...shownText];
+        const omitted = all.length - editableParts.length;
         const index = editableParts.length
           ? [
             "",
@@ -1367,6 +1389,13 @@ const createServer = async (
                 `${entry.kind === "table" ? "  (a table — replace it whole, with html)" : ""}` +
                 `\n    ${entry.text}`,
             ),
+            ...(omitted > 0
+              ? [
+                "",
+                `${omitted} further part${omitted === 1 ? "" : "s"} of this page ` +
+                  "are not listed. preview_onenote_edit returns all of them.",
+              ]
+              : []),
           ].join("\n")
           : "";
 
