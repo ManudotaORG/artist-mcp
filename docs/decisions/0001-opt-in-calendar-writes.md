@@ -42,8 +42,12 @@ belong to that class:
    > Since revisited, and only for creating: Microsoft publishes a create-only
    > permission, so a page the musician wrote cannot be touched by a token that
    > can create one. That is the inverse of the Calendar finding below and is
-   > argued on its own terms in [0003](0003-onenote-writes.md). Editing a page
-   > remains out for exactly the reason stated here.
+   > argued on its own terms in [0003](0003-onenote-writes.md). Editing was
+   > revisited in turn: [0004](0004-onenote-page-maintenance.md) allows an
+   > element-level change to a page this tool created, on a recoverability
+   > argument this record did not have, and
+   > [0006](0006-replacing-a-whole-table.md) extends it to whole tables.
+   > Deleting a page stays out.
 3. **Grants are opt-in at install time, named by capability, in one
    argument.** See "How the grant is expressed" below.
 4. **A write tool that is not granted is not registered at all** — absent, not
