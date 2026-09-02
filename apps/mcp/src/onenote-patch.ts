@@ -1232,6 +1232,25 @@ export const readEditableParts = async (
   { full = true }: { full?: boolean } = {},
 ): Promise<{ html: string; etag: string | null; parts: EditablePart[] }> => {
   const { html, etag } = await onenotePageContent(pageId, token);
+  return { html, etag, parts: editablePartsFrom(html, { full }) };
+};
+
+/**
+ * The same index, derived from page HTML somebody else already fetched.
+ *
+ * Split out so `read_note` can return the ids without a second call to Graph.
+ * Both paths ask `/content` for the same page; the only difference is
+ * `includeIDs=true`, so making the reader ask for ids too turns what used to be
+ * a whole extra round trip — preview once for the index, preview again for the
+ * change — into a query parameter. The ids are as fresh as the read they came
+ * with, and a stale one still fails closed: `editToken` binds the pre-image, so
+ * an element that has moved produces a different one and the write is refused
+ * before it happens.
+ */
+export const editablePartsFrom = (
+  html: string,
+  { full = true }: { full?: boolean } = {},
+): EditablePart[] => {
   const ids = readTargets(html).generatedIds.filter((id) =>
     /^(?:p|h[1-6]|li|table):/.test(id),
   );
@@ -1270,7 +1289,7 @@ export const readEditableParts = async (
     })
     .filter((part) => part.text !== '');
 
-  return { html, etag, parts };
+  return parts;
 };
 
 /** How much of an element the index shows: enough to recognise, never enough to approve. */

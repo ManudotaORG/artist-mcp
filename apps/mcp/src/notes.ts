@@ -11,6 +11,7 @@ import { MAX_TEXT_CHARS } from './attachments.js';
 import { GraphError } from './client.js';
 import { graphGet } from './api.js';
 import { pageResources, type PageResource } from './page-attachments.js';
+import { editablePartsFrom, type EditablePart } from './onenote-patch.js';
 
 /** Graph ids are opaque, but they are concatenated into URLs, so they are checked like any other value. */
 const ONENOTE_ID = /^[A-Za-z0-9!._~-]{1,300}$/;
@@ -460,6 +461,12 @@ export type NoteContent = {
    */
   attachments: PageAttachment[];
   chars_total: number;
+  /**
+   * The page's editable parts, one line each, when this install holds
+   * `onenote-edit`. Null otherwise — an id is only worth returning to a caller
+   * with a tool that takes one.
+   */
+  editable: EditablePart[] | null;
   parts_total: number;
   part: number;
   /** The part to ask for next, or null when the page is finished. */
@@ -490,6 +497,7 @@ export const readNote = async (
   token: string,
   noteId: unknown,
   fromPart: unknown = 1,
+  { withEditIds = false }: { withEditIds?: boolean } = {},
 ): Promise<NoteContent> => {
   if (typeof noteId !== 'string' || !ONENOTE_ID.test(noteId)) {
     throw new GraphError('note_id is missing or malformed.', false);
@@ -500,10 +508,20 @@ export const readNote = async (
   const meta = await graphGet(`/me/onenote/pages/${id}?$select=title`, token);
   const { title } = (await meta.json()) as { title?: string };
 
-  const content = await graphGet(`/me/onenote/pages/${id}/content`, token);
+  // `includeIDs=true` is what makes an element addressable. It costs nothing —
+  // the same fetch either way — and it is the difference between this read
+  // being enough to patch from and the caller having to ask for the page again
+  // through preview_onenote_edit. The ids are dropped from the text by the tag
+  // strip in htmlToText, so a reader who cannot edit sees no change at all.
+  const content = await graphGet(`/me/onenote/pages/${id}/content?includeIDs=true`, token);
   const html = await content.text();
   const text = htmlToText(html);
   const attachments = pageResources(html).map(({ position: _position, ...rest }) => rest);
+
+  // Only for an install that can act on them. Deriving the index costs a pass
+  // over the HTML, and listing ids at a reader who has no tool to use them on
+  // is noise in every answer about a page.
+  const editable = withEditIds ? editablePartsFrom(html, { full: false }) : null;
 
   const requested = typeof fromPart === 'number' ? fromPart : Number(fromPart ?? 1);
   const parts = Math.max(1, Math.ceil(text.length / MAX_TEXT_CHARS));
@@ -522,5 +540,6 @@ export const readNote = async (
     parts_total: parts,
     part,
     next_from_part: part < parts ? part + 1 : null,
+    editable,
   };
 };

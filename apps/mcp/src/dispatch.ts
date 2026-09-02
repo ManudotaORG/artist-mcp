@@ -157,7 +157,9 @@ export const dispatchWith =
         // is settled; nothing here maps a notebook it was not given.
         return (await mapNotes(token, params.pages as Parameters<typeof mapNotes>[1])) as T;
       case 'read_note':
-        return (await readNote(token, params.note_id, params.from_part)) as T;
+        return (await readNote(token, params.note_id, params.from_part, {
+          withEditIds: params.with_edit_ids === true,
+        })) as T;
       case 'list_emails':
         return (await listEmails(token, params.query)) as T;
       case 'read_email':

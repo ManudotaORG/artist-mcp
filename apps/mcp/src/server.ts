@@ -1254,8 +1254,16 @@ const createServer = async (
     },
     async ({ note_id, from_part }) => {
       try {
-        const { title, text, attachments, chars_total, parts_total, part, next_from_part } =
-          await call<{
+        const {
+          title,
+          text,
+          attachments,
+          chars_total,
+          parts_total,
+          part,
+          next_from_part,
+          editable,
+        } = await call<{
             title: string;
             text: string;
             attachments: {
@@ -1268,7 +1276,12 @@ const createServer = async (
             parts_total: number;
             part: number;
             next_from_part: number | null;
-          }>("read_note", { note_id, from_part });
+            editable: { element_id: string; kind: "text" | "table"; text: string }[] | null;
+          }>("read_note", {
+            note_id,
+            from_part,
+            with_edit_ids: isGranted(grants, "onenote-edit"),
+          });
 
         // Truncation that does not announce itself is the failure this exists
         // to prevent: the page arrives, the analysis is thinner than it should
@@ -1308,8 +1321,37 @@ const createServer = async (
           ].join("\n")
           : "";
 
+        // The ids come back with the read that found them, so an edit does not
+        // need a discovery call of its own. They are as fresh as this answer
+        // and no fresher: a write moves them, so one carried across a write is
+        // stale, and a stale one is refused rather than applied to whatever now
+        // sits at that id.
+        const editableParts = editable ?? [];
+        const index = editableParts.length
+          ? [
+            "",
+            "",
+            "## Editable parts of this page",
+            "",
+            "Element ids for edit_onenote_page, one line each, good until the " +
+              "next write to this page. Pass one to preview_onenote_edit — " +
+              "there is no need to call it first just to see this list. A " +
+              "table is replaced whole; a paragraph inside one cannot be " +
+              "changed on its own.",
+            "",
+            ...editableParts.map(
+              (entry) =>
+                `  ${entry.element_id}` +
+                `${entry.kind === "table" ? "  (a table — replace it whole, with html)" : ""}` +
+                `\n    ${entry.text}`,
+            ),
+          ].join("\n")
+          : "";
+
         return {
-          content: [{ type: "text", text: `# ${title}\n\n${text}${note}${manifest}` }],
+          content: [
+            { type: "text", text: `# ${title}\n\n${text}${note}${manifest}${index}` },
+          ],
         };
       } catch (err) {
         return errorResult(err);
@@ -2132,13 +2174,12 @@ const createServer = async (
         "Reads the page as it stands right now and shows what the change would " +
         "do to it. Changes nothing. For a replace it quotes what would be " +
         "overwritten — a table as its rows — which is the part the musician has " +
-        "to agree to. It also returns the page's editable parts with an " +
-        "element_id for each, paragraphs and TABLES alike, so pass action " +
-        "'replace' with no element_id first if you do not know which part to " +
-        "change, read the parts back, then preview again naming one. Those ids " +
-        "are read fresh each call and are good only for the next call — never " +
-        "store one, repeat one to the musician, or reuse one from earlier in the " +
-        "conversation. A page needing several changes takes ONE call with " +
+        "to agree to. read_note lists the page's editable parts with an " +
+        "element_id for each, so take the id from there rather than calling " +
+        "this once just to find it; this returns the same list if you have not " +
+        "read the page. Those ids are good only until the next write to the " +
+        "page — never store one, repeat one to the musician, or reuse one from " +
+        "earlier in the conversation. A page needing several changes takes ONE call with " +
         "`changes`: they are previewed together, confirmed together and written " +
         "together, and the ids stay valid because they only move once the write " +
         "happens. Changing one thing at a time re-reads the page every time and " +
