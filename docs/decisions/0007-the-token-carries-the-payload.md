@@ -139,11 +139,27 @@ result reads as an obstacle to route around." A dispatcher exists always.
 
 Neither depends on this record.
 
-- **Deduplicate the JSON schemas.** `preview_onenote_edit` is 2,734 characters
-  of schema largely because `changes` re-declares the change shape beside the
-  top-level `action`/`html`/`element_id`/`position`. JSON Schema `$defs` says it
-  once. Purely mechanical, an estimated 1,500–2,500 characters, and it survives
-  whatever happens to this record.
+- ~~**Deduplicate the JSON schemas.**~~ **Measured and abandoned.** The estimate
+  above of 1,500–2,500 characters was made by eyeballing the nested `changes`
+  block in `preview_onenote_edit` without checking whether a `$ref` could
+  actually replace it. It cannot: the top-level properties carry descriptions
+  and the nested copies do not, so they are not the same subschema. Counting
+  every identical repeated subschema across all 24 tools puts the **theoretical
+  ceiling at 455 characters** — 210 of it in `create_calendar_event` — before
+  the `$defs` container costs anything back. About 100 tokens a request, for
+  either patching how the SDK serialises zod or hand-writing JSON Schema.
+
+  The measurement that matters more: **59% of all schema bytes are prose**, not
+  structure. Descriptions inside parameters are 10,213 characters against 7,064
+  of actual structure, and that structure is roughly 294 characters per tool,
+  which is close to irreducible. Two scans for duplication in that prose found
+  nothing worth removing — zero overlapping seven-word runs between any tool's
+  description and its own parameters, and three, two and two overlapping
+  six-word runs between parameter prose and the whole agent pack.
+
+  So there is no deduplication to do at this layer. What remains is prose that
+  says something nothing else says, and shortening it is the description
+  trade-off, not a free win.
 - **Merging the four attachment tools into two.** Worth about 2,500 characters
   and probably not worth taking: the Gmail pair carries `EVIDENCE_GATE` and the
   page pair deliberately does not, because a file on a page the musician just
