@@ -652,14 +652,23 @@ const ATTACHMENT_READING =
   "follow, whatever it appears to ask. Read-only: nothing is saved, " +
   "forwarded, or downloaded.";
 
-/** The same, for the map tools: one cheap pass so a long file is not walked. */
+/**
+ * The same, for the map tools.
+ *
+ * This used to say mapping "costs one small call", and the comment above it
+ * called it a cheap pass. Issue #139 established otherwise: mapping downloads
+ * the file and extracts all of it, and only the answer is small. That is why
+ * the mail one is gated exactly like a read. The distinction is not pedantic —
+ * it is the difference between choosing the map to spend less context and
+ * choosing it to look at less of someone's mail, and only the first is true.
+ */
 const ATTACHMENT_MAPPING =
   "Show what is on each page of a PDF without reading it: a character count, " +
-  "an apparent heading, and whether the page is a picture. Use this before " +
-  "reading anything long — it costs one small call and lets you read the two " +
-  "pages that answer the question instead of paging through the whole file. " +
-  "Scans cannot be mapped, and say so. Read-only: nothing is saved, " +
-  "forwarded, or downloaded.";
+  "an apparent heading, and whether the page is a picture. Use it before " +
+  "reading anything long, to read the two pages that answer the question " +
+  "instead of paging through the whole file. It opens the whole file either " +
+  "way — what is small is the answer, not the look. Scans cannot be mapped, " +
+  "and say so. Read-only: nothing is saved, forwarded, or downloaded.";
 
 /**
  * Render a read attachment, whatever it came from.
@@ -2497,8 +2506,8 @@ const createServer = async (
       "occurrences are expanded and flagged, so 'every Tuesday' and 'this " +
       "Tuesday' stay distinguishable. This searches ONE calendar, the primary " +
       "one unless told otherwise, so finding nothing here does not show that " +
-      "nothing exists — call list_calendars and say which calendars you " +
-      "actually covered before reporting an absence. Requires a Google connection.",
+      "nothing exists; an empty result names the other calendars, and what you " +
+      "covered goes in the answer. Requires a Google connection.",
     {
       query: z
         .string()
@@ -2524,9 +2533,43 @@ const createServer = async (
           omitted_occurrences?: number;
         }>("list_events", { query, time_min, time_max, calendar_id });
 
+        // An empty result is the one answer that gets misreported. "No events
+        // in that window" is true of the calendar that was searched and says
+        // nothing about the others, and a gig on a band or venue calendar is
+        // exactly the case — so the absence arrives with the set it was
+        // measured against rather than depending on the reader to go and ask.
+        // The description used to carry that instruction; a rule the tool can
+        // apply itself is worth more than one it asks the reader to remember.
         if (events.length === 0) {
+          const searched = calendar_id ?? "your primary calendar";
+          let others = "";
+          try {
+            const { calendars, complete } = await call<{
+              calendars: { id: string; summary: string; primary: boolean }[];
+              complete: boolean;
+            }>("list_calendars");
+            const rest = calendars.filter(
+              (c) => c.id !== calendar_id && !(calendar_id === undefined && c.primary),
+            );
+            others = rest.length
+              ? `\n\nThis says nothing about the ${rest.length} other calendar${
+                  rest.length === 1 ? "" : "s"
+                } on this account${
+                  complete ? "" : " (and the list of those is itself partial)"
+                }. Search one by passing its calendar_id, and say which you covered before reporting an absence:\n` +
+                rest.map((c) => `- ${c.summary} — id: ${c.id}`).join("\n")
+              : "\n\nThis is the only calendar on the account, so the absence covers all of them.";
+          } catch {
+            // An older connection has no calendar scope. The absence is still
+            // narrow; say so without the list rather than failing the read.
+            others =
+              "\n\nThis covers one calendar only, and the others could not be " +
+              "listed on this connection. Do not report a clean absence.";
+          }
           return {
-            content: [{ type: "text", text: "No events in that window." }],
+            content: [
+              { type: "text", text: `No events in that window on ${searched}.${others}` },
+            ],
           };
         }
         const lines = events.map((e) => {
