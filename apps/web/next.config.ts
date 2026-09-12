@@ -49,9 +49,14 @@ const nextConfig: NextConfig = {
     ];
   },
 
-  /** The pack is data, not imports, so nothing in the graph would pull it in. */
+  /**
+   * The pack is data, not imports, so nothing in the graph would pull it in.
+   * `vendor/artist-pack` is the custom pack the route layers on top; left out
+   * of the trace it resolves on a developer's machine and throws in
+   * production, which is the failure this list already exists to prevent.
+   */
   outputFileTracingIncludes: {
-    '/api/mcp': ['../mcp/agent-pack/**/*', '../mcp/dist/**/*'],
+    '/api/mcp': ['../mcp/agent-pack/**/*', '../mcp/dist/**/*', '../../vendor/artist-pack/**/*'],
   },
 };
 
