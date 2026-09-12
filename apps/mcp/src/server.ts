@@ -177,18 +177,19 @@ const selectNotebook = async (
     }
   | { message: string }
 > => {
-  const {
-    notes,
-    sections = [],
-    page_dates_are_creation_dates = false,
-  } = await call<{
-    notes: NoteSummary[];
-    sections?: SectionSummary[];
-    page_dates_are_creation_dates?: boolean;
-  }>("list_notes");
-  if (notes.length === 0) return { message: "No notes found." };
+  // The notebook question first, and on its own, because it is the cheap one.
+  //
+  // `list_notes` answers it as a side effect of fetching every page of every
+  // section — a hundred Graph requests on an organised account — and most calls
+  // that reach here only need the names: to ask which notebook, or to check
+  // that a supplied one exists. Paying for every page of every notebook to
+  // print a list of names is what had Graph refusing with 20166.
+  const { notebooks } = await call<{
+    notebooks: { name: string; sections: number }[];
+  }>("list_notebooks");
+  if (notebooks.length === 0) return { message: "No notes found." };
 
-  const names = [...new Set(notes.map((n) => n.notebook ?? "(unnamed notebook)"))];
+  const names = notebooks.map((n) => n.name);
 
   // Handing back every page across every notebook invites work on the wrong
   // one. With a choice to be made and nothing chosen, the pages are withheld
@@ -205,10 +206,13 @@ const selectNotebook = async (
   const unproven = notebook !== undefined && !proven;
 
   if ((!notebook || unproven) && names.length > 1) {
-    const counts = names.map((name) => {
-      const total = notes.filter((n) => (n.notebook ?? "(unnamed notebook)") === name).length;
-      return `- ${name} — ${total} page${total === 1 ? "" : "s"}`;
-    });
+    // Sections rather than pages: a page count is precisely the thing that
+    // cannot be known without the hundred requests this path exists to avoid,
+    // and the number is only here to help the user tell one notebook from
+    // another.
+    const counts = notebooks.map(
+      ({ name, sections: n }) => `- ${name} — ${n} section${n === 1 ? "" : "s"}`,
+    );
     return {
       message:
         `This account has ${names.length} notebooks:\n${counts.join("\n")}\n\n` +
@@ -227,13 +231,27 @@ const selectNotebook = async (
   }
 
   const wanted = notebook?.trim().toLowerCase();
+
+  // Checked before the expensive call, not after it: a misspelled notebook
+  // should cost one request to refuse, not a hundred.
+  if (wanted !== undefined && !names.some((name) => name.trim().toLowerCase() === wanted)) {
+    return { message: `No notebook named "${notebook}". Available: ${names.join(", ")}.` };
+  }
+
+  // Settled. Only now are the pages worth what they cost.
+  const {
+    notes,
+    sections = [],
+    page_dates_are_creation_dates = false,
+  } = await call<{
+    notes: NoteSummary[];
+    sections?: SectionSummary[];
+    page_dates_are_creation_dates?: boolean;
+  }>("list_notes");
+
   const pages = wanted
     ? notes.filter((n) => (n.notebook ?? "").trim().toLowerCase() === wanted)
     : notes;
-
-  if (wanted && pages.length === 0) {
-    return { message: `No notebook named "${notebook}". Available: ${names.join(", ")}.` };
-  }
 
   // A name that was supplied walks straight past the question above, so a
   // guessed one is indistinguishable from a chosen one. Found in use: asked

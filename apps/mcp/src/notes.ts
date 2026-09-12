@@ -158,6 +158,47 @@ export const htmlToText = (html: string): string =>
     .trim();
 
 /**
+ * Which notebooks this account has, and nothing else.
+ *
+ * One Graph request. `listNotes` answers the same question as a side effect of
+ * fetching every page of every section — a hundred requests on an organised
+ * account — and the notebook question is asked far more often than the page
+ * one: every call that has to ask "which notebook?" paid for the pages of all
+ * of them to print a list of names.
+ *
+ * That is what was throttling the account. Graph refused with 20166, "the app
+ * has issued too many requests on behalf of this user", against a listing whose
+ * answer was already contained in the single request that starts it, since
+ * `parentNotebook` expands inline on the sections call.
+ *
+ * Counted in sections rather than pages, because a page count is exactly the
+ * thing that cannot be known without the hundred requests. A number that costs
+ * a hundred requests to be slightly more familiar is not worth it, and the
+ * count is only there to help the user recognise which notebook is which.
+ */
+export const listNotebooks = async (
+  token: string,
+): Promise<{ notebooks: { name: string; sections: number }[] }> => {
+  const res = await graphGet(
+    '/me/onenote/sections?$select=id,displayName' +
+      '&$expand=parentNotebook($select=displayName)&$top=100',
+    token,
+  );
+  const sections = ((await res.json()) as { value?: OneNoteSection[] }).value ?? [];
+
+  const counts = new Map<string, number>();
+  for (const section of sections) {
+    if (typeof section.id !== 'string' || !ONENOTE_ID.test(section.id)) continue;
+    const name = section.parentNotebook?.displayName ?? '(unnamed notebook)';
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+
+  return {
+    notebooks: [...counts].map(([name, sectionCount]) => ({ name, sections: sectionCount })),
+  };
+};
+
+/**
  * `/me/onenote/pages` looks like the obvious call and works right up until the
  * account has too many sections, at which point Graph fails the whole request
  * with error 20266 and tells you to page per section instead. Organised

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createServer } from '../dist/server.js';
-import { listNotes } from '../dist/notes.js';
+import { listNotes, listNotebooks } from '../dist/notes.js';
 
 /**
  * The whole path, from what Graph returns to what the musician is told.
@@ -92,6 +92,7 @@ const HEALTHY = {
 const callList = async (graph, args) => {
   stubGraph(graph);
   const dispatch = async (op) => {
+    if (op === 'list_notebooks') return listNotebooks('token');
     if (op !== 'list_notes') throw new Error(`unexpected operation ${op}`);
     return listNotes('token');
   };
@@ -158,6 +159,7 @@ test('without a since window, a broken account still lists its pages', async () 
 const callMap = async (graph, args) => {
   stubGraph(graph);
   const dispatch = async (op) => {
+    if (op === 'list_notebooks') return listNotebooks('token');
     if (op === 'list_notes') return listNotes('token');
     throw new Error(`unexpected operation ${op}`);
   };
