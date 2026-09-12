@@ -452,8 +452,13 @@ test('a table keeps its borders, which takes the attribute and not the style', (
 
   assert.match(kept.html, /<table[^>]*border="1"/, 'the attribute is what OneNote acts on');
   assert.match(kept.html, /<td style="border:1px solid">/, 'and every cell carries its own');
+  // The cell note is separate from the border one, and named in terms of
+  // cells: "keeping the style of the table it replaces" is what the preview
+  // said while it was shading every cell of a task table, and that reads as a
+  // promise that nothing changed.
   assert.deepEqual(kept.notes, [
     'style of the table it replaces',
+    'each cell keeps the styling of the cell it replaces, in order',
     'the borders of the table it replaces',
   ]);
 
