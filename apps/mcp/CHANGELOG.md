@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.3.1](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v2.3.0...artist-mcp-v2.3.1) (2026-09-12)
+
+
+### Bug Fixes
+
+* **mcp:** keep each cell's own styling when a table is replaced ([a7e60f5](https://github.com/ManudotaORG/artist-mcp/commit/a7e60f5d3992d326f0878e787bfc0a5f2c7b57c6)), closes [#181](https://github.com/ManudotaORG/artist-mcp/issues/181)
+* **mcp:** read a task tag OneNote moved onto a span ([6e0e7cc](https://github.com/ManudotaORG/artist-mcp/commit/6e0e7ccd7e4d9ec78506f4bde6f80e127dfd048c)), closes [#181](https://github.com/ManudotaORG/artist-mcp/issues/181)
+* **mcp:** read task tags in tables, and keep each cell's own styling ([0472227](https://github.com/ManudotaORG/artist-mcp/commit/0472227a8e0650697b6f704b65db233205f8189b))
+* **mcp:** read task tags in tables, and keep each cell's own styling ([abe1e0b](https://github.com/ManudotaORG/artist-mcp/commit/abe1e0b209353c364af21f1ebf22907074032fe0))
+
 ## [2.3.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v2.2.1...artist-mcp-v2.3.0) (2026-09-12)
 
 
