@@ -37,9 +37,25 @@ test('a span carrying no tag is left exactly as it was', () => {
   assert.equal(preserveTaskTags(heading), heading);
 });
 
-test('a span wrapping other markup is layout, and is not restructured', () => {
-  // Turning this into a paragraph would move the elements inside it rather
-  // than preserve the cell.
+test('a tag wrapping character styling is converted, styling and all', () => {
+  // The ordinary case, and the one that was missed. OneNote writes a tagged
+  // line this way whenever the text carries any character styling — which most
+  // do — and an earlier guard skipped anything containing markup at all. Six
+  // tags were dropped on a real copy before this was noticed; the page it had
+  // been checked against happened to carry no inner styling.
+  assert.equal(
+    preserveTaskTags('<span data-tag="to-do"><span style="color:black">Probeplan entwerfen</span></span>'),
+    '<p data-tag="to-do"><span style="color:black">Probeplan entwerfen</span></p>',
+  );
+});
+
+test('bold and italic inside a tagged line survive the conversion', () => {
+  const out = preserveTaskTags('<span data-tag="to-do:completed"><b>Fertig</b> und <i>geprüft</i></span>');
+  assert.equal(out, '<p data-tag="to-do:completed"><b>Fertig</b> und <i>geprüft</i></p>');
+});
+
+test('a span wrapping a block element is layout, and is not restructured', () => {
+  // A <p> cannot legally hold these, so converting would move them.
   const wrapping = '<span data-tag="to-do"><p>A</p><p>B</p></span>';
   assert.equal(preserveTaskTags(wrapping), wrapping);
 });
