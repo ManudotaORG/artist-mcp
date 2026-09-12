@@ -55,6 +55,22 @@ process.env.ARTIST_MCP_PACK_ROOT ??= join(process.cwd(), '..', 'mcp', 'agent-pac
  */
 process.env.ARTIST_MCP_AGENTS_DIR ??= join(process.cwd(), '..', '..', 'vendor', 'artist-pack');
 
+/**
+ * Replacing the bundled pack rather than layering over it.
+ *
+ * Hosted serves one notebook's workflow, and the vendored pack already carries
+ * every id the bundled one does plus four project types of its own. Layering
+ * therefore changed nothing it was meant to change and left a standing hazard:
+ * a bundled playbook staying in force because the custom pack happened not to
+ * name its id, which is a generic rule governing this notebook that nobody
+ * chose. Replacing makes the vendored directory the whole answer.
+ *
+ * Safe only because that directory is part of the deployment and refuses to
+ * fall back — see the layer's own note above. An empty one now throws rather
+ * than quietly serving the bundle.
+ */
+process.env.ARTIST_MCP_PACK_MODE ??= 'replace';
+
 // The tools reach Microsoft and Google over the network and read real notes;
 // nothing here is static, and pdf.js in the attachment path needs a real
 // runtime rather than the edge one.
