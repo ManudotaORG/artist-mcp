@@ -9,7 +9,7 @@
 
 import { MAX_TEXT_CHARS } from './attachments.js';
 import { GraphError } from './client.js';
-import { graphGet } from './api.js';
+import { FANOUT_LIMIT, graphGet, mapWithConcurrency } from './api.js';
 import { pageResources, type PageResource } from './page-attachments.js';
 import { editablePartsFrom, type EditablePart } from './onenote-patch.js';
 
@@ -161,25 +161,23 @@ export const listNotes = async (
 
   const usable = sections.filter((s) => typeof s.id === 'string' && ONENOTE_ID.test(s.id));
 
-  const perSection = await Promise.all(
-    usable.map(async (section) => {
-      const res = await graphGet(
-        `/me/onenote/sections/${section.id}/pages` +
-          // createdDateTime is selected only so the two can be compared. It
-          // costs nothing — the request is made either way.
-          '?$select=id,title,createdDateTime,lastModifiedDateTime&$top=100',
-        token,
-      );
-      const pages = ((await res.json()) as { value?: OneNotePage[] }).value ?? [];
-      return pages.map((p) => ({
-        id: p.id,
-        title: p.title ?? '(untitled)',
-        section: section.displayName ?? null,
-        notebook: section.parentNotebook?.displayName ?? null,
-        last_modified: p.lastModifiedDateTime ?? null,
-      }));
-    }),
-  );
+  const perSection = await mapWithConcurrency(usable, FANOUT_LIMIT, async (section) => {
+    const res = await graphGet(
+      `/me/onenote/sections/${section.id}/pages` +
+        // createdDateTime is selected only so the two can be compared. It
+        // costs nothing — the request is made either way.
+        '?$select=id,title,createdDateTime,lastModifiedDateTime&$top=100',
+      token,
+    );
+    const pages = ((await res.json()) as { value?: OneNotePage[] }).value ?? [];
+    return pages.map((p) => ({
+      id: p.id,
+      title: p.title ?? '(untitled)',
+      section: section.displayName ?? null,
+      notebook: section.parentNotebook?.displayName ?? null,
+      last_modified: p.lastModifiedDateTime ?? null,
+    }));
+  });
 
   const sectionSummaries: SectionSummary[] = usable.map((section, i) => ({
     id: section.id,
@@ -389,60 +387,58 @@ export const mapNotes = async (
   token: string,
   pages: NoteSummary[],
 ): Promise<{ sketches: NoteSketch[]; read_in_full: number }> => {
-  const sketches = await Promise.all(
-    pages.map(async (page): Promise<NoteSketch> => {
-      const base = { ...page, chars_total: null as number | null, error: null as string | null };
+  const sketches = await mapWithConcurrency(pages, FANOUT_LIMIT, async (page): Promise<NoteSketch> => {
+    const base = { ...page, chars_total: null as number | null, error: null as string | null };
 
-      let preview = '';
-      let reason: string | null = null;
-      try {
-        preview = await previewOf(token, page.id);
-        // A preview this thin cannot separate a working unit from a stray
-        // note, which is the one thing the map exists to do.
-        if (preview === '') reason = 'the page has no preview text';
-        else if (preview.length < PREVIEW_FLOOR) reason = `the preview was only ${preview.length} characters`;
-      } catch (err) {
-        reason = `the preview call failed (${err instanceof Error ? err.message : String(err)})`;
-      }
+    let preview = '';
+    let reason: string | null = null;
+    try {
+      preview = await previewOf(token, page.id);
+      // A preview this thin cannot separate a working unit from a stray
+      // note, which is the one thing the map exists to do.
+      if (preview === '') reason = 'the page has no preview text';
+      else if (preview.length < PREVIEW_FLOOR) reason = `the preview was only ${preview.length} characters`;
+    } catch (err) {
+      reason = `the preview call failed (${err instanceof Error ? err.message : String(err)})`;
+    }
 
-      if (reason === null) {
-        return {
-          ...base,
-          sketch: preview,
-          source: 'preview',
-          fell_back: null,
-          // Graph gives no page length and does not say it truncated, so a
-          // preview at full length is the only sign there is more. Inferred,
-          // and reported as an inference rather than as a fact.
-          more: preview.length >= PREVIEW_LIKELY_CAP,
-        };
-      }
+    if (reason === null) {
+      return {
+        ...base,
+        sketch: preview,
+        source: 'preview',
+        fell_back: null,
+        // Graph gives no page length and does not say it truncated, so a
+        // preview at full length is the only sign there is more. Inferred,
+        // and reported as an inference rather than as a fact.
+        more: preview.length >= PREVIEW_LIKELY_CAP,
+      };
+    }
 
-      // Case by case, and only for the pages that need it.
-      try {
-        const { text, chars_total } = await readNote(token, page.id);
-        return {
-          ...base,
-          sketch: text.slice(0, DERIVED_SKETCH_CHARS),
-          source: 'page',
-          fell_back: reason,
-          more: chars_total > DERIVED_SKETCH_CHARS,
-          chars_total,
-        };
-      } catch (err) {
-        // Both routes failed. Reported as a gap, never dropped from the map:
-        // a page missing from a survey reads as a page that is not there.
-        return {
-          ...base,
-          sketch: null,
-          source: 'none',
-          fell_back: reason,
-          more: false,
-          error: err instanceof Error ? err.message : String(err),
-        };
-      }
-    }),
-  );
+    // Case by case, and only for the pages that need it.
+    try {
+      const { text, chars_total } = await readNote(token, page.id);
+      return {
+        ...base,
+        sketch: text.slice(0, DERIVED_SKETCH_CHARS),
+        source: 'page',
+        fell_back: reason,
+        more: chars_total > DERIVED_SKETCH_CHARS,
+        chars_total,
+      };
+    } catch (err) {
+      // Both routes failed. Reported as a gap, never dropped from the map:
+      // a page missing from a survey reads as a page that is not there.
+      return {
+        ...base,
+        sketch: null,
+        source: 'none',
+        fell_back: reason,
+        more: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
 
   return { sketches, read_in_full: sketches.filter((s) => s.source === 'page').length };
 };

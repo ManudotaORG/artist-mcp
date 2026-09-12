@@ -56,6 +56,49 @@ const THROTTLE_BUDGET_MS = 8_000;
 const jittered = (ms: number): number => Math.round(ms / 2 + Math.random() * (ms / 2));
 
 /**
+ * How many provider requests one tool call may have in flight at once.
+ *
+ * Jitter above spreads the *retries* of a herd; nothing spread the herd's
+ * first arrival, and that is the burst the logs actually show — forty
+ * `attempt=1 waited=0s` refusals landing in the same millisecond, because a
+ * survey of a forty-page notebook opened forty Graph requests simultaneously.
+ * Every one of them then had to win its own retry ladder against a provider
+ * that was only busy because of them.
+ *
+ * Four is chosen to be boring rather than optimal: it is slow enough that
+ * OneNote answers instead of refusing, and parallel enough that a survey is
+ * still meaningfully faster than a loop. The number that matters is "not N".
+ */
+export const FANOUT_LIMIT = 4;
+
+/**
+ * `Promise.all(items.map(fn))` with a ceiling on how many run at once.
+ *
+ * Results stay in the order of `items`, and a rejection rejects the whole
+ * call, so this is a drop-in for the `Promise.all` it replaces: callers that
+ * already catch per item keep behaving exactly as they did.
+ */
+export const mapWithConcurrency = async <T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> => {
+  const results = new Array<R>(items.length) as R[];
+  let next = 0;
+
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const index = next++;
+      if (index >= items.length) return;
+      results[index] = await fn(items[index] as T, index);
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+};
+
+/**
  * What the provider actually asked for, when it says.
  *
  * Both Microsoft and Google send Retry-After on a 429, in seconds or as an
