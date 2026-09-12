@@ -121,15 +121,47 @@ const preserveTableBorders = (html) =>
  * place for the same reason: OneNote's output is not always valid as its input,
  * and a copy is exactly where that asymmetry bites.
  */
-const preserveTaskTags = (html) =>
-  html.replace(
-    /<span\b([^>]*\bdata-tag="[^"]*"[^>]*)>([\s\S]*?)<\/span>/gi,
-    (whole, attrs, inner) =>
-      // Only a span that carries a tag and holds no further markup. One
-      // wrapping other elements is layout, and turning it into a paragraph
-      // would restructure the cell rather than preserve it.
-      /<[a-z]/i.test(inner) ? whole : `<p${attrs}>${inner}</p>`,
-  );
+const preserveTaskTags = (html) => {
+  const open = /<span\b([^>]*\bdata-tag="[^"]*"[^>]*)>/gi;
+  let out = '';
+  let from = 0;
+  let match;
+
+  while ((match = open.exec(html)) !== null) {
+    // The matching close, found by counting rather than by a lazy `</span>`.
+    // OneNote nests these — a tagged line with any character styling arrives as
+    // `<span data-tag="to-do"><span style="color:black">…</span></span>` — and
+    // a non-greedy regex stops at the INNER close, producing
+    // `<p …><span …></p></span>`. Well-formed input, malformed output, and the
+    // create endpoint takes it without complaint.
+    let depth = 1;
+    const scan = /<span\b[^>]*>|<\/span>/gi;
+    scan.lastIndex = open.lastIndex;
+    let close = -1;
+    let tail;
+    while ((tail = scan.exec(html)) !== null) {
+      depth += tail[0][1] === '/' ? -1 : 1;
+      if (depth === 0) {
+        close = tail.index;
+        break;
+      }
+    }
+    if (close === -1) break;
+
+    const inner = html.slice(open.lastIndex, close);
+    out += html.slice(from, match.index);
+    // Skipped only when the span holds a BLOCK element, which a <p> cannot
+    // legally contain — converting one of those would restructure the cell.
+    // Character styling is exactly what a paragraph should keep.
+    out += /<(p|div|table|tr|t[dh]|[uo]l|li|h[1-6])\b/i.test(inner)
+      ? html.slice(match.index, close + '</span>'.length)
+      : `<p${match[1]}>${inner}</p>`;
+    from = close + '</span>'.length;
+    open.lastIndex = from;
+  }
+
+  return out + html.slice(from);
+};
 
 const titleOf = (html) => html.match(/<title>([\s\S]*?)<\/title>/i)?.[1]?.trim() ?? '(untitled)';
 
