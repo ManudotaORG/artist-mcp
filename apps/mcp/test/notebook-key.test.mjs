@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createServer } from '../dist/server.js';
-import { listNotes, mapNotes, notebookKeyFor } from '../dist/notes.js';
+import { listNotes, mapNotes, notebookKeyFor, listNotebooks } from '../dist/notes.js';
 
 /**
  * The gate that decides whether a notebook name was actually chosen.
@@ -64,6 +64,7 @@ const stub = () => {
 const freshServer = async () => {
   stub();
   const dispatch = async (op, args) => {
+    if (op === 'list_notebooks') return listNotebooks('token');
     if (op === 'list_notes') return listNotes('token');
     if (op === 'map_notes') return mapNotes('token', args.pages);
     throw new Error(`unexpected operation ${op}`);
