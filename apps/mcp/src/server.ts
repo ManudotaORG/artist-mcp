@@ -6,7 +6,7 @@ import { WRITE_CAPABILITIES, isGranted, type WriteCapability } from "./grants.js
 import { listAgentWorkflows, loadAgentWorkflow, type ResolvedEntry } from "./agents.js";
 import { GraphError } from "./client.js";
 import { call as localCall, type Operation } from "./dispatch.js";
-import { narrowNotes, narrowSections } from "./notes.js";
+import { narrowNotes, narrowSections, notebookKeyFor } from "./notes.js";
 
 /**
  * How a tool reaches the outside world. Injected rather than imported so the
@@ -154,20 +154,6 @@ const describeSize = (bytes: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-/**
- * Whether this server has ever handed back the list of notebooks.
- *
- * The one thing the server can actually know about where a notebook name came
- * from. It cannot see who typed it — but a name arriving before the list was
- * ever served cannot have come from the tool, so it came from somewhere outside
- * the conversation. That is the case worth catching: a session inferred a
- * notebook from saved context and answered about the wrong one, correctly and
- * without saying which.
- *
- * Only ever set to true, and only by serving the list. It says nothing after a
- * session has seen the notebooks once, which is the honest limit of it.
- */
-let notebooksHaveBeenListed = false;
 
 /**
  * Settle which notebook is being worked in, before anything reads a page.
@@ -180,6 +166,7 @@ let notebooksHaveBeenListed = false;
 const selectNotebook = async (
   call: Dispatch,
   notebook: string | undefined,
+  notebookKey: string | undefined,
   tool: string,
 ): Promise<
   | {
@@ -209,10 +196,15 @@ const selectNotebook = async (
   // A name that arrives before this session has ever seen the list did not come
   // from the tool, so it is either the user's or a guess — and the two are
   // indistinguishable from here. Ask, the same way an omitted name asks.
-  const unseenName = notebook !== undefined && !notebooksHaveBeenListed;
+  // Proven against the account's own notebooks rather than against a flag this
+  // process happens to hold. Required only where the choice is real: one
+  // notebook is not a choice, and demanding proof of a list with a single entry
+  // would be ceremony.
+  const expected = notebookKeyFor(names);
+  const proven = notebookKey !== undefined && notebookKey.trim().toLowerCase() === expected;
+  const unproven = notebook !== undefined && !proven;
 
-  if ((!notebook || unseenName) && names.length > 1) {
-    notebooksHaveBeenListed = true;
+  if ((!notebook || unproven) && names.length > 1) {
     const counts = names.map((name) => {
       const total = notes.filter((n) => (n.notebook ?? "(unnamed notebook)") === name).length;
       return `- ${name} — ${total} page${total === 1 ? "" : "s"}`;
@@ -220,19 +212,19 @@ const selectNotebook = async (
     return {
       message:
         `This account has ${names.length} notebooks:\n${counts.join("\n")}\n\n` +
-        (unseenName
-          ? `You asked for "${notebook}", but nothing in this conversation has ` +
-            "named a notebook yet. Ask the user which one they mean — including " +
-            "whether it is that one — and call " +
-            `${tool} again once they have said. A notebook you know of from ` +
-            "elsewhere is a guess, and a guess here produces an answer that is " +
-            "correct about the wrong pages."
+        `notebook_key: ${expected}\n\n` +
+        (unproven
+          ? `You asked for "${notebook}" without the notebook_key from this ` +
+            "list, so nothing in this conversation had seen the notebooks yet. " +
+            "Ask the user which one they mean — including whether it is that " +
+            `one — and call ${tool} again with that name AND the notebook_key ` +
+            "above. A notebook you know of from elsewhere is a guess, and a " +
+            "guess here produces an answer that is correct about the wrong pages."
           : `Ask the user which notebook to work in, then call ${tool} again ` +
-            "with that name. Do not guess, and do not work across notebooks " +
-            "unless the user asks for it."),
+            "with that name and the notebook_key above. Do not guess, and do " +
+            "not work across notebooks unless the user asks for it."),
     };
   }
-  notebooksHaveBeenListed = true;
 
   const wanted = notebook?.trim().toLowerCase();
   const pages = wanted
@@ -977,6 +969,16 @@ const createServer = async (
             "is indistinguishable from their choice and produces a confident " +
             "answer about the wrong notebook.",
         ),
+      notebook_key: z
+        .string()
+        .optional()
+        .describe(
+          "The notebook_key printed with the notebook list, passed back exactly " +
+            "as it was given. Required alongside `notebook` on an account with " +
+            "more than one notebook: it is how this tool knows the name came " +
+            "from the list rather than from somewhere outside the conversation. " +
+            "Never invent one, and never reuse one from an earlier session.",
+        ),
       since: z
         .string()
         .optional()
@@ -1001,9 +1003,9 @@ const createServer = async (
             "notebook.",
         ),
     },
-    async ({ notebook, since, limit }) => {
+    async ({ notebook, notebook_key, since, limit }) => {
       try {
-        const chosen = await selectNotebook(call, notebook, "list_notes");
+        const chosen = await selectNotebook(call, notebook, notebook_key, "list_notes");
         if ("message" in chosen) {
           return { content: [{ type: "text", text: chosen.message }] };
         }
@@ -1116,6 +1118,16 @@ const createServer = async (
             "not chosen one. Never fill it in from saved context or an earlier " +
             "session.",
         ),
+      notebook_key: z
+        .string()
+        .optional()
+        .describe(
+          "The notebook_key printed with the notebook list, passed back exactly " +
+            "as it was given. Required alongside `notebook` on an account with " +
+            "more than one notebook: it is how this tool knows the name came " +
+            "from the list rather than from somewhere outside the conversation. " +
+            "Never invent one, and never reuse one from an earlier session.",
+        ),
       since: z
         .string()
         .optional()
@@ -1133,9 +1145,9 @@ const createServer = async (
           `Cap how many pages are sketched, newest first. Defaults to ${DEFAULT_MAP_PAGES}.`,
         ),
     },
-    async ({ notebook, since, limit }) => {
+    async ({ notebook, notebook_key, since, limit }) => {
       try {
-        const chosen = await selectNotebook(call, notebook, "map_notes");
+        const chosen = await selectNotebook(call, notebook, notebook_key, "map_notes");
         if ("message" in chosen) {
           return { content: [{ type: "text", text: chosen.message }] };
         }

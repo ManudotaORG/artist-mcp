@@ -7,11 +7,36 @@
  * code alone.
  */
 
+import { createHash } from 'node:crypto';
 import { MAX_TEXT_CHARS } from './attachments.js';
 import { GraphError } from './client.js';
 import { FANOUT_LIMIT, graphGet, mapWithConcurrency } from './api.js';
 import { pageResources, type PageResource } from './page-attachments.js';
 import { editablePartsFrom, type EditablePart } from './onenote-patch.js';
+
+/**
+ * A short value proving a caller has actually seen this account's notebook list.
+ *
+ * The gate it serves used to be a module-level boolean — "has anything listed
+ * the notebooks yet" — which is a fair approximation of one CLI session and
+ * nonsense on hosted, where every request may land on a different instance and
+ * the flag is shared by every user on the one it lands on. It refused real
+ * selections on a cold instance and admitted unseen ones on a warm one.
+ *
+ * Derived from the notebook names rather than stored, so it needs no session
+ * and no shared storage: the same account yields the same key on any instance,
+ * a client that never saw the list cannot produce it, and a key from an account
+ * with different notebooks does not match. It is not a secret and does not need
+ * to be — it proves the list was seen, nothing more.
+ *
+ * Order and case are normalised so the key does not change when Graph returns
+ * the same notebooks in a different order.
+ */
+export const notebookKeyFor = (names: readonly string[]): string =>
+  createHash('sha256')
+    .update([...names].map((n) => n.trim().toLowerCase()).sort().join('\n'))
+    .digest('hex')
+    .slice(0, 8);
 
 /** Graph ids are opaque, but they are concatenated into URLs, so they are checked like any other value. */
 const ONENOTE_ID = /^[A-Za-z0-9!._~-]{1,300}$/;
