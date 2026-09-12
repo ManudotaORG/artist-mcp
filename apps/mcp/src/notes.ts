@@ -368,6 +368,41 @@ const previewOf = async (token: string, id: string): Promise<string> => {
 };
 
 /**
+ * How long a survey may spend before it returns what it has.
+ *
+ * The hosted route dies at sixty seconds (`maxDuration` in the MCP route), and
+ * dying there is the worst available outcome: the caller waits the full minute
+ * and receives nothing, not even the pages that were already sketched. Three
+ * of those in a row is what a chat client's retries look like from the logs.
+ *
+ * Forty-five leaves room for the answer to be assembled and sent after the
+ * last sketch lands. The number is a floor on usefulness rather than a tuning
+ * knob: whatever the notebook looks like, the survey now returns.
+ */
+export const MAP_DEADLINE_MS = 45_000;
+
+/**
+ * A page the deadline was reached before. Not an error and not an empty page —
+ * distinguishing it from both is the whole point, because a page that was never
+ * looked at must never read as a page with nothing on it.
+ */
+const NOT_REACHED = Symbol('not reached');
+
+type MapNotesOptions = {
+  deadlineMs?: number;
+  /** Injectable so a test can reach the deadline without spending the time. */
+  now?: () => number;
+};
+
+export type MapNotesResult = {
+  sketches: NoteSketch[];
+  read_in_full: number;
+  /** Pages the deadline cut off. Unsurveyed, and reported as such. */
+  not_reached: number;
+  elapsed_ms: number;
+};
+
+/**
  * Sketch every page in a chosen notebook, cheaply, so a notebook can be triaged
  * without reading all of it.
  *
@@ -386,8 +421,17 @@ const previewOf = async (token: string, id: string): Promise<string> => {
 export const mapNotes = async (
   token: string,
   pages: NoteSummary[],
-): Promise<{ sketches: NoteSketch[]; read_in_full: number }> => {
-  const sketches = await mapWithConcurrency(pages, FANOUT_LIMIT, async (page): Promise<NoteSketch> => {
+  { deadlineMs = MAP_DEADLINE_MS, now = Date.now }: MapNotesOptions = {},
+): Promise<MapNotesResult> => {
+  const startedAt = now();
+  const stopAt = startedAt + deadlineMs;
+
+  const outcomes = await mapWithConcurrency(pages, FANOUT_LIMIT, async (page): Promise<NoteSketch | typeof NOT_REACHED> => {
+    // Checked before the work, not during it: a page that has started is
+    // allowed to finish, because abandoning a request mid-flight costs the
+    // same quota as completing it and returns nothing for the spend.
+    if (now() >= stopAt) return NOT_REACHED;
+
     const base = { ...page, chars_total: null as number | null, error: null as string | null };
 
     let preview = '';
@@ -440,7 +484,30 @@ export const mapNotes = async (
     }
   });
 
-  return { sketches, read_in_full: sketches.filter((s) => s.source === 'page').length };
+  const sketches = outcomes.filter((o): o is NoteSketch => o !== NOT_REACHED);
+  const read_in_full = sketches.filter((s) => s.source === 'page').length;
+  const elapsed_ms = now() - startedAt;
+
+  // The one line that says where the time went.
+  //
+  // Until this existed the survey's cost was invisible: a run that finished
+  // reported `read_in_full` and a run that died at the function limit reported
+  // nothing at all, so the expensive case was the only one nobody could see.
+  // Fallbacks are the suspect — a preview costs one request, a fallback costs
+  // two plus the page's whole HTML — and this is what settles it with evidence
+  // rather than arithmetic.
+  console.warn(
+    `[artist-mcp] map_notes pages=${pages.length} sketched=${sketches.length} ` +
+      `read_in_full=${read_in_full} not_reached=${outcomes.length - sketches.length} ` +
+      `elapsed=${elapsed_ms}ms`,
+  );
+
+  return {
+    sketches,
+    read_in_full,
+    not_reached: outcomes.length - sketches.length,
+    elapsed_ms,
+  };
 };
 
 /** A page attachment as `read_note` reports it: named, never read. */

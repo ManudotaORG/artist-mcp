@@ -1193,9 +1193,10 @@ const createServer = async (
           };
         }
 
-        const { sketches, read_in_full } = await call<{
+        const { sketches, read_in_full, not_reached } = await call<{
           sketches: NoteSketch[];
           read_in_full: number;
+          not_reached: number;
         }>("map_notes", { pages });
 
         const blocks = sketches.map((s) => {
@@ -1232,6 +1233,18 @@ const createServer = async (
             `${read_in_full} of ${sketches.length} page${read_in_full === 1 ? "" : "s"} had no ` +
               "usable preview and were read in full instead, so those sketches " +
               "cover more of the page than the rest.",
+          );
+        }
+        if (not_reached > 0) {
+          // Said before the other truncations, because it is the one the
+          // caller did not ask for: `limit` is their own cap and this is the
+          // clock running out. A partial survey that does not say so is a
+          // survey the caller will read as complete.
+          caveats.push(
+            `Stopped after ${sketches.length} of ${sketches.length + not_reached} pages: the ` +
+              "survey ran out of time before the rest were reached. Those pages are " +
+              "UNSURVEYED, not empty — call map_notes again with a smaller `limit` to " +
+              "cover them, or read_note the ones you already know you need.",
           );
         }
         if (pages.length < matched) {
