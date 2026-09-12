@@ -149,6 +149,11 @@ export const listNotes = async (
   /** Whether `last_modified` on every page is really its creation date. */
   page_dates_are_creation_dates: boolean;
 }> => {
+  const startedAt = Date.now();
+  let sectionCount = 0;
+  let failure: string | null = null;
+
+  try {
   const sectionsRes = await graphGet(
     // lastModifiedDateTime is what the detector reads, and it is the field
     // that actually tracks change — unlike the one on a page. Selected here
@@ -160,6 +165,7 @@ export const listNotes = async (
   const sections = ((await sectionsRes.json()) as { value?: OneNoteSection[] }).value ?? [];
 
   const usable = sections.filter((s) => typeof s.id === 'string' && ONENOTE_ID.test(s.id));
+  sectionCount = usable.length;
 
   const perSection = await mapWithConcurrency(usable, FANOUT_LIMIT, async (section) => {
     const res = await graphGet(
@@ -203,6 +209,23 @@ export const listNotes = async (
   );
 
   return { notes, sections: sectionList, page_dates_are_creation_dates: creationDates };
+  } catch (err) {
+    failure = err instanceof Error ? err.message : String(err);
+    throw err;
+  } finally {
+    // Logged in a `finally`, and that is the whole point of it.
+    //
+    // The survey's own line sat after its await, so a run that threw logged
+    // nothing — and a throttled listing throws HERE, before the survey is ever
+    // reached, which is why a failed map produced nineteen 429s and no
+    // evidence. A measurement that exists only when nothing went wrong
+    // measures the wrong runs.
+    console.warn(
+      `[artist-mcp] list_notes sections=${sectionCount} ` +
+        `elapsed=${Date.now() - startedAt}ms` +
+        (failure === null ? '' : ` failed=${failure}`),
+    );
+  }
 };
 
 /**
@@ -423,14 +446,24 @@ export const mapNotes = async (
   pages: NoteSummary[],
   { deadlineMs = MAP_DEADLINE_MS, now = Date.now }: MapNotesOptions = {},
 ): Promise<MapNotesResult> => {
-  const startedAt = now();
-  const stopAt = startedAt + deadlineMs;
+  const mapStartedAt = now();
+  const stopAt = mapStartedAt + deadlineMs;
 
+  // Held outside the try so the `finally` can report them whatever happens.
+  let sketched = 0;
+  let readInFull = 0;
+  let notReached = 0;
+  let mapFailure: string | null = null;
+
+  try {
   const outcomes = await mapWithConcurrency(pages, FANOUT_LIMIT, async (page): Promise<NoteSketch | typeof NOT_REACHED> => {
     // Checked before the work, not during it: a page that has started is
     // allowed to finish, because abandoning a request mid-flight costs the
     // same quota as completing it and returns nothing for the spend.
-    if (now() >= stopAt) return NOT_REACHED;
+    if (now() >= stopAt) {
+      notReached += 1;
+      return NOT_REACHED;
+    }
 
     const base = { ...page, chars_total: null as number | null, error: null as string | null };
 
@@ -485,29 +518,33 @@ export const mapNotes = async (
   });
 
   const sketches = outcomes.filter((o): o is NoteSketch => o !== NOT_REACHED);
-  const read_in_full = sketches.filter((s) => s.source === 'page').length;
-  const elapsed_ms = now() - startedAt;
-
-  // The one line that says where the time went.
-  //
-  // Until this existed the survey's cost was invisible: a run that finished
-  // reported `read_in_full` and a run that died at the function limit reported
-  // nothing at all, so the expensive case was the only one nobody could see.
-  // Fallbacks are the suspect — a preview costs one request, a fallback costs
-  // two plus the page's whole HTML — and this is what settles it with evidence
-  // rather than arithmetic.
-  console.warn(
-    `[artist-mcp] map_notes pages=${pages.length} sketched=${sketches.length} ` +
-      `read_in_full=${read_in_full} not_reached=${outcomes.length - sketches.length} ` +
-      `elapsed=${elapsed_ms}ms`,
-  );
+  sketched = sketches.length;
+  readInFull = sketches.filter((s) => s.source === 'page').length;
 
   return {
     sketches,
-    read_in_full,
-    not_reached: outcomes.length - sketches.length,
-    elapsed_ms,
+    read_in_full: readInFull,
+    not_reached: notReached,
+    elapsed_ms: now() - mapStartedAt,
   };
+  } catch (err) {
+    mapFailure = err instanceof Error ? err.message : String(err);
+    throw err;
+  } finally {
+    // The line that says where the time went — on every run, the failed ones
+    // included, because those are the runs actually worth measuring.
+    //
+    // Fallbacks are the suspect: a preview costs one request, a fallback costs
+    // two plus the page's whole HTML, and arithmetic says forty previews at
+    // four concurrent should take about five seconds rather than sixty. This
+    // settles it with evidence instead.
+    console.warn(
+      `[artist-mcp] map_notes pages=${pages.length} sketched=${sketched} ` +
+        `read_in_full=${readInFull} not_reached=${notReached} ` +
+        `elapsed=${now() - mapStartedAt}ms` +
+        (mapFailure === null ? '' : ` failed=${mapFailure}`),
+    );
+  }
 };
 
 /** A page attachment as `read_note` reports it: named, never read. */
