@@ -652,10 +652,54 @@ export const inherit = (
     // And the cells, which carry their own border in what OneNote hands back.
     // Only when the replacement specifies none anywhere: a caller that styled
     // one cell has decided about all of them.
-    const cellStyle = /<t[dh]\b[^>]*\bstyle="([^"]*)"/i.exec(target.inner)?.[1];
-    if (cellStyle !== undefined && !/<t[dh]\b[^>]*\bstyle="/i.test(inner)) {
-      inner = inner.replace(/<(t[dh])(\b[^>]*?)?>/gi, `<$1$2 style="${cellStyle}">`);
-      carried = true;
+    //
+    // Cell by cell, in order. This used to take the FIRST cell's style and put
+    // it on every cell of the replacement, which is correct only for a table
+    // whose cells all look alike. On a table with a shaded header row the first
+    // cell IS the header, so replacing a twelve-row task table in place painted
+    // the header's `background-color:#EFEFEF` onto all 52 cells and the whole
+    // table came back grey. Nothing said so: the preview reported "keeping the
+    // style of the table it replaces", which was true and read as reassurance.
+    //
+    // Positional only when the shapes agree. A replacement with a different
+    // number of cells is a different table, and carrying styles across by index
+    // there would put a header's shading on whatever happened to land in that
+    // slot — the same bug with extra steps. The fallback is the style most of
+    // the target's cells carry, which is the body's, because being wrong about
+    // the header row is a great deal cheaper than being wrong about all of it.
+    if (!/<t[dh]\b[^>]*\bstyle="/i.test(inner)) {
+      const targetCells = target.inner.match(/<t[dh]\b[^>]*>/gi) ?? [];
+      const styles = targetCells.map((cell) => /\bstyle="([^"]*)"/i.exec(cell)?.[1]);
+      const replacementCells = inner.match(/<t[dh]\b[^>]*>/gi) ?? [];
+
+      if (styles.some((style) => style !== undefined)) {
+        const byIndex = replacementCells.length === targetCells.length;
+        const commonest = [...styles.filter((s): s is string => s !== undefined)]
+          .sort(
+            (a, b) =>
+              styles.filter((s) => s === b).length - styles.filter((s) => s === a).length,
+          )[0];
+
+        let seen = -1;
+        inner = inner.replace(/<(t[dh])(\b[^>]*?)?>/gi, (whole, tag: string, rest: string) => {
+          seen += 1;
+          const style = byIndex ? styles[seen] : commonest;
+          return style === undefined ? whole : `<${tag}${rest ?? ''} style="${style}">`;
+        });
+        carried = true;
+
+        // Said separately from the borders, and said in terms of cells.
+        // "Keeping the style of the table it replaces" is what the preview
+        // reported while it was shading every cell, and it is accurate enough
+        // to be read as a promise that nothing changed. A note that names what
+        // is being copied onto what can at least be disagreed with.
+        notes.push(
+          byIndex
+            ? 'each cell keeps the styling of the cell it replaces, in order'
+            : 'every cell takes the styling most of the replaced cells carried, ' +
+              'because the replacement has a different number of them',
+        );
+      }
     }
 
     if (carried) notes.push('the borders of the table it replaces');
