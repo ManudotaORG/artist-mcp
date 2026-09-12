@@ -7,11 +7,36 @@
  * code alone.
  */
 
+import { createHash } from 'node:crypto';
 import { MAX_TEXT_CHARS } from './attachments.js';
 import { GraphError } from './client.js';
-import { graphGet } from './api.js';
+import { FANOUT_LIMIT, graphGet, mapWithConcurrency } from './api.js';
 import { pageResources, type PageResource } from './page-attachments.js';
 import { editablePartsFrom, type EditablePart } from './onenote-patch.js';
+
+/**
+ * A short value proving a caller has actually seen this account's notebook list.
+ *
+ * The gate it serves used to be a module-level boolean — "has anything listed
+ * the notebooks yet" — which is a fair approximation of one CLI session and
+ * nonsense on hosted, where every request may land on a different instance and
+ * the flag is shared by every user on the one it lands on. It refused real
+ * selections on a cold instance and admitted unseen ones on a warm one.
+ *
+ * Derived from the notebook names rather than stored, so it needs no session
+ * and no shared storage: the same account yields the same key on any instance,
+ * a client that never saw the list cannot produce it, and a key from an account
+ * with different notebooks does not match. It is not a secret and does not need
+ * to be — it proves the list was seen, nothing more.
+ *
+ * Order and case are normalised so the key does not change when Graph returns
+ * the same notebooks in a different order.
+ */
+export const notebookKeyFor = (names: readonly string[]): string =>
+  createHash('sha256')
+    .update([...names].map((n) => n.trim().toLowerCase()).sort().join('\n'))
+    .digest('hex')
+    .slice(0, 8);
 
 /** Graph ids are opaque, but they are concatenated into URLs, so they are checked like any other value. */
 const ONENOTE_ID = /^[A-Za-z0-9!._~-]{1,300}$/;
@@ -100,11 +125,21 @@ export const htmlToText = (html: string): string =>
     .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, '\n')
-    // A to-do tag is an attribute on the paragraph, so it dies with the tag
-    // strip below unless it is turned into text first. Above the <li> rule
-    // too: that rule rewrites the opening tag, attribute and all.
-    .replace(/<(p|li)[^>]*data-tag="[^"]*\bto-do:completed\b[^"]*"[^>]*>/gi, '$&[x] ')
-    .replace(/<(p|li)[^>]*data-tag="[^"]*\bto-do\b(?!:)[^"]*"[^>]*>/gi, '$&[ ] ')
+    // A to-do tag is an attribute on the element, so it dies with the tag strip
+    // below unless it is turned into text first. Above the <li> rule too: that
+    // rule rewrites the opening tag, attribute and all.
+    //
+    // `span` is here because OneNote moves the tag there. A cell written as
+    // `<td><p data-tag="to-do">…</p></td>` comes back as
+    // `<td><span data-tag="to-do">…</span></td>` — the paragraph is gone and
+    // the tag is on the span. Matching only p and li meant every task inside a
+    // table read as untagged, so a page whose tasks live in an Aufgaben table
+    // reported none of them done however many were ticked. Found by writing
+    // twelve tags, reading the page back, and concluding from clean text that
+    // the write had failed; the tags were there and the reader could not see
+    // them.
+    .replace(/<(p|li|span)[^>]*data-tag="[^"]*\bto-do:completed\b[^"]*"[^>]*>/gi, '$&[x] ')
+    .replace(/<(p|li|span)[^>]*data-tag="[^"]*\bto-do\b(?!:)[^"]*"[^>]*>/gi, '$&[ ] ')
     .replace(/<li[^>]*>/gi, '- ')
     .replace(/<[^>]+>/g, '')
     // Numeric entities first: OneNote emits these for accented characters, so
@@ -133,6 +168,47 @@ export const htmlToText = (html: string): string =>
     .trim();
 
 /**
+ * Which notebooks this account has, and nothing else.
+ *
+ * One Graph request. `listNotes` answers the same question as a side effect of
+ * fetching every page of every section — a hundred requests on an organised
+ * account — and the notebook question is asked far more often than the page
+ * one: every call that has to ask "which notebook?" paid for the pages of all
+ * of them to print a list of names.
+ *
+ * That is what was throttling the account. Graph refused with 20166, "the app
+ * has issued too many requests on behalf of this user", against a listing whose
+ * answer was already contained in the single request that starts it, since
+ * `parentNotebook` expands inline on the sections call.
+ *
+ * Counted in sections rather than pages, because a page count is exactly the
+ * thing that cannot be known without the hundred requests. A number that costs
+ * a hundred requests to be slightly more familiar is not worth it, and the
+ * count is only there to help the user recognise which notebook is which.
+ */
+export const listNotebooks = async (
+  token: string,
+): Promise<{ notebooks: { name: string; sections: number }[] }> => {
+  const res = await graphGet(
+    '/me/onenote/sections?$select=id,displayName' +
+      '&$expand=parentNotebook($select=displayName)&$top=100',
+    token,
+  );
+  const sections = ((await res.json()) as { value?: OneNoteSection[] }).value ?? [];
+
+  const counts = new Map<string, number>();
+  for (const section of sections) {
+    if (typeof section.id !== 'string' || !ONENOTE_ID.test(section.id)) continue;
+    const name = section.parentNotebook?.displayName ?? '(unnamed notebook)';
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+
+  return {
+    notebooks: [...counts].map(([name, sectionCount]) => ({ name, sections: sectionCount })),
+  };
+};
+
+/**
  * `/me/onenote/pages` looks like the obvious call and works right up until the
  * account has too many sections, at which point Graph fails the whole request
  * with error 20266 and tells you to page per section instead. Organised
@@ -149,6 +225,11 @@ export const listNotes = async (
   /** Whether `last_modified` on every page is really its creation date. */
   page_dates_are_creation_dates: boolean;
 }> => {
+  const startedAt = Date.now();
+  let sectionCount = 0;
+  let failure: string | null = null;
+
+  try {
   const sectionsRes = await graphGet(
     // lastModifiedDateTime is what the detector reads, and it is the field
     // that actually tracks change — unlike the one on a page. Selected here
@@ -160,26 +241,25 @@ export const listNotes = async (
   const sections = ((await sectionsRes.json()) as { value?: OneNoteSection[] }).value ?? [];
 
   const usable = sections.filter((s) => typeof s.id === 'string' && ONENOTE_ID.test(s.id));
+  sectionCount = usable.length;
 
-  const perSection = await Promise.all(
-    usable.map(async (section) => {
-      const res = await graphGet(
-        `/me/onenote/sections/${section.id}/pages` +
-          // createdDateTime is selected only so the two can be compared. It
-          // costs nothing — the request is made either way.
-          '?$select=id,title,createdDateTime,lastModifiedDateTime&$top=100',
-        token,
-      );
-      const pages = ((await res.json()) as { value?: OneNotePage[] }).value ?? [];
-      return pages.map((p) => ({
-        id: p.id,
-        title: p.title ?? '(untitled)',
-        section: section.displayName ?? null,
-        notebook: section.parentNotebook?.displayName ?? null,
-        last_modified: p.lastModifiedDateTime ?? null,
-      }));
-    }),
-  );
+  const perSection = await mapWithConcurrency(usable, FANOUT_LIMIT, async (section) => {
+    const res = await graphGet(
+      `/me/onenote/sections/${section.id}/pages` +
+        // createdDateTime is selected only so the two can be compared. It
+        // costs nothing — the request is made either way.
+        '?$select=id,title,createdDateTime,lastModifiedDateTime&$top=100',
+      token,
+    );
+    const pages = ((await res.json()) as { value?: OneNotePage[] }).value ?? [];
+    return pages.map((p) => ({
+      id: p.id,
+      title: p.title ?? '(untitled)',
+      section: section.displayName ?? null,
+      notebook: section.parentNotebook?.displayName ?? null,
+      last_modified: p.lastModifiedDateTime ?? null,
+    }));
+  });
 
   const sectionSummaries: SectionSummary[] = usable.map((section, i) => ({
     id: section.id,
@@ -205,6 +285,23 @@ export const listNotes = async (
   );
 
   return { notes, sections: sectionList, page_dates_are_creation_dates: creationDates };
+  } catch (err) {
+    failure = err instanceof Error ? err.message : String(err);
+    throw err;
+  } finally {
+    // Logged in a `finally`, and that is the whole point of it.
+    //
+    // The survey's own line sat after its await, so a run that threw logged
+    // nothing — and a throttled listing throws HERE, before the survey is ever
+    // reached, which is why a failed map produced nineteen 429s and no
+    // evidence. A measurement that exists only when nothing went wrong
+    // measures the wrong runs.
+    console.warn(
+      `[artist-mcp] list_notes sections=${sectionCount} ` +
+        `elapsed=${Date.now() - startedAt}ms` +
+        (failure === null ? '' : ` failed=${failure}`),
+    );
+  }
 };
 
 /**
@@ -370,6 +467,41 @@ const previewOf = async (token: string, id: string): Promise<string> => {
 };
 
 /**
+ * How long a survey may spend before it returns what it has.
+ *
+ * The hosted route dies at sixty seconds (`maxDuration` in the MCP route), and
+ * dying there is the worst available outcome: the caller waits the full minute
+ * and receives nothing, not even the pages that were already sketched. Three
+ * of those in a row is what a chat client's retries look like from the logs.
+ *
+ * Forty-five leaves room for the answer to be assembled and sent after the
+ * last sketch lands. The number is a floor on usefulness rather than a tuning
+ * knob: whatever the notebook looks like, the survey now returns.
+ */
+export const MAP_DEADLINE_MS = 45_000;
+
+/**
+ * A page the deadline was reached before. Not an error and not an empty page —
+ * distinguishing it from both is the whole point, because a page that was never
+ * looked at must never read as a page with nothing on it.
+ */
+const NOT_REACHED = Symbol('not reached');
+
+type MapNotesOptions = {
+  deadlineMs?: number;
+  /** Injectable so a test can reach the deadline without spending the time. */
+  now?: () => number;
+};
+
+export type MapNotesResult = {
+  sketches: NoteSketch[];
+  read_in_full: number;
+  /** Pages the deadline cut off. Unsurveyed, and reported as such. */
+  not_reached: number;
+  elapsed_ms: number;
+};
+
+/**
  * Sketch every page in a chosen notebook, cheaply, so a notebook can be triaged
  * without reading all of it.
  *
@@ -388,63 +520,107 @@ const previewOf = async (token: string, id: string): Promise<string> => {
 export const mapNotes = async (
   token: string,
   pages: NoteSummary[],
-): Promise<{ sketches: NoteSketch[]; read_in_full: number }> => {
-  const sketches = await Promise.all(
-    pages.map(async (page): Promise<NoteSketch> => {
-      const base = { ...page, chars_total: null as number | null, error: null as string | null };
+  { deadlineMs = MAP_DEADLINE_MS, now = Date.now }: MapNotesOptions = {},
+): Promise<MapNotesResult> => {
+  const mapStartedAt = now();
+  const stopAt = mapStartedAt + deadlineMs;
 
-      let preview = '';
-      let reason: string | null = null;
-      try {
-        preview = await previewOf(token, page.id);
-        // A preview this thin cannot separate a working unit from a stray
-        // note, which is the one thing the map exists to do.
-        if (preview === '') reason = 'the page has no preview text';
-        else if (preview.length < PREVIEW_FLOOR) reason = `the preview was only ${preview.length} characters`;
-      } catch (err) {
-        reason = `the preview call failed (${err instanceof Error ? err.message : String(err)})`;
-      }
+  // Held outside the try so the `finally` can report them whatever happens.
+  let sketched = 0;
+  let readInFull = 0;
+  let notReached = 0;
+  let mapFailure: string | null = null;
 
-      if (reason === null) {
-        return {
-          ...base,
-          sketch: preview,
-          source: 'preview',
-          fell_back: null,
-          // Graph gives no page length and does not say it truncated, so a
-          // preview at full length is the only sign there is more. Inferred,
-          // and reported as an inference rather than as a fact.
-          more: preview.length >= PREVIEW_LIKELY_CAP,
-        };
-      }
+  try {
+  const outcomes = await mapWithConcurrency(pages, FANOUT_LIMIT, async (page): Promise<NoteSketch | typeof NOT_REACHED> => {
+    // Checked before the work, not during it: a page that has started is
+    // allowed to finish, because abandoning a request mid-flight costs the
+    // same quota as completing it and returns nothing for the spend.
+    if (now() >= stopAt) {
+      notReached += 1;
+      return NOT_REACHED;
+    }
 
-      // Case by case, and only for the pages that need it.
-      try {
-        const { text, chars_total } = await readNote(token, page.id);
-        return {
-          ...base,
-          sketch: text.slice(0, DERIVED_SKETCH_CHARS),
-          source: 'page',
-          fell_back: reason,
-          more: chars_total > DERIVED_SKETCH_CHARS,
-          chars_total,
-        };
-      } catch (err) {
-        // Both routes failed. Reported as a gap, never dropped from the map:
-        // a page missing from a survey reads as a page that is not there.
-        return {
-          ...base,
-          sketch: null,
-          source: 'none',
-          fell_back: reason,
-          more: false,
-          error: err instanceof Error ? err.message : String(err),
-        };
-      }
-    }),
-  );
+    const base = { ...page, chars_total: null as number | null, error: null as string | null };
 
-  return { sketches, read_in_full: sketches.filter((s) => s.source === 'page').length };
+    let preview = '';
+    let reason: string | null = null;
+    try {
+      preview = await previewOf(token, page.id);
+      // A preview this thin cannot separate a working unit from a stray
+      // note, which is the one thing the map exists to do.
+      if (preview === '') reason = 'the page has no preview text';
+      else if (preview.length < PREVIEW_FLOOR) reason = `the preview was only ${preview.length} characters`;
+    } catch (err) {
+      reason = `the preview call failed (${err instanceof Error ? err.message : String(err)})`;
+    }
+
+    if (reason === null) {
+      return {
+        ...base,
+        sketch: preview,
+        source: 'preview',
+        fell_back: null,
+        // Graph gives no page length and does not say it truncated, so a
+        // preview at full length is the only sign there is more. Inferred,
+        // and reported as an inference rather than as a fact.
+        more: preview.length >= PREVIEW_LIKELY_CAP,
+      };
+    }
+
+    // Case by case, and only for the pages that need it.
+    try {
+      const { text, chars_total } = await readNote(token, page.id);
+      return {
+        ...base,
+        sketch: text.slice(0, DERIVED_SKETCH_CHARS),
+        source: 'page',
+        fell_back: reason,
+        more: chars_total > DERIVED_SKETCH_CHARS,
+        chars_total,
+      };
+    } catch (err) {
+      // Both routes failed. Reported as a gap, never dropped from the map:
+      // a page missing from a survey reads as a page that is not there.
+      return {
+        ...base,
+        sketch: null,
+        source: 'none',
+        fell_back: reason,
+        more: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
+
+  const sketches = outcomes.filter((o): o is NoteSketch => o !== NOT_REACHED);
+  sketched = sketches.length;
+  readInFull = sketches.filter((s) => s.source === 'page').length;
+
+  return {
+    sketches,
+    read_in_full: readInFull,
+    not_reached: notReached,
+    elapsed_ms: now() - mapStartedAt,
+  };
+  } catch (err) {
+    mapFailure = err instanceof Error ? err.message : String(err);
+    throw err;
+  } finally {
+    // The line that says where the time went — on every run, the failed ones
+    // included, because those are the runs actually worth measuring.
+    //
+    // Fallbacks are the suspect: a preview costs one request, a fallback costs
+    // two plus the page's whole HTML, and arithmetic says forty previews at
+    // four concurrent should take about five seconds rather than sixty. This
+    // settles it with evidence instead.
+    console.warn(
+      `[artist-mcp] map_notes pages=${pages.length} sketched=${sketched} ` +
+        `read_in_full=${readInFull} not_reached=${notReached} ` +
+        `elapsed=${now() - mapStartedAt}ms` +
+        (mapFailure === null ? '' : ` failed=${mapFailure}`),
+    );
+  }
 };
 
 /** A page attachment as `read_note` reports it: named, never read. */

@@ -163,7 +163,27 @@ const resolveRegistry = async (): Promise<Resolution> => {
 
   const localRoot = localAgentRoot();
   if (localRoot) {
-    for (const entry of (await readLocalRegistry(localRoot)).entries) {
+    const local = (await readLocalRegistry(localRoot)).entries;
+
+    // Replacing rather than layering, where the deployment says so.
+    //
+    // Layering is right for a musician who has copied out a few playbooks and
+    // edited them: the ones they did not copy should keep working. Hosted is
+    // the other case — one pack, written for one notebook, and a bundled
+    // playbook surviving because the custom pack happens not to name its id is
+    // a generic rule in force that nobody chose. Cleared before the local
+    // entries go in, so what is served is exactly what is in that directory.
+    //
+    // Only ever narrows: a mode this does not recognise layers, which is what
+    // every install that has never heard of it already does.
+    // No emptiness check here, deliberately. `readLocalRegistry` already throws
+    // for a directory with no `artist/` and for one holding no Markdown, so by
+    // this line `local` cannot be empty and a guard would be unreachable code
+    // claiming to protect something. The strictness this mode needs is the
+    // strictness the local layer already has.
+    if (process.env.ARTIST_MCP_PACK_MODE === 'replace') byId.clear();
+
+    for (const entry of local) {
       byId.set(entry.id, { ...entry, source: 'local', origin: localRoot });
     }
   }

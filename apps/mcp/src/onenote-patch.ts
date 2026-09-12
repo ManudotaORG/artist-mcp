@@ -290,7 +290,28 @@ const ATTRS_BY_TAG: Record<string, Set<string>> = {
   td: new Set(['colspan', 'rowspan', 'align', 'valign', 'width']),
   th: new Set(['colspan', 'rowspan', 'align', 'valign', 'width']),
   a: new Set(['href']),
+  // A checkbox is a `data-tag` on the paragraph, so without this a task can be
+  // read and never written: `htmlToText` has rendered these as `[ ]` and `[x]`
+  // since before anything could write, and a patch carrying one was refused.
+  // Per-tag rather than global, because a tag on a table cell or a heading is
+  // not a task and OneNote renders it somewhere nobody asked for a checkbox.
+  p: new Set(['data-tag']),
+  li: new Set(['data-tag']),
 };
+
+/**
+ * The only `data-tag` values this tool will write.
+ *
+ * OneNote defines dozens — `important`, `question`, `remember-for-later` and
+ * the rest — and every one of them is a claim about the line it marks. These
+ * two are the only ones with an agreed meaning here: a task, and a task that is
+ * done. Anything else is a model deciding that something is important, which is
+ * exactly the kind of judgement that must not arrive as page markup.
+ *
+ * Narrow on purpose, and cheap to widen if a use turns up that is really asked
+ * for rather than merely available.
+ */
+const TASK_TAGS = new Set(['to-do', 'to-do:completed']);
 
 /**
  * What may appear in a `style`, which OneNote's own tables lean on heavily for
@@ -335,6 +356,16 @@ const checkAttributes = (tag: string, raw: string): void => {
         `<${tag}> carries the attribute "${name}", which this tool will not send to ` +
           'OneNote. Nothing was written. Keep the markup to tables, rows, cells, ' +
           'paragraphs, lists and simple emphasis.',
+      );
+    }
+
+    if (name === 'data-tag' && !TASK_TAGS.has(value)) {
+      throw failure(
+        `<${tag}> carries data-tag="${value}", which this tool will not send to ` +
+          'OneNote. Nothing was written. Only "to-do" and "to-do:completed" are ' +
+          'written: an open task and a done one. Every other OneNote tag states ' +
+          'something about the line — that it is important, or a question — and ' +
+          'that is the musician\'s to say, not this tool\'s.',
       );
     }
 
@@ -621,10 +652,54 @@ export const inherit = (
     // And the cells, which carry their own border in what OneNote hands back.
     // Only when the replacement specifies none anywhere: a caller that styled
     // one cell has decided about all of them.
-    const cellStyle = /<t[dh]\b[^>]*\bstyle="([^"]*)"/i.exec(target.inner)?.[1];
-    if (cellStyle !== undefined && !/<t[dh]\b[^>]*\bstyle="/i.test(inner)) {
-      inner = inner.replace(/<(t[dh])(\b[^>]*?)?>/gi, `<$1$2 style="${cellStyle}">`);
-      carried = true;
+    //
+    // Cell by cell, in order. This used to take the FIRST cell's style and put
+    // it on every cell of the replacement, which is correct only for a table
+    // whose cells all look alike. On a table with a shaded header row the first
+    // cell IS the header, so replacing a twelve-row task table in place painted
+    // the header's `background-color:#EFEFEF` onto all 52 cells and the whole
+    // table came back grey. Nothing said so: the preview reported "keeping the
+    // style of the table it replaces", which was true and read as reassurance.
+    //
+    // Positional only when the shapes agree. A replacement with a different
+    // number of cells is a different table, and carrying styles across by index
+    // there would put a header's shading on whatever happened to land in that
+    // slot — the same bug with extra steps. The fallback is the style most of
+    // the target's cells carry, which is the body's, because being wrong about
+    // the header row is a great deal cheaper than being wrong about all of it.
+    if (!/<t[dh]\b[^>]*\bstyle="/i.test(inner)) {
+      const targetCells = target.inner.match(/<t[dh]\b[^>]*>/gi) ?? [];
+      const styles = targetCells.map((cell) => /\bstyle="([^"]*)"/i.exec(cell)?.[1]);
+      const replacementCells = inner.match(/<t[dh]\b[^>]*>/gi) ?? [];
+
+      if (styles.some((style) => style !== undefined)) {
+        const byIndex = replacementCells.length === targetCells.length;
+        const commonest = [...styles.filter((s): s is string => s !== undefined)]
+          .sort(
+            (a, b) =>
+              styles.filter((s) => s === b).length - styles.filter((s) => s === a).length,
+          )[0];
+
+        let seen = -1;
+        inner = inner.replace(/<(t[dh])(\b[^>]*?)?>/gi, (whole, tag: string, rest: string) => {
+          seen += 1;
+          const style = byIndex ? styles[seen] : commonest;
+          return style === undefined ? whole : `<${tag}${rest ?? ''} style="${style}">`;
+        });
+        carried = true;
+
+        // Said separately from the borders, and said in terms of cells.
+        // "Keeping the style of the table it replaces" is what the preview
+        // reported while it was shading every cell, and it is accurate enough
+        // to be read as a promise that nothing changed. A note that names what
+        // is being copied onto what can at least be disagreed with.
+        notes.push(
+          byIndex
+            ? 'each cell keeps the styling of the cell it replaces, in order'
+            : 'every cell takes the styling most of the replaced cells carried, ' +
+              'because the replacement has a different number of them',
+        );
+      }
     }
 
     if (carried) notes.push('the borders of the table it replaces');

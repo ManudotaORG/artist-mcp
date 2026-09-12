@@ -6,7 +6,7 @@
  */
 
 import { GraphError } from './client.js';
-import { gmailGet } from './api.js';
+import { FANOUT_LIMIT, gmailGet, mapWithConcurrency } from './api.js';
 import { htmlToText } from './notes.js';
 
 /** Gmail ids are opaque hex-ish strings; anything else never reaches a URL. */
@@ -154,26 +154,24 @@ export const listEmails = async (token: string, rawQuery: unknown) => {
     .map((m) => m.id)
     .filter((id) => typeof id === 'string' && GMAIL_ID.test(id));
 
-  const emails = await Promise.all(
-    ids.map(async (id) => {
-      const res = await gmailGet(
-        `/users/me/messages/${encodeURIComponent(id)}` +
-          '?format=metadata&metadataHeaders=Subject&metadataHeaders=From' +
-          '&metadataHeaders=To&metadataHeaders=Date',
-        token,
-      );
-      const msg = (await res.json()) as GmailMessage;
-      return {
-        id: msg.id,
-        thread_id: msg.threadId ?? null,
-        subject: header(msg.payload?.headers, 'Subject') ?? '(no subject)',
-        from: header(msg.payload?.headers, 'From'),
-        to: header(msg.payload?.headers, 'To'),
-        date: header(msg.payload?.headers, 'Date'),
-        snippet: msg.snippet ?? null,
-      };
-    }),
-  );
+  const emails = await mapWithConcurrency(ids, FANOUT_LIMIT, async (id) => {
+    const res = await gmailGet(
+      `/users/me/messages/${encodeURIComponent(id)}` +
+        '?format=metadata&metadataHeaders=Subject&metadataHeaders=From' +
+        '&metadataHeaders=To&metadataHeaders=Date',
+      token,
+    );
+    const msg = (await res.json()) as GmailMessage;
+    return {
+      id: msg.id,
+      thread_id: msg.threadId ?? null,
+      subject: header(msg.payload?.headers, 'Subject') ?? '(no subject)',
+      from: header(msg.payload?.headers, 'From'),
+      to: header(msg.payload?.headers, 'To'),
+      date: header(msg.payload?.headers, 'Date'),
+      snippet: msg.snippet ?? null,
+    };
+  });
 
   return { emails };
 };

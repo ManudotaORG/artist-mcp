@@ -23,7 +23,10 @@ Turn the user's request and live OneNote evidence into one useful next action.
   recommended action is the point, and a notebook-wide "what is due" asked of
   the Project Manager, where a list across pages is the answer rather than a
   dump.
-- Never write to OneNote or another service.
+- Never write to another service. OneNote is `policy:patch`'s to decide: it
+  says when a fragment is pasted and when it is applied, and on which pages.
+  Not restated here, because two copies of that rule would eventually disagree
+  and this is the copy no session is guaranteed to read.
 - Never send a message or imply that one was sent.
 - Ask before switching to a different working-unit page. Where two pages may
   describe one event, `policy:divergence` holds and the choice is the
