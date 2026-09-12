@@ -32,6 +32,29 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
  */
 process.env.ARTIST_MCP_PACK_ROOT ??= join(process.cwd(), '..', 'mcp', 'agent-pack');
 
+/**
+ * The custom pack, layered over the bundled one.
+ *
+ * Hosted runs the playbooks in `vendor/artist-pack` — the musician's own, kept
+ * in a separate repository and vendored in at a recorded commit. Layered rather
+ * than swapped in: entries shadow the bundled pack by id, so the four extra
+ * project types arrive without forking the thirteen files that did not change,
+ * and a playbook added by a later release still reaches hosted.
+ *
+ * `AGENTS_DIR` is named for the musician editing files at their own terminal,
+ * which is where it started. Here the directory is part of the deployment and
+ * the same for every caller — pack resolution is process-wide and has no
+ * per-user dimension, unlike tokens and grants, which are read per request.
+ *
+ * This layer does not fall back: a directory that cannot be read throws rather
+ * than quietly serving the bundled pack, because reporting playbooks that are
+ * not the ones in force is the one thing this layer must not do. On hosted that
+ * means a packaging slip is an outage rather than a silent substitution, which
+ * is the trade the strictness was chosen for. `vendored-pack.test.mjs` is what
+ * keeps the slip from reaching a deploy.
+ */
+process.env.ARTIST_MCP_AGENTS_DIR ??= join(process.cwd(), '..', '..', 'vendor', 'artist-pack');
+
 // The tools reach Microsoft and Google over the network and read real notes;
 // nothing here is static, and pdf.js in the attachment path needs a real
 // runtime rather than the edge one.
