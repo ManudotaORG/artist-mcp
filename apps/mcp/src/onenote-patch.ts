@@ -290,7 +290,28 @@ const ATTRS_BY_TAG: Record<string, Set<string>> = {
   td: new Set(['colspan', 'rowspan', 'align', 'valign', 'width']),
   th: new Set(['colspan', 'rowspan', 'align', 'valign', 'width']),
   a: new Set(['href']),
+  // A checkbox is a `data-tag` on the paragraph, so without this a task can be
+  // read and never written: `htmlToText` has rendered these as `[ ]` and `[x]`
+  // since before anything could write, and a patch carrying one was refused.
+  // Per-tag rather than global, because a tag on a table cell or a heading is
+  // not a task and OneNote renders it somewhere nobody asked for a checkbox.
+  p: new Set(['data-tag']),
+  li: new Set(['data-tag']),
 };
+
+/**
+ * The only `data-tag` values this tool will write.
+ *
+ * OneNote defines dozens — `important`, `question`, `remember-for-later` and
+ * the rest — and every one of them is a claim about the line it marks. These
+ * two are the only ones with an agreed meaning here: a task, and a task that is
+ * done. Anything else is a model deciding that something is important, which is
+ * exactly the kind of judgement that must not arrive as page markup.
+ *
+ * Narrow on purpose, and cheap to widen if a use turns up that is really asked
+ * for rather than merely available.
+ */
+const TASK_TAGS = new Set(['to-do', 'to-do:completed']);
 
 /**
  * What may appear in a `style`, which OneNote's own tables lean on heavily for
@@ -335,6 +356,16 @@ const checkAttributes = (tag: string, raw: string): void => {
         `<${tag}> carries the attribute "${name}", which this tool will not send to ` +
           'OneNote. Nothing was written. Keep the markup to tables, rows, cells, ' +
           'paragraphs, lists and simple emphasis.',
+      );
+    }
+
+    if (name === 'data-tag' && !TASK_TAGS.has(value)) {
+      throw failure(
+        `<${tag}> carries data-tag="${value}", which this tool will not send to ` +
+          'OneNote. Nothing was written. Only "to-do" and "to-do:completed" are ' +
+          'written: an open task and a done one. Every other OneNote tag states ' +
+          'something about the line — that it is important, or a question — and ' +
+          'that is the musician\'s to say, not this tool\'s.',
       );
     }
 
