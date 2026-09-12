@@ -39,6 +39,53 @@ format, but may not store secrets, copy source systems, or turn local files into
 claims, queues, locks, reviews, or other coordination infrastructure. The
 backend never stores this local state.
 
+## What hosted runs
+
+Hosted does not run the bundled pack on its own. `apps/web/src/app/api/mcp/route.ts`
+sets `ARTIST_MCP_AGENTS_DIR` to `vendor/artist-pack`, so the custom pack is
+layered over the bundled one by exactly the mechanism a musician's own directory
+uses: entries shadow by id, and anything the custom pack does not define — plus
+any playbook a later release adds — still comes from the bundle. Today that
+resolves to 21 entries, the 17 bundled ids all shadowed and four project types
+added (BCW, Gastdirigat, Festivalleitung, GPT).
+
+The pack's home is `ManudotaORG/artist-mcp-custom-pack`, which is **private**.
+That is why the files are committed here rather than pulled in as a git
+submodule: a submodule would make the deploy depend on Vercel holding
+credentials for a second private repository, and one it cannot clone fails the
+build outright. `scripts/sync-artist-pack.mjs` copies the Markdown in and
+records the commit it came from in `vendor/artist-pack/SOURCE.json`:
+
+```bash
+node scripts/sync-artist-pack.mjs ~/artist-mcp
+```
+
+It refuses a clone with uncommitted changes, so the recorded commit always
+describes what was copied, and it copies `.md` only — the pack directory
+accumulates `.bak-*` copies that would otherwise put a second copy of executable
+policy in the deploy. **An edit in the pack repository does not reach hosted until
+it is synced, committed and deployed.** Setting an environment variable and
+hitting redeploy brings the variable, not the files.
+
+Two things about this differ from the local case and are easy to get wrong.
+
+`ARTIST_MCP_AGENTS_DIR` is named for a musician editing files at their own
+terminal, which is where it started. On hosted the directory is part of the
+deployment and the same for **every** caller: pack resolution is process-wide and
+has no per-user dimension, unlike tokens and write grants, which are read per
+request precisely so one user's cannot reach another's session. Whatever is in
+`vendor/artist-pack` is what every hosted connection gets.
+
+And this layer does not fall back. A broken directory throws rather than quietly
+serving the bundled pack — correct, because reporting playbooks that are not the
+ones in force is the one thing it must not do, but on hosted it means a
+packaging slip is an outage rather than a silent substitution. That is the trade
+the strictness was chosen for, so the guard belongs earlier:
+`scripts/vendored-pack.test.mjs` asserts the layout rules the runtime enforces,
+and that the route and `next.config.ts` name the same directory. A route that
+points at a directory the trace does not upload resolves on a developer's
+machine and throws in production.
+
 ## Changing it
 
 Workflow Markdown is executable policy, not documentation. When it changes,
