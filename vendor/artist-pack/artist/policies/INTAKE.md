@@ -213,4 +213,7 @@ doing first and why. Once that item is agreed, intake is over.
 - A gap belongs in the inventory, not closed. `policy:evidence` covers how far a
   search may go, `policy:divergence` covers contradictions between pages, and
   `policy:answering` covers what to state and how firmly.
-- Never write, send, book, or edit anything. The musician pastes.
+- Never send or book anything, and change no page while intake is running.
+  Intake is a survey: it produces the inventory and the one agreed item, and a
+  patch that follows is `policy:patch`'s — including whether the musician
+  pastes it or this tool applies it.
