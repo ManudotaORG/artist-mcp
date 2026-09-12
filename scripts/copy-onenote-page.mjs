@@ -30,6 +30,7 @@
  *   node scripts/copy-onenote-page.mjs --to <section-id> --dry-run <page-id>
  */
 
+import { pathToFileURL } from 'node:url';
 import { accessTokenFor } from '../apps/mcp/dist/oauth.js';
 
 const GRAPH = 'https://graph.microsoft.com/v1.0/me/onenote';
@@ -102,6 +103,34 @@ const preserveTableBorders = (html) =>
     return bordered ? `<table border="1"${attrs}>` : tag;
   });
 
+/**
+ * Task tags, which OneNote will not accept back in the shape it emits them.
+ *
+ * A checkbox written as `<p data-tag="to-do">…</p>` inside a cell comes back
+ * from Graph as `<span data-tag="to-do">…</span>`. Send that span to the page
+ * CREATE endpoint and the tag is dropped silently — the text survives, the
+ * checkbox does not. Sending the paragraph form instead keeps it, and OneNote
+ * converts it back to a span on the way in.
+ *
+ * So a page copied verbatim loses every task tag it had, which is the whole
+ * task state of a CL Aufgabe page. Measured rather than reasoned: a create
+ * carrying all five forms came back with the four paragraph ones kept and the
+ * span one gone.
+ *
+ * Same class of defect as `preserveTableBorders` above, and fixed in the same
+ * place for the same reason: OneNote's output is not always valid as its input,
+ * and a copy is exactly where that asymmetry bites.
+ */
+const preserveTaskTags = (html) =>
+  html.replace(
+    /<span\b([^>]*\bdata-tag="[^"]*"[^>]*)>([\s\S]*?)<\/span>/gi,
+    (whole, attrs, inner) =>
+      // Only a span that carries a tag and holds no further markup. One
+      // wrapping other elements is layout, and turning it into a paragraph
+      // would restructure the cell rather than preserve it.
+      /<[a-z]/i.test(inner) ? whole : `<p${attrs}>${inner}</p>`,
+  );
+
 const titleOf = (html) => html.match(/<title>([\s\S]*?)<\/title>/i)?.[1]?.trim() ?? '(untitled)';
 
 const listSections = async (token, wantedNotebook) => {
@@ -148,7 +177,7 @@ const copyPage = async (token, sectionId, pageId, { dryRun }) => {
     return { ok: false };
   }
 
-  const html = preserveTableBorders(source.text);
+  const html = preserveTaskTags(preserveTableBorders(source.text));
   const title = titleOf(html);
   const blockers = unportable(html);
 
@@ -378,4 +407,13 @@ const main = async () => {
   }
 };
 
-main().catch((err) => die(err.stack ?? err.message));
+// Run only when invoked, so the pure transforms above can be imported by a
+// test. They are the parts that encode what OneNote silently drops, and those
+// were both learned from a page that came back wrong rather than from the
+// documentation — which is exactly the kind of knowledge that needs a test
+// holding it in place.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => die(err.stack ?? err.message));
+}
+
+export { preserveTableBorders, preserveTaskTags };
