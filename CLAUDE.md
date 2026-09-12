@@ -228,3 +228,13 @@ docs/           the brief
   remote registry falls back to the bundle; a broken local directory does not.
   The user said which rules govern their work, and quietly running different
   ones misreports what is in force. See `docs/agent-pack.md`.
+
+  **Hosted now depends on that layer**, so the cost of the strictness landed
+  somewhere new. `route.ts` points `ARTIST_MCP_AGENTS_DIR` at
+  `vendor/artist-pack` — the custom pack, vendored in from a private repository
+  at a recorded commit — and a directory that cannot be read takes hosted down
+  for everyone rather than substituting the bundle. `scripts/vendored-pack.test.mjs`
+  is the guard; it also asserts the route and `next.config.ts` name the same
+  directory, because a path the trace does not upload works locally and throws
+  in production. Unlike tokens and write grants, pack resolution is
+  process-wide: what is in that directory is what **every** hosted caller gets.
