@@ -25,6 +25,7 @@ const srcRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../src');
 
 /** Written out by hand, deliberately. A derived expectation would assert nothing. */
 const SANCTIONED = {
+  list_notebooks: 'read',
   list_notes: 'read',
   map_notes: 'read',
   read_note: 'read',

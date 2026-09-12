@@ -27,7 +27,7 @@ import {
   rescheduleEvent,
 } from './calendar.js';
 import { listEmails, readEmail } from './mail.js';
-import { listNotes, mapNotes, readNote } from './notes.js';
+import { listNotebooks, listNotes, mapNotes, readNote } from './notes.js';
 import { applyEdit, previewEdit } from './onenote-patch.js';
 import { createPage, previewPage } from './onenote-write.js';
 import { accessTokenFor } from './oauth.js';
@@ -51,6 +51,7 @@ import { type ProviderName, loadTokens } from './tokens.js';
  * fails on any edit to this table so that the change has to be deliberate.
  */
 export const OPERATIONS = {
+  list_notebooks: { provider: 'microsoft', effect: 'read' },
   list_notes: { provider: 'microsoft', effect: 'read' },
   map_notes: { provider: 'microsoft', effect: 'read' },
   read_note: { provider: 'microsoft', effect: 'read' },
@@ -150,6 +151,8 @@ export const dispatchWith =
     const token = await resolve(PROVIDER_FOR[op]);
 
     switch (op) {
+      case 'list_notebooks':
+        return (await listNotebooks(token)) as T;
       case 'list_notes':
         return (await listNotes(token)) as T;
       case 'map_notes':
