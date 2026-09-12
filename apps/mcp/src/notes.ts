@@ -125,11 +125,21 @@ export const htmlToText = (html: string): string =>
     .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, '\n')
-    // A to-do tag is an attribute on the paragraph, so it dies with the tag
-    // strip below unless it is turned into text first. Above the <li> rule
-    // too: that rule rewrites the opening tag, attribute and all.
-    .replace(/<(p|li)[^>]*data-tag="[^"]*\bto-do:completed\b[^"]*"[^>]*>/gi, '$&[x] ')
-    .replace(/<(p|li)[^>]*data-tag="[^"]*\bto-do\b(?!:)[^"]*"[^>]*>/gi, '$&[ ] ')
+    // A to-do tag is an attribute on the element, so it dies with the tag strip
+    // below unless it is turned into text first. Above the <li> rule too: that
+    // rule rewrites the opening tag, attribute and all.
+    //
+    // `span` is here because OneNote moves the tag there. A cell written as
+    // `<td><p data-tag="to-do">…</p></td>` comes back as
+    // `<td><span data-tag="to-do">…</span></td>` — the paragraph is gone and
+    // the tag is on the span. Matching only p and li meant every task inside a
+    // table read as untagged, so a page whose tasks live in an Aufgaben table
+    // reported none of them done however many were ticked. Found by writing
+    // twelve tags, reading the page back, and concluding from clean text that
+    // the write had failed; the tags were there and the reader could not see
+    // them.
+    .replace(/<(p|li|span)[^>]*data-tag="[^"]*\bto-do:completed\b[^"]*"[^>]*>/gi, '$&[x] ')
+    .replace(/<(p|li|span)[^>]*data-tag="[^"]*\bto-do\b(?!:)[^"]*"[^>]*>/gi, '$&[ ] ')
     .replace(/<li[^>]*>/gi, '- ')
     .replace(/<[^>]+>/g, '')
     // Numeric entities first: OneNote emits these for accented characters, so
