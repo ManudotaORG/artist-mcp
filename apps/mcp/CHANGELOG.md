@@ -1,5 +1,40 @@
 # Changelog
 
+## [2.3.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v2.2.1...artist-mcp-v2.3.0) (2026-09-12)
+
+
+### Features
+
+* **mcp:** let hosted run only the custom pack, and stop refusing its writes ([246b611](https://github.com/ManudotaORG/artist-mcp/commit/246b61137dfb5a63680e052b323c12348848a66f))
+* **mcp:** let hosted run only the custom pack, and stop refusing its writes ([30ad158](https://github.com/ManudotaORG/artist-mcp/commit/30ad158606b253c9691d9428b63b55f2ca3226ff))
+* **mcp:** let hosted run only the custom pack, and stop refusing its writes ([a77b33c](https://github.com/ManudotaORG/artist-mcp/commit/a77b33c53d5aa5e42f2d42ef8190c5ad2ad83cd1)), closes [#181](https://github.com/ManudotaORG/artist-mcp/issues/181)
+* **mcp:** return a partial survey at a deadline instead of timing out ([3cd184a](https://github.com/ManudotaORG/artist-mcp/commit/3cd184ab56fa20089212b3532382f357622d70d0))
+* **mcp:** return a partial survey at a deadline instead of timing out ([68a0b0c](https://github.com/ManudotaORG/artist-mcp/commit/68a0b0caa511009a3fcb9907b75260e608f03dbe))
+* **mcp:** return a partial survey at a deadline instead of timing out ([c4b33e9](https://github.com/ManudotaORG/artist-mcp/commit/c4b33e9c7f53e4ec0b4d555444c70091c0ea6e72)), closes [#170](https://github.com/ManudotaORG/artist-mcp/issues/170)
+* **mcp:** write OneNote task tags, so a finished task can be ticked ([216b315](https://github.com/ManudotaORG/artist-mcp/commit/216b315326147c723fa40bd1c3802feb7c9b40cc))
+* **mcp:** write OneNote task tags, so a finished task can be ticked ([16cc557](https://github.com/ManudotaORG/artist-mcp/commit/16cc55738f2459dd54cad7701dca845f84e14de1))
+* **mcp:** write OneNote task tags, so a finished task can be ticked ([538c8f3](https://github.com/ManudotaORG/artist-mcp/commit/538c8f316f1ed8c8c141195bb62bd6e7cba18549)), closes [#181](https://github.com/ManudotaORG/artist-mcp/issues/181)
+
+
+### Bug Fixes
+
+* **mcp:** bound the provider fanout so a survey stops throttling itself ([189ec1e](https://github.com/ManudotaORG/artist-mcp/commit/189ec1e5dff12c382adc2a70a28ebd2f3fb87bbb))
+* **mcp:** bound the provider fanout so a survey stops throttling itself ([122665e](https://github.com/ManudotaORG/artist-mcp/commit/122665ef993415cb5860fdbf42ccd245f3612a04))
+* **mcp:** bound the provider fanout so a survey stops throttling itself ([c815b03](https://github.com/ManudotaORG/artist-mcp/commit/c815b037c3b796e9067d1d367dd825618ed883d7))
+* **mcp:** log what a survey cost even when it fails ([8bf94e2](https://github.com/ManudotaORG/artist-mcp/commit/8bf94e223194d465359ab488828b7f4503b2b114))
+* **mcp:** log what a survey cost even when it fails ([ba82c6d](https://github.com/ManudotaORG/artist-mcp/commit/ba82c6df2d44f7e1b1042ab33c3b4261e820e5b1))
+* **mcp:** log what a survey cost even when it fails ([b9641bf](https://github.com/ManudotaORG/artist-mcp/commit/b9641bf0289b089e681cd3810d57196901a19efa)), closes [#170](https://github.com/ManudotaORG/artist-mcp/issues/170)
+* **mcp:** prove a notebook choice with a key instead of process state ([358fcc7](https://github.com/ManudotaORG/artist-mcp/commit/358fcc7edfda17dbc1363fdd351802bef3e3496b))
+* **mcp:** prove a notebook choice with a key instead of process state ([08dff61](https://github.com/ManudotaORG/artist-mcp/commit/08dff611efa771e2733363ba47fc3e4764aca182))
+* **mcp:** prove a notebook choice with a key instead of process state ([5bee257](https://github.com/ManudotaORG/artist-mcp/commit/5bee257b9b5e95a2fa2848805ede2275d199a6c3)), closes [#175](https://github.com/ManudotaORG/artist-mcp/issues/175)
+
+
+### Performance Improvements
+
+* **mcp:** answer the notebook question without reading every page ([e393408](https://github.com/ManudotaORG/artist-mcp/commit/e393408549de341573ff9c135680cd172b016e16))
+* **mcp:** answer the notebook question without reading every page ([67e3adc](https://github.com/ManudotaORG/artist-mcp/commit/67e3adcb58d03f7b19cdc0589e50d3345ef74d3b))
+* **mcp:** answer the notebook question without reading every page ([15a3ec5](https://github.com/ManudotaORG/artist-mcp/commit/15a3ec5c0c7974c986eeeafb0b687a0e6b33f80d)), closes [#170](https://github.com/ManudotaORG/artist-mcp/issues/170)
+
 ## [2.2.1](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v2.2.0...artist-mcp-v2.2.1) (2026-09-02)
 
 
