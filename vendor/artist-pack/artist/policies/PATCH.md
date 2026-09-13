@@ -53,6 +53,11 @@ So offer to apply only where you can see the page is this tool's own:
 
 - **A page created in this conversation** — a consolidated page, a filled-out
   template — may be offered as an applied change.
+- **The CL Aufgaben page `list_notes` names for a section** may be offered as an
+  applied change too, templated or not. These pages were created by this tool,
+  and an update from chat is what they are maintained for — see "An update from
+  chat" below. If the write is refused anyway, say that it was and hand the same
+  change over to be pasted; do not retry.
 - **Everywhere else, hand it over to be pasted.** Their pages, pages from
   earlier sessions, pages you merely believe this tool made: a fragment, as
   always. This is narrower than the tool permits, deliberately. A needless paste
@@ -62,6 +67,63 @@ So offer to apply only where you can see the page is this tool's own:
 Never say which of the two it will be until you know. "I can update that for
 you" about a page you have not established is this tool's own is a promise made
 before the fact.
+
+## An update from chat
+
+The musician types what happened — "Melk is confirmed for the 17th", "I sent the
+programme to Cornelia" — and the project's CL Aufgaben page is corrected to say
+it. That message is the decision this policy waits for; it needs no second
+prompt to become one. Everything else here still applies: the preview, the yes
+in words, the whole table carried across.
+
+**Find the page with `list_notes` and `section`, never by memory or by title.**
+Pass the project as they named it and no notebook. The reply either names one CL
+Aufgaben page and the notebook it is in, or it asks a question — which season,
+which of two sections, which of two pages, or that the section has no page.
+Put that question to the musician as it stands. Do not answer it yourself from
+the date in their message, and where the reply flags a similarly named section
+in another season, ask before using the one it found. A section with no CL
+Aufgaben page means the update has nowhere to go: say so, and do not write it
+onto another page.
+
+**Read the page as it is now, then change only what the update settles.** Read
+it with its edit ids immediately before the preview, not earlier in the
+conversation. The change is computed against what the page says, never against
+its template, and the fields the update does not mention are not revisited.
+
+**The page's own conventions govern the values.** A templated CL Aufgaben page
+carries a `Template: … v1.1` line and states them under "Ausfüllkonventionen",
+and they are the rules this change follows. A page without that line has not
+been templated yet — every page will be, and some are not done. It is still
+this tool's page, so the update is applied to it all the same, as the smallest
+fragment under the heading the page already uses. What it lacks is conventions
+and a "Widersprüchliche Angaben" section, so: stamp a value from chat with its
+origin anyway, and where the update contradicts something the page documents,
+write nothing for that field — give both values in chat and say the page is not
+templated yet.
+
+On a templated page:
+
+- *Herkunft eines Werts.* A value from chat is not documented on any page, so it
+  is stamped where it lands with who said it and when, the way the page already
+  does — `(Angabe von Ruben, 13.09.2026)`. Use today's date for when it was said,
+  never as the date of the fact.
+- *Widersprüche.* Chat is one more source, not an override. Where the update
+  disagrees with a value a notebook page documents, the field becomes
+  `UNGEKLÄRT` and both values, each with its origin, go under "Widersprüchliche
+  Angaben". Say in chat that this is what happened and which page holds the
+  other value. Where the value being replaced is an earlier chat update, or is
+  `UNKNOWN`, there is nothing to contradict and it is simply replaced.
+- *UNKNOWN and Nicht einschlägig* stay exactly as written wherever the update
+  does not reach.
+
+**A finished task is ticked, per 0008.** "I sent the programme" sets
+`data-tag="to-do:completed"` on that task's line, leaving its wording alone. The
+line stays; nothing is deleted or rewritten into the past tense. Where the page
+also has a status cell for it, that cell changes in the same `changes` call.
+
+One message often settles two things — a date and a task. That is one preview
+with both changes, not two rounds.
 
 ## The smallest fragment that records it
 
@@ -263,4 +325,6 @@ thing that confirms what the page now holds.
   write on it, and their words are theirs wherever they put them.
 - Where a decision contradicts a value already on the page and that value is not
   this tool's own text, say both and let them choose what to do with the old
-  one. Unchanged, and it is the common case.
+  one. Unchanged, and it is the common case. On a CL Aufgaben page the page's
+  own "Widersprüche" convention says what to do instead — see "An update from
+  chat".

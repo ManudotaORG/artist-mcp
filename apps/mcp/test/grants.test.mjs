@@ -177,7 +177,10 @@ test('a granted install names the write and carries the disputed-value rule', as
   const text = await briefingWith(['calendar-create']);
   assert.match(text, /calendar-create/);
   // The rule that matters most, in the surface that is always loaded.
-  assert.match(text, /disputed or UNKNOWN value may never be written/);
+  assert.match(text, /disputed or UNKNOWN value may never be written as though it were settled/);
+  // Recording a dispute as a dispute is allowed, and only that: never one side.
+  assert.match(text, /never write one side as the value/);
+  assert.match(text, /Recording the dispute itself is allowed where the page has a place for it/);
   // OneNote must stay named as read-only even once a write exists.
   assert.match(text, /including all of OneNote/);
 });

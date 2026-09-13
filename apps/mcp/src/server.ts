@@ -6,7 +6,7 @@ import { WRITE_CAPABILITIES, isGranted, type WriteCapability } from "./grants.js
 import { listAgentWorkflows, loadAgentWorkflow, type ResolvedEntry } from "./agents.js";
 import { GraphError } from "./client.js";
 import { call as localCall, type Operation } from "./dispatch.js";
-import { narrowNotes, narrowSections, notebookKeyFor } from "./notes.js";
+import { PAGE_LISTING_CAP, narrowNotes, narrowSections, notebookKeyFor, sectionKey } from "./notes.js";
 
 /**
  * How a tool reaches the outside world. Injected rather than imported so the
@@ -168,12 +168,14 @@ const selectNotebook = async (
   notebook: string | undefined,
   notebookKey: string | undefined,
   tool: string,
+  section?: string,
 ): Promise<
   | {
       pages: NoteSummary[];
       sections: SectionSummary[];
       creationDates: boolean;
       scope: string | null;
+      allSections?: { name: string; notebook: string | null }[];
     }
   | { message: string }
 > => {
@@ -243,11 +245,13 @@ const selectNotebook = async (
     notes,
     sections = [],
     page_dates_are_creation_dates = false,
+    all_sections,
   } = await call<{
     notes: NoteSummary[];
     sections?: SectionSummary[];
     page_dates_are_creation_dates?: boolean;
-  }>("list_notes");
+    all_sections?: { name: string; notebook: string | null }[];
+  }>("list_notes", section === undefined ? {} : { section });
 
   const pages = wanted
     ? notes.filter((n) => (n.notebook ?? "").trim().toLowerCase() === wanted)
@@ -280,6 +284,178 @@ const selectNotebook = async (
     sections: inScope,
     creationDates: page_dates_are_creation_dates,
     scope,
+    allSections: wanted
+      ? all_sections?.filter((sec) => (sec.notebook ?? "").trim().toLowerCase() === wanted)
+      : all_sections,
+  };
+};
+
+/**
+ * The answer to a `section` that matched nothing, or matched more than one.
+ *
+ * Neither is allowed to fall through to a page list. The update flow resolves a
+ * chat message to exactly one page, and an empty list reads as "this project
+ * has no page" — which is a real finding for a section like BCW Megeve and a
+ * false one for a typo. So the names are offered, closest first, and choosing
+ * is left to the user.
+ */
+export const renderSectionMiss = (
+  section: string,
+  matched: { name: string; notebook: string | null }[],
+  all: { name: string; notebook: string | null }[],
+  /** Set when the search spanned every notebook: names carry their notebook, and the key to choose one. */
+  notebookKey?: string,
+): string | null => {
+  if (matched.length === 1) return null;
+
+  const label = (sec: { name: string; notebook: string | null }) =>
+    notebookKey === undefined ? sec.name : `${sec.name} (notebook: ${sec.notebook ?? "unknown"})`;
+  const callAgain =
+    notebookKey === undefined
+      ? "call list_notes again with that section."
+      : "call list_notes again with that section, its notebook, and the notebook_key below";
+  // On its own line, so no sentence punctuation is ever read as part of it.
+  const keyLine = notebookKey === undefined ? "" : `\n\nnotebook_key: ${notebookKey}`;
+
+  if (matched.length > 1) {
+    const where = matched.map((sec) => `- ${label(sec)}`);
+    return (
+      `${matched.length} sections are named "${section}":\n${where.join("\n")}\n\n` +
+      `Ask the user which one they mean, then ${callAgain}. Do not pick one — ` +
+      "the same project name in two seasons is two different projects." +
+      keyLine
+    );
+  }
+
+  // Scored by how many words are shared, and only the best score is offered.
+  // Against the real notebook, "any shared word" named every BCW section for a
+  // single BCW typo — a list that long is no closer than the full one.
+  const needle = sectionKey(section);
+  const words = needle.split(" ").filter((w) => w.length > 2);
+  const score = (name: string) => {
+    const hay = sectionKey(name);
+    if (hay.includes(needle) || needle.includes(hay)) return words.length + 1;
+    return words.filter((w) => hay.split(" ").includes(w)).length;
+  };
+  const scored = all.map((sec) => ({ sec, s: score(sec.name) }));
+  const best = Math.max(0, ...scored.map(({ s }) => s));
+  const near = scored.filter(({ s }) => best > 0 && s === best).map(({ sec }) => label(sec));
+
+  return (
+    `No section is named "${section}". ` +
+    (near.length > 0
+      ? `Closest: ${[...new Set(near)].join(", ")}. `
+      : `Sections: ${[...new Set(all.map(label))].join(", ")}. `) +
+    `Ask the user which one they mean rather than choosing, then ${callAgain}. ` +
+    "Do not read this as the project having no page." +
+    keyLine
+  );
+};
+
+/**
+ * Which page in a resolved section an update belongs to (#193).
+ *
+ * Matched on the title's start, not the whole title: the live notebook names
+ * them `CL Aufgaben — Montepulciano`, plain `CL Aufgaben`, and
+ * `CL Aufgaben — Melk BCW (Barocktage 2027)`, and a whole-title convention
+ * would miss two of three. Computed from every page in the section, before
+ * `limit` or `since` trim the list, so a capped listing cannot hide it.
+ *
+ * None and several are both said outright. None is a real finding — the update
+ * has nowhere to go, and it must not land on a neighbouring page instead.
+ */
+export const renderUpdateTarget = (pages: readonly NoteSummary[]): string => {
+  const targets = pages.filter((p) => sectionKey(p.title).startsWith("cl aufgaben"));
+  if (targets.length === 1) {
+    const [t] = targets;
+    return (
+      `CL Aufgaben page in this section: "${t.title}" (id: ${t.id}). ` +
+      "An update to this project belongs on this page."
+    );
+  }
+  if (targets.length === 0) {
+    return (
+      "This section has no CL Aufgaben page, so an update to this project has " +
+      "no page to go to. Say so; do not write it onto another page in the section."
+    );
+  }
+  return (
+    `This section has ${targets.length} CL Aufgaben pages: ` +
+    targets.map((t) => `"${t.title}" (id: ${t.id})`).join(", ") +
+    ". Ask the user which one an update belongs on. Do not pick one."
+  );
+};
+
+/**
+ * `section` with no notebook, on an account holding several: the update flow's
+ * case, since "Melk is confirmed" names a project and never a season.
+ *
+ * Section NAMES are searched across every notebook — they arrive in the one
+ * sections call either way, so this costs nothing. PAGES still come back only
+ * when exactly one section in exactly one notebook matched, and the reply names
+ * that notebook so the answer cannot silently drift into the wrong season.
+ * Everything else — two seasons, a partial name — goes back to the user with
+ * the notebook_key, the same proof `selectNotebook` asks for.
+ */
+const findSectionAcrossNotebooks = async (
+  call: Dispatch,
+  section: string,
+): Promise<
+  | { message: string }
+  | {
+      pages: NoteSummary[];
+      sections: SectionSummary[];
+      creationDates: boolean;
+      scope: string | null;
+      allSections?: { name: string; notebook: string | null }[];
+    }
+  | null
+> => {
+  const { notebooks } = await call<{ notebooks: { name: string }[] }>("list_notebooks");
+  // One notebook is not a choice; the ordinary path already handles it.
+  if (notebooks.length <= 1) return null;
+
+  const names = notebooks.map((n) => n.name);
+  const {
+    notes,
+    sections = [],
+    page_dates_are_creation_dates = false,
+    all_sections = [],
+  } = await call<{
+    notes: NoteSummary[];
+    sections?: SectionSummary[];
+    page_dates_are_creation_dates?: boolean;
+    all_sections?: { name: string; notebook: string | null }[];
+  }>("list_notes", { section });
+
+  const miss = renderSectionMiss(section, sections, all_sections, notebookKeyFor(names));
+  if (miss !== null) return { message: miss };
+
+  const [found] = sections;
+  // A unique exact match is not proof of the right season. Found live:
+  // "Montepulciano" resolved to 2026-27 while "Montepulciano 2028" sat in
+  // 2027-28, and an update naming the festival could mean either.
+  const wanted = sectionKey(section);
+  const similar = all_sections.filter((sec) => {
+    const key = sectionKey(sec.name);
+    return key !== wanted && (key.includes(wanted) || wanted.includes(key));
+  });
+  const others = names.filter(
+    (name) => name.trim().toLowerCase() !== (found.notebook ?? "").trim().toLowerCase(),
+  );
+  return {
+    pages: notes,
+    sections,
+    creationDates: page_dates_are_creation_dates,
+    scope:
+      `Found in notebook "${found.notebook ?? "unknown"}", the only notebook with a ` +
+      `section of this name (others: ${others.join(", ")}). Name that notebook when ` +
+      "you answer, so the user can catch a wrong season." +
+      (similar.length > 0
+        ? " Similarly named, and possibly the project meant: " +
+          similar.map((sec) => `${sec.name} (notebook: ${sec.notebook ?? "unknown"})`).join(", ") +
+          ". If the update could belong to one of these, ask before using this section."
+        : ""),
   };
 };
 
@@ -558,10 +734,19 @@ const renderWorkflowBriefing = async (
             "install time. Everything not listed here remains read-only, " +
             "including all of OneNote.",
           ...writes.map((name) => `- ${name}: ${WRITE_CAPABILITIES[name]}`),
-          "A disputed or UNKNOWN value may never be written. If two pages " +
-            "disagree, or a field is unsettled, refuse the write and say why — " +
-            "a written value persists and other people see it, which is exactly " +
-            "the decision policy:divergence refuses to make.",
+          // Recording a dispute is not settling one. The CL Aufgaben pages
+          // carry a convention for it — the field becomes UNGEKLÄRT and both
+          // values go under "Widersprüchliche Angaben" — and the earlier
+          // wording ("may never be written") read as forbidding that too, in
+          // the one surface that outranks the playbook saying to do it (#193).
+          "A disputed or UNKNOWN value may never be written as though it were " +
+            "settled. If two sources disagree, or a field is unsettled, never " +
+            "write one side as the value — a written value persists and other " +
+            "people see it, which is exactly the decision policy:divergence " +
+            "refuses to make. Recording the dispute itself is allowed where the " +
+            "page has a place for it: both values with their origins, and the " +
+            "field left UNGEKLÄRT or UNKNOWN. Where it has no such place, write " +
+            "nothing for that field and say why.",
         ];
 
   return [
@@ -987,6 +1172,16 @@ const createServer = async (
             "is indistinguishable from their choice and produces a confident " +
             "answer about the wrong notebook.",
         ),
+      section: z
+        .string()
+        .optional()
+        .describe(
+          "Exact name of one section, to list only its pages. Much cheaper " +
+            "than the whole notebook, and the reply gives the section's full " +
+            "page count. Use it to find the one page an update belongs to. " +
+            "Works without `notebook`: the section is then looked for in every " +
+            "notebook, and the reply says which one it was found in.",
+        ),
       notebook_key: z
         .string()
         .optional()
@@ -1021,11 +1216,19 @@ const createServer = async (
             "notebook.",
         ),
     },
-    async ({ notebook, notebook_key, since, limit }) => {
+    async ({ notebook, notebook_key, section, since, limit }) => {
       try {
-        const chosen = await selectNotebook(call, notebook, notebook_key, "list_notes");
+        const chosen =
+          (section !== undefined && notebook === undefined
+            ? await findSectionAcrossNotebooks(call, section)
+            : null) ??
+          (await selectNotebook(call, notebook, notebook_key, "list_notes", section));
         if ("message" in chosen) {
           return { content: [{ type: "text", text: chosen.message }] };
+        }
+        if (section !== undefined) {
+          const miss = renderSectionMiss(section, chosen.sections, chosen.allSections ?? []);
+          if (miss !== null) return { content: [{ type: "text", text: miss }] };
         }
         const selected = chosen.pages;
 
@@ -1052,6 +1255,14 @@ const createServer = async (
         // Narrowed only after the notebook is settled, so a `since` window can
         // never be what makes a notebook look empty enough to skip choosing.
         const { notes: shown, matched, undated } = narrowNotes(selected, { since, limit });
+
+        if (shown.length === 0 && section !== undefined && since === undefined) {
+          return {
+            content: [
+              { type: "text", text: `Section "${chosen.sections[0].name}" holds no pages.` },
+            ],
+          };
+        }
 
         if (shown.length === 0) {
           const scope = notebook ? `"${notebook}"` : "this account";
@@ -1088,6 +1299,19 @@ const createServer = async (
         // and the answer built on it is wrong without looking wrong.
         const caveats: string[] = [];
         if (chosen.scope) caveats.push(chosen.scope);
+        if (section !== undefined) {
+          caveats.push(renderUpdateTarget(chosen.pages));
+          const [sec] = chosen.sections;
+          // Stated whether or not it is short, because "has this page seen
+          // everything in its section" is answered against this number (#193).
+          caveats.push(
+            sec.pages >= PAGE_LISTING_CAP
+              ? `Section "${sec.name}" returned ${sec.pages} pages, which is the ` +
+                  "listing cap: there may be more that were not fetched (#178)."
+              : `Section "${sec.name}" holds ${sec.pages} page${sec.pages === 1 ? "" : "s"}; ` +
+                  "this is all of them.",
+          );
+        }
         if (shown.length < matched) {
           caveats.push(
             `Showing the ${shown.length} newest by date of ${matched} matching ` +
