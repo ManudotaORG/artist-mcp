@@ -160,9 +160,10 @@ test('a malformed note id is refused before any request is made', async () => {
 });
 
 test('a note is returned as text, not markup', async () => {
-  stubGraph({
-    '/pages/p1?': { title: 'Soundcheck' },
-    '/pages/p1/content': '<p>Line one</p><p>Line two</p>',
+  // The title comes from the page's own <title>, as OneNote sends it, rather
+  // than from a second request: one read is one request against 400 an hour.
+  const seen = stubGraph({
+    '/pages/p1/content': '<html><head><title>Sound&amp;check</title></head><body><p>Line one</p><p>Line two</p></body></html>',
   });
 
   // A normal page is unaffected, byte for byte, and reports itself as whole.
@@ -170,7 +171,7 @@ test('a note is returned as text, not markup', async () => {
   // answer for a page with none, and it is what distinguishes "nothing is
   // attached" from the silence this used to return either way. See issue #70.
   assert.deepEqual(await readNote('token', 'p1'), {
-    title: 'Soundcheck',
+    title: 'Sound&check',
     attachments: [],
     text: 'Line one\nLine two',
     chars_total: 17,
@@ -181,6 +182,7 @@ test('a note is returned as text, not markup', async () => {
     // which is a different thing from a page having no editable parts.
     editable: null,
   });
+  assert.equal(seen.length, 1, 'a read cost more than one request');
 });
 
 /**
