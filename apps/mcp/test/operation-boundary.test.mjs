@@ -42,17 +42,16 @@ const SANCTIONED = {
   list_events: 'read',
   read_event: 'read',
   list_calendars: 'read',
-  preview_calendar_event: 'read',
+  // No preview rows for the calendar or for creating a page since 0009: those
+  // writes commit in one call. Removed deliberately, in the same commit as the
+  // rows, which is what this literal is for.
   create_calendar_event: 'write',
-  preview_calendar_delete: 'read',
   delete_calendar_event: 'write',
-  preview_calendar_reschedule: 'read',
   // Two writes under one row: it creates the replacement and deletes the
   // original. Sanctioned as one because it is gated on holding both
   // calendar-create and calendar-delete, so it can reach nothing those two
   // could not reach separately.
   reschedule_calendar_event: 'write',
-  preview_onenote_page: 'read',
   // The first write to OneNote, and the first whose boundary is not ours. It
   // is gated on onenote-create, whose scope `Notes.Create` cannot express an
   // edit or a delete — so there is deliberately no update or delete row here

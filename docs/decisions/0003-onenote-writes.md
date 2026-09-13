@@ -1,6 +1,7 @@
 # 0003 — OneNote writes: create only, and let the provider enforce it
 
-Status: **accepted; phase 1 shipped.** The create-only claim was observed
+Status: **accepted; phase 1 shipped.** Creating a page no longer takes a
+preview and a token — see [0009](0009-confirm-by-reversibility.md). The create-only claim was observed
 rather than quoted before any code was written, and the `createdByAppId` claim
 corrected — see "What was verified". **Deleting and replacing are ruled out
 permanently**, because a Graph write leaves nothing recoverable — not because

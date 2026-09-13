@@ -350,22 +350,11 @@ const digest = async (prefix: string, draft: EventDraft): Promise<string> => {
 };
 
 /**
- * The token a preview returns and a create must carry back.
- *
- * Derived from the payload, so it proves the create is for the values that were
- * shown - not merely that a preview happened at some point. It cannot prove a
- * human read them; nothing inside MCP can. See
- * docs/decisions/0001-opt-in-calendar-writes.md.
- */
-export const confirmationToken = (draft: EventDraft): Promise<string> =>
-  digest('confirm', draft);
-
-/**
  * The event's id in Google, which is what stops a retry double-booking.
  *
- * Derived independently of the confirmation token, from a different prefix, on
- * purpose: if the double-book guard rode on the token, dropping the token
- * requirement later would silently drop double-booking protection with it.
+ * Derived from the payload alone, never from a confirmation. 0001 kept it apart
+ * from the token so that dropping the token would not drop double-booking
+ * protection with it, and 0009 is where that paid off.
  */
 export const ARTIST_ID_PREFIX = 'artist';
 
@@ -547,29 +536,6 @@ const occupying = async (token: string, draft: EventDraft) => {
 };
 
 /**
- * Show an event exactly as it would be written, and hand back the token that
- * lets it be written.
- *
- * The day is enumerated alongside it, because a preview that shows only what
- * would be added invites the question it cannot answer: whether it is already
- * there. That listing is also the only honest form of "is this missing" this
- * product has - see docs/decisions/0001-opt-in-calendar-writes.md.
- */
-export async function previewEvent(token: string, params: Record<string, unknown>) {
-  const draft = draftFrom(params);
-  refuseUnsettled(draft);
-
-  const events = await occupying(token, draft);
-
-  return {
-    preview: renderDraft(draft),
-    confirmation_token: await confirmationToken(draft),
-    existing_in_range: events,
-    calendar_searched: draft.calendar_id,
-  };
-}
-
-/**
  * Say which kind of "already taken" this is.
  *
  * A cancelled event is one sitting in that calendar's bin, where Google keeps it
@@ -622,12 +588,14 @@ const eventBody = async (draft: EventDraft) => {
 };
 
 /**
- * Create the event, if the token matches the payload.
+ * Create the event.
  *
- * The comparison is the boundary: it makes creating an event that was never
- * previewed inexpressible, and previewing one event and creating another
- * inexpressible too. It does not prove a person read the preview, and no part
- * of this protocol can.
+ * No preview and no token since 0009: a created event is visible and this tool
+ * can delete it, so the defence is that a wrong one is found and undone rather
+ * than prevented. What the preview used to show therefore comes back with the
+ * result — the event as written, and everything already on those dates in that
+ * calendar — so a near-duplicate is named in the same message that reports the
+ * write. Listed before writing, so the event being created is not in the list.
  */
 export async function createEvent(
   token: string,
@@ -637,20 +605,7 @@ export async function createEvent(
   const draft = draftFrom(params);
   refuseUnsettled(draft);
 
-  const supplied = typeof params.confirmation_token === 'string' ? params.confirmation_token : '';
-  const expected = await confirmationToken(draft);
-  if (supplied !== expected) {
-    throw failure(
-      supplied === ''
-        ? 'No confirmation_token. Call preview_calendar_event first and show the ' +
-            'musician what it returns; creating an event nobody has seen is not ' +
-            'something this tool can do.'
-        : 'The confirmation_token does not match this event. It belongs to a ' +
-            'different set of values, so something changed after the preview. ' +
-            'Preview again and show the musician the new version.',
-    );
-  }
-
+  const existing = await occupying(token, draft);
   const body = await eventBody(draft);
 
   let res: Response;
@@ -686,6 +641,7 @@ export async function createEvent(
     link: created.htmlLink ?? null,
     calendar_id: draft.calendar_id,
     written: renderDraft(draft),
+    existing_in_range: existing,
   };
 }
 
@@ -693,11 +649,8 @@ export async function createEvent(
 // -------------------------------------------------------- removing an event
 
 /**
- * Fetch the event as it stands, so a delete is confirmed against what is really
- * there rather than against a description of it.
- *
- * This is the one place the confirmation is stricter than it is for a create:
- * the payload being hashed came from Google, not from the caller.
+ * Fetch the event as it stands, so what a delete reports is what was really
+ * there rather than a description of it.
  */
 const fetchForDeletion = async (
   token: string,
@@ -773,33 +726,6 @@ const renderExisting = (e: CalendarEvent, calendarId: string): string => {
   return lines.join('\n');
 };
 
-/** A token over the event as Google returns it, not as anyone described it. */
-const deletionToken = async (e: CalendarEvent, calendarId: string): Promise<string> => {
-  const data = new TextEncoder().encode(
-    `delete ${calendarId} ${e.id ?? ''} ${e.summary ?? ''} ` +
-      `${eventTime(e.start).value ?? ''} ${eventTime(e.end).value ?? ''}`,
-  );
-  return base32hex(new Uint8Array(await crypto.subtle.digest('SHA-256', data)));
-};
-
-/**
- * Show what would be removed, and hand back the token that permits removing it.
- */
-export async function previewDeleteEvent(token: string, params: Record<string, unknown>) {
-  const calendarId =
-    typeof params.calendar_id === 'string' && params.calendar_id.trim()
-      ? params.calendar_id.trim()
-      : 'primary';
-  const eventId = typeof params.event_id === 'string' ? params.event_id.trim() : '';
-  const event = await fetchForDeletion(token, calendarId, eventId);
-
-  return {
-    preview: renderExisting(event, calendarId),
-    confirmation_token: await deletionToken(event, calendarId),
-    calendar_id: calendarId,
-  };
-}
-
 /**
  * Remove an event this tool created.
  *
@@ -819,18 +745,6 @@ export async function deleteEvent(
       : 'primary';
   const eventId = typeof params.event_id === 'string' ? params.event_id.trim() : '';
   const event = await fetchForDeletion(token, calendarId, eventId);
-
-  const supplied = typeof params.confirmation_token === 'string' ? params.confirmation_token : '';
-  const expected = await deletionToken(event, calendarId);
-  if (supplied !== expected) {
-    throw failure(
-      supplied === ''
-        ? 'No confirmation_token. Call preview_calendar_delete first and show the ' +
-            'musician what would be removed.'
-        : 'The confirmation_token does not match this event. It has changed since ' +
-            'the preview, so preview again and show the musician what is there now.',
-    );
-  }
 
   const written = renderExisting(event, calendarId);
   await calendarDeleteEvent(calendarId, eventId, token);
@@ -869,24 +783,6 @@ export async function deleteEvent(
  */
 
 /**
- * A token over both halves — the event as Google has it, and the values that
- * would replace it. Bound together so a confirmed reschedule cannot be replayed
- * against a different destination, or a different source.
- */
-const rescheduleToken = async (
-  existing: CalendarEvent,
-  fromCalendarId: string,
-  draft: EventDraft,
-): Promise<string> => {
-  const data = new TextEncoder().encode(
-    `reschedule ${fromCalendarId} ${existing.id ?? ''} ${existing.summary ?? ''} ` +
-      `${eventTime(existing.start).value ?? ''} ${eventTime(existing.end).value ?? ''}` +
-      ` :: ${canonical(draft)}`,
-  );
-  return base32hex(new Uint8Array(await crypto.subtle.digest('SHA-256', data)));
-};
-
-/**
  * The source event and the destination draft.
  *
  * `to_calendar_id` defaults to the calendar the event is already on, so moving
@@ -921,34 +817,6 @@ const refuseUnchanged = async (eventId: string, draft: EventDraft): Promise<void
 };
 
 /**
- * Show the move as a before and an after, and hand back the token that permits
- * it.
- *
- * Both halves are rendered because a preview showing only the new values asks
- * the musician to remember what it is replacing, and the thing most worth
- * catching here is a move away from a date they meant to keep.
- */
-export async function previewRescheduleEvent(token: string, params: Record<string, unknown>) {
-  const { fromCalendarId, eventId, draft } = rescheduleFrom(params);
-  const existing = await fetchForDeletion(token, fromCalendarId, eventId, 'rescheduled');
-
-  refuseUnsettled(draft);
-  await refuseUnchanged(eventId, draft);
-
-  // The whole destination stretch, for the same reason a create previews it: an
-  // event already sitting there is the thing a move most often collides with.
-  const events = await occupying(token, draft);
-
-  return {
-    before: renderExisting(existing, fromCalendarId),
-    after: renderDraft(draft),
-    confirmation_token: await rescheduleToken(existing, fromCalendarId, draft),
-    existing_in_range: events,
-    calendar_searched: draft.calendar_id,
-  };
-}
-
-/**
  * Write the new event, then remove the old one.
  *
  * Each half is audited separately and under its own operation name, because the
@@ -967,19 +835,9 @@ export async function rescheduleEvent(
   refuseUnsettled(draft);
   await refuseUnchanged(eventId, draft);
 
-  const supplied = typeof params.confirmation_token === 'string' ? params.confirmation_token : '';
-  const expected = await rescheduleToken(existing, fromCalendarId, draft);
-  if (supplied !== expected) {
-    throw failure(
-      supplied === ''
-        ? 'No confirmation_token. Call preview_calendar_reschedule first and show ' +
-            'the musician both the event as it stands and what would replace it.'
-        : 'The confirmation_token does not match. Either the event changed since ' +
-            'the preview or the new values did, so preview again and show the ' +
-            'musician the current version of both.',
-    );
-  }
-
+  // The destination stretch, as a create lists it: an event already sitting
+  // there is what a move most often collides with.
+  const occupied = await occupying(token, draft);
   const removed = renderExisting(existing, fromCalendarId);
   const body = await eventBody(draft);
 
@@ -1012,7 +870,7 @@ export async function rescheduleEvent(
       'The new event was created, but the old one could not be removed, so both ' +
         `are now on the calendar. Remove "${existing.summary ?? '(no title)'}" ` +
         `(${eventId}) in ${fromCalendarId} by hand, or call ` +
-        'preview_calendar_delete and delete_calendar_event for it. The ' +
+        'delete_calendar_event for it. The ' +
         `underlying error was: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
@@ -1032,5 +890,6 @@ export async function rescheduleEvent(
     from_calendar_id: fromCalendarId,
     calendar_id: draft.calendar_id,
     old_event_id: eventId,
+    existing_in_range: occupied,
   };
 }

@@ -209,24 +209,22 @@ test('an ungranted install has no write tool at all', async () => {
   assert.ok(names.includes('list_notes'));
 });
 
-test('a granted install has the preview and the create, and nothing more', async () => {
+test('a granted install has the create, and nothing more', async () => {
   const granted = await toolNames(['calendar-create']);
   const plain = await toolNames([]);
   assert.deepEqual(
     granted.filter((name) => !plain.includes(name)).sort(),
-    ['create_calendar_event', 'preview_calendar_event'],
+    ['create_calendar_event'],
   );
 });
 
 
-test('the delete tools are gated on their own capability, not on any grant', async () => {
+test('the delete tool is gated on its own capability, not on any grant', async () => {
   const createOnly = await toolNames(['calendar-create']);
   assert.equal(createOnly.includes('delete_calendar_event'), false);
-  assert.equal(createOnly.includes('preview_calendar_delete'), false);
 
   const both = await toolNames(['calendar-create', 'calendar-delete']);
   assert.ok(both.includes('delete_calendar_event'));
-  assert.ok(both.includes('preview_calendar_delete'));
 });
 
 /**
