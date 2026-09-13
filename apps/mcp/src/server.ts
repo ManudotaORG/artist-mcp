@@ -535,7 +535,7 @@ const renderChangedSections = (
  */
 const INDEX_ENTRIES = 12;
 
-const serverVersion = '2.3.0'; // x-release-please-version
+const serverVersion = '2.3.1'; // x-release-please-version
 
 const errorResult = (err: unknown) => {
   const message =
@@ -639,6 +639,10 @@ const renderWorkflowBriefing = async (
     "policy:evidence",
     "policy:divergence",
     "policy:patch",
+    // Tags are the record of open and done work, and the rules for reading and
+    // writing them sat in role:project-manager, which arrives as one line. A
+    // hosted fill wrote a whole task table untagged for exactly that reason (#193).
+    "policy:tasks",
   ];
   const alwaysInFull = (entry: (typeof entries)[number]) =>
     entry.kind === "project-type" || ALWAYS.includes(entry.id);
@@ -830,7 +834,15 @@ const TABLE_MARKUP =
   "each cell, text wrapped in <b>\n" +
   "  a free-text section is a single-cell table with NO header row\n" +
   "  never set column widths — OneNote sizes them, and one guessed from a " +
-  "preview is worse than none";
+  "preview is worse than none\n" +
+  // Found live (#193): a filled task table went out as plain text, because the
+  // tag rule lived in 0008 and a page footnote, and neither is in front of the
+  // model at the moment it composes the markup. This is.
+  '  a task is a to-do tag on the paragraph that states it: <p data-tag="to-do"> ' +
+  'in its cell, and <p data-tag="to-do:completed"> once it is done. Every task ' +
+  "row gets one, new rows included, and a tag the table already carries is " +
+  "carried across like any other value. Only those two values; never on a " +
+  "header, a heading or a cell that is not a task";
 
 /**
  * What is true of reading any attachment, wherever it came from.

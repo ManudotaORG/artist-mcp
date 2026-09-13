@@ -55,3 +55,41 @@ test('a completed tag never reads as an open one', () => {
 test('a span carrying no tag is left alone', () => {
   assert.equal(htmlToText('<span style="font-weight:bold">Eckdaten</span>'), 'Eckdaten');
 });
+
+/**
+ * The write side, found live (#193): a hosted session filled a task table as
+ * plain text. The tag rule sat in 0008 and in a footnote on the page, and
+ * neither is in front of the model when it composes the markup — the table
+ * guidance returned with the preview is.
+ */
+test('the table guidance a preview returns says how to write a task', async () => {
+  const { createServer } = await import('../dist/server.js');
+  const dispatch = async (op) => {
+    if (op !== 'preview_onenote_edit') throw new Error(`unexpected ${op}`);
+    return { preview: 'Replace this: …', confirmation_token: 'tok', parts: [], note: '', abbreviated: false };
+  };
+  const server = await createServer(dispatch, ['onenote-edit']);
+  const result = await server._registeredTools.preview_onenote_edit.handler({
+    page_id: 'p1',
+    action: 'replace',
+    element_id: 'table:{x}{1}',
+    html: '<table><tr><td><p>Aufgabe</p></td></tr></table>',
+  });
+  const text = result.content.map((c) => c.text).join('\n');
+
+  assert.match(text, /<p data-tag="to-do">/);
+  assert.match(text, /<p data-tag="to-do:completed">/);
+  assert.match(text, /Every task row gets one, new rows included/);
+});
+
+test('the markup that guidance describes is accepted inside a table cell', async () => {
+  const { validateFragment } = await import('../dist/onenote-patch.js');
+  assert.doesNotThrow(() =>
+    validateFragment(
+      '<table border="1" style="border-collapse:collapse"><tr>' +
+        '<td style="border:1px solid #A3A3A3;padding:4px"><p data-tag="to-do">A1-Formulare klären</p></td>' +
+        '<td style="border:1px solid #A3A3A3;padding:4px"><p>offen</p></td>' +
+        '</tr></table>',
+    ),
+  );
+});

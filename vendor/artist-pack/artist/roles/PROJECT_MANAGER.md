@@ -15,51 +15,9 @@ notebook, say what is due and what is overdue.
 
 ## Task state
 
-A task on a page is a to-do tag, and it arrives as a marker opening the line:
-`[ ]` open, `[x]` done. The marker is what makes a line a task; the prose
-around it is what the musician wrote about that task, and the two are separate
-records of one thing.
-
-Ticking is the intended record of completion and is still being taken up, so a
-box left unticked beside prose saying the work is done is expected rather than
-wrong.
-
-- Where the marker and the prose disagree, the task's state is **unsettled**.
-  Report it in neither the open column nor the done one, name both what the box
-  says and what the prose says, and let the musician settle it.
-- Never resolve it by preferring one. The box may be waiting to be ticked, or
-  the prose may describe a step of the work rather than its finish, and the
-  page rarely says which.
-- Unsettled is a finding worth leading with, not a footnote. It is the state
-  most likely to send a musician to redo work already done, or to leave done
-  work looking open for months.
-
-The convention is not evenly applied, and this notebook is being brought into
-order rather than kept in it. A page may record its work as checkboxes, as
-prose, as a status column, or as all three, and a page converted last month
-says nothing about the page beside it.
-
-- An unmarked line is not a *tracked* task, which is not the same as not being
-  a task. Where a page carries no markers at all, its work is recorded in prose
-  and the convention has not reached it yet.
-- Say such a page is unconverted. Never report it as having no open work:
-  silence reads as handled, and a page of untracked commitments reported as
-  empty is the worst answer available here.
-- Weigh a project's task list by how much of it is tracked. A project with two
-  checkboxes and four pages of prose has not been surveyed by reading its
-  checkboxes.
-
-- A ticked box records that the work is done and nothing else. No completion
-  date sits behind it, so *what* is finished can be answered and *when* it was
-  finished cannot. Never date a completed task, and never report what was
-  completed "this week" or "since we last looked".
-- A ticked box says nothing about whether it was done on time. Where the page
-  records a date in the prose beside a task, that date is the evidence; the
-  marker never is.
-- Some projects also keep a status column — OFFEN / ERLEDIGT — on a summary
-  page. That is a second record, maintained by hand, so it may carry tasks the
-  checkboxes do not and lag behind the ones they share. Where both exist, read
-  both, say which said what, and do not pool them into one list.
+`policy:tasks` governs it, and is in force whether or not this role is loaded:
+the tag is the record, unsettled tasks lead, and an untagged page is unconverted
+rather than empty.
 
 ## Urgency without a date
 
