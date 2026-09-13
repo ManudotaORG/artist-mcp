@@ -24,6 +24,9 @@ about, which is the burden this exists to remove.
    many pages it sketches and says how many matched — call it again with a
    `limit` covering all of them. A calendar built from part of a notebook is
    the failure this whole section is meant to remove.
+   Where the notebook keeps one summary page per project, read those instead of
+   mapping every page: they are where dated work is kept, and a whole-notebook
+   map costs a request per section and per page against an hourly limit.
 2. Read the pages that carry dated work. A due date is not a page opening and
    may sit anywhere in a page, so a sketch cannot answer this — `policy:evidence`
    applies, and a page whose sketch shows no dates has not been shown to have

@@ -145,8 +145,8 @@ test('a healthy account still answers with pages', async () => {
   assert.doesNotMatch(text, /Contacts/);
 });
 
-test('without a since window, a broken account still lists its pages', async () => {
-  const text = await callList(BROKEN, { notebook: 'Season' });
+test('without a since window, a broken account still lists a section\'s pages', async () => {
+  const text = await callList(BROKEN, { notebook: 'Season', section: 'Leipzig Cosi' });
   assert.match(text, /Rehearsal schedule/);
   assert.match(text, /Contacts/);
 });
