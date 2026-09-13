@@ -16,10 +16,9 @@ const require = createRequire(import.meta.url);
 const { version: packageVersion } = require('../package.json') as { version: string };
 
 /**
- * A staging build is identified by its npm version alone, so an install cannot
- * end up verifying against one environment and talking to the other. It now
- * selects the site that serves client configuration rather than an API
- * endpoint, since there is no longer an API of ours to call.
+ * A staging build is identified by its npm version alone. It decides which
+ * dist-tag `init` registers, and nothing else: it used to select the website
+ * serving client configuration too, until that website was retired (#194).
  */
 const isStagingVersion = (version: string): boolean => version.includes('-staging.');
 

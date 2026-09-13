@@ -37,7 +37,7 @@ import { createServer } from 'node:http';
 import { platform } from 'node:os';
 import { type WriteCapability } from './grants.js';
 
-import { GraphError, isStagingVersion, packageVersion } from './client.js';
+import { GraphError } from './client.js';
 import { explainRefreshFailure } from './expiry.js';
 import {
   type ProviderName,
@@ -79,8 +79,7 @@ export type ProviderConfig = {
  */
 const env = (name: string, fallback: string): string => process.env[name] ?? fallback;
 
-const PRODUCTION_SITE = 'https://artist-mcp.vercel.app';
-const STAGING_SITE = 'https://artist-mcp-staging.vercel.app';
+const SITE = 'https://artist-mcp.vercel.app';
 
 /**
  * Where Google's client secret comes from.
@@ -93,12 +92,13 @@ const STAGING_SITE = 'https://artist-mcp-staging.vercel.app';
  * code. What it buys is a value that can be rotated without publishing a new
  * version and waiting for every install to upgrade.
  *
- * Matches the staging/production split client.ts makes from the package version,
- * so an install cannot fetch configuration from one environment while talking
- * to the other.
+ * Staging builds read it from production too. They used to read it from the
+ * staging website, and when that was retired (#194) every staging install lost
+ * the ability to connect Google. The npm dist-tag outlived the site it pointed
+ * at, and there is one deployment to ask now.
  */
 const configEndpoint = (): string => {
-  const site = process.env.ARTIST_MCP_SITE ?? (isStagingVersion(packageVersion) ? STAGING_SITE : PRODUCTION_SITE);
+  const site = process.env.ARTIST_MCP_SITE ?? SITE;
   return `${site}/api/client-config`;
 };
 
