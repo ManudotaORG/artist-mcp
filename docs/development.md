@@ -1,7 +1,7 @@
 # Development guide
 
-This guide is the maintainer path from a fresh clone to a verified staging or
-production change. Read [scope.md](scope.md) for product scope and
+This guide is the maintainer path from a fresh clone to a verified production
+change. Read [scope.md](scope.md) for product scope and
 [operations.md](operations.md) for infrastructure ownership and external
 state.
 
@@ -37,11 +37,11 @@ in the artist's project.
 
 - Node.js 20 or newer — that is what `engines.node` enforces and what the
   package promises users. `.nvmrc` pins `22.22.2` while CI, the release
-  workflow and both Vercel projects run 24; nothing breaks on the difference,
+  workflow and the Vercel project run 24; nothing breaks on the difference,
   and gap 8 in [scope.md](scope.md) tracks whether to align them.
 - pnpm 11 through Corepack.
-- Supabase CLI authenticated to the intended project.
-- A Supabase project.
+- For `apps/web` only: the Supabase CLI and Docker, for the local stack
+  (`supabase start`). Work on `apps/mcp` needs neither.
 - A Microsoft Entra app registration supporting organizational and personal
   Microsoft accounts.
 
@@ -59,16 +59,18 @@ Create the local web environment:
 cp apps/web/.env.example apps/web/.env.local
 ```
 
-Set every variable:
+Set every variable. The Supabase pair comes from `supabase status` after
+`supabase start` — never production's values; see *Local web development* in
+[operations.md](operations.md) for why, and for what is still unverified there.
 
 | Variable                        | Runtime        | Purpose                             |
 | ------------------------------- | -------------- | ----------------------------------- |
-| `NEXT_PUBLIC_SUPABASE_URL`      | Browser/server | Supabase project URL                |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser/server | Public Supabase API key             |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Browser/server | Supabase API URL (local stack)      |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser/server | Publishable Supabase key            |
 | `NEXT_PUBLIC_SITE_URL`          | Browser/server | Absolute base for magic-link redirects |
 | `GOOGLE_DESKTOP_CLIENT_SECRET`  | Server only    | Served by `/api/client-config`      |
 | `GOOGLE_REFRESH_TOKEN_DAYS`     | Server only    | Refresh-token lifetime, served alongside it |
-| `DEPLOY_ENV`                    | Server only    | Optional; `staging` shows staging metadata |
+| `DEPLOY_ENV`                    | Server only    | Optional; leave unset locally       |
 
 The hosted MCP needs five more, all server-only, all documented in
 `apps/web/.env.example`. Unset, `/api/mcp` refuses to serve rather than serving
@@ -108,7 +110,8 @@ correct: a token issued under Testing still dies on day seven. See #94.
 The MCP package reads four optional overrides during development:
 `ARTIST_MCP_TOKENS` to point the token store somewhere other than
 `~/.artist-mcp/tokens.json`, `ARTIST_MCP_SITE` to fetch client configuration
-from a site other than the one its version implies, and
+from a site other than production — a local `pnpm dev` at
+`http://localhost:3000`, say — and
 `ARTIST_MCP_AGENTS_DIR` to read playbooks from a directory instead of the
 bundled pack, and `ARTIST_MCP_CONFIG` to point at a Claude Desktop config other
 than the real one — the suite uses it so testing `status` never touches a
@@ -141,23 +144,13 @@ one — `files` in `package.json` is an allowlist that overrides `.gitignore`, a
 
 `init --local` writes an absolute Node entry point into Claude Desktop, so a
 restart continues to run this checkout rather than silently switching to npm
-`latest`. To exercise the staging presentation locally, build with:
-
-```bash
-DEPLOY_ENV=staging VERCEL_GIT_COMMIT_SHA=localtest \
-  pnpm --dir apps/web exec next build --webpack
-```
-
-On the deployed staging site, all installation examples use the npm staging
-channel:
-
-```bash
-npx @manudota/artist-mcp@staging init
-npx @manudota/artist-mcp@staging agents install
-```
+`latest`.
 
 Production documentation uses `@manudota/artist-mcp` without a tag, which
-resolves to npm `latest`.
+resolves to npm `latest`. The `@staging` channel still publishes and is
+installed the same way with the tag added; there is no staging website to show
+it any more. The page's `DEPLOY_ENV=staging` presentation is kept but deployed
+nowhere — see *Staging is parked* in [operations.md](operations.md).
 
 ## Validate changes
 
