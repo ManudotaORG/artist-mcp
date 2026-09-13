@@ -24,7 +24,7 @@ import {
   rescheduleEvent,
 } from './calendar.js';
 import { listEmails, readEmail } from './mail.js';
-import { listNotebooks, listNotes, mapNotes, readNote } from './notes.js';
+import { listNotebooks, listNotes, mapNotes, readNote, type OneNoteSection } from './notes.js';
 import { applyEdit, previewEdit } from './onenote-patch.js';
 import { createPage } from './onenote-write.js';
 import { accessTokenFor } from './oauth.js';
@@ -143,6 +143,11 @@ export const dispatchWith =
         return (await listNotes(token, {
           section: typeof params.section === 'string' ? params.section : undefined,
           notebook: typeof params.notebook === 'string' ? params.notebook : undefined,
+          // Handed on from list_notebooks by the tool handler, never by a model,
+          // so the sections request is made once per call rather than twice.
+          sections: Array.isArray(params.sections)
+            ? (params.sections as OneNoteSection[])
+            : undefined,
         })) as T;
       case 'map_notes':
         // The pages are chosen by the caller, which is where the notebook scope

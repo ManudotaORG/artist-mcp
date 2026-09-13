@@ -284,3 +284,11 @@ test('a chosen notebook walks only its own sections', async () => {
     'fetched pages of a notebook that was not chosen',
   );
 });
+
+/** list_notebooks and list_notes used to fetch the same sections list twice per call. */
+test('one call fetches the sections list once', async () => {
+  const first = await callList(SEASONS, {});
+  const key = first.text.match(/notebook_key: (\S+)/)[1];
+  const { seen } = await callList(SEASONS, { notebook: '2027-28', notebook_key: key });
+  assert.equal(seen.filter((u) => u.includes('/me/onenote/sections?')).length, 1);
+});
