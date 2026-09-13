@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.4.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v2.3.1...artist-mcp-v2.4.0) (2026-09-13)
+
+
+### Features
+
+* **mcp:** chat updates find their CL Aufgaben page ([f2498dd](https://github.com/ManudotaORG/artist-mcp/commit/f2498dd5651deab5e89be1c96207789aca8ccfb5))
+* **mcp:** find a section across notebooks when none is named ([576c728](https://github.com/ManudotaORG/artist-mcp/commit/576c72800afdadd3dfb2148d8feb7404bda30b32)), closes [#193](https://github.com/ManudotaORG/artist-mcp/issues/193)
+* **mcp:** name the CL Aufgaben page an update belongs on ([0fca280](https://github.com/ManudotaORG/artist-mcp/commit/0fca280e7d29adfa953fa048a4b5e4486f7f6fde)), closes [#193](https://github.com/ManudotaORG/artist-mcp/issues/193)
+* **mcp:** narrow list_notes to one section ([e0d8e31](https://github.com/ManudotaORG/artist-mcp/commit/e0d8e31d5f4be251da7621a6ff814a9a0ccaebd0))
+* **mcp:** narrow list_notes to one section ([9cdbdc4](https://github.com/ManudotaORG/artist-mcp/commit/9cdbdc4880417ec9f3eb35183d986e2bee944a34)), closes [#193](https://github.com/ManudotaORG/artist-mcp/issues/193)
+
+
+### Bug Fixes
+
+* **mcp:** let the grant rule record a dispute without settling it ([4d62526](https://github.com/ManudotaORG/artist-mcp/commit/4d62526ac3b75ad5ce968a8b087898778af3fab9)), closes [#193](https://github.com/ManudotaORG/artist-mcp/issues/193)
+
 ## [2.3.1](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v2.3.0...artist-mcp-v2.3.1) (2026-09-12)
 
 
