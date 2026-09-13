@@ -92,8 +92,11 @@ on the OAuth test-user list can consent at all.
 | Environment | Website | MCP source |
 | --- | --- | --- |
 | Local | <http://localhost:3000> | Checked-out build under `apps/mcp/dist` |
-| Staging | <https://artist-mcp-staging.vercel.app> | `@manudota/artist-mcp@staging` |
+| Staging | none — npm channel only | `@manudota/artist-mcp@staging` |
 | Production | <https://artist-mcp.vercel.app> | `@manudota/artist-mcp` (`latest`) |
+
+The hosted staging environment was retired in September 2026; the `@staging`
+npm channel remains, for trying a build before it ships.
 
 - Repository: <https://github.com/ManudotaORG/artist-mcp>
 - npm package: <https://www.npmjs.com/package/@manudota/artist-mcp>
@@ -138,17 +141,21 @@ summary above is deliberately not a second copy of it.
 ## Local development
 
 Requirements: Node 20 or newer (`engines.node`; `.nvmrc` pins the version this
-is developed against), pnpm 11, a Supabase project, and a Microsoft
-Entra app registration.
+is developed against) and pnpm 11. The web app additionally needs the Supabase
+CLI with Docker, for a local Supabase, and a Microsoft Entra app registration;
+the MCP package needs neither.
 
 ```bash
 pnpm install
 cp apps/web/.env.example apps/web/.env.local
+supabase start    # web app only; fill .env.local from `supabase status`
 pnpm dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000). The environment file must
-be completed before the authenticated flow can run. Never commit `.env.local`.
+be completed before the authenticated flow can run, and must never carry
+production's Supabase values — see [development.md](docs/development.md). Never
+commit `.env.local`.
 
 ## Commands
 

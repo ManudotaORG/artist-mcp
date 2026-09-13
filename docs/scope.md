@@ -143,7 +143,7 @@ This line originally read "No writes to any source — not OneNote, Gmail, or Ca
 This line originally also read "No calendar. No Google. No web app deployment." All three have since shipped, so it is corrected here rather than quietly left standing:
 
 - **Google is connected**, and Gmail and Calendar are read as **supporting evidence only** — they corroborate or fill gaps in a OneNote page and are never themselves a working unit. Reads only: `list_emails`, `read_email`, `list_events`, `read_event`, and the attachment pair. That asymmetry is what kept the one-page-one-unit rule intact when the sources grew; see [CLAUDE.md](../CLAUDE.md).
-- **The web app deploys** to two Vercel projects, staging and production, connected to the repository through the Vercel GitHub App. See [operations.md](operations.md).
+- **The web app deploys** to one Vercel project, production, connected to the repository through the Vercel GitHub App. A staging project existed until 2026-09-13 and was retired with its Supabase project ([#194](https://github.com/ManudotaORG/artist-mcp/issues/194)); the `staging` branch and npm channel remain. See [operations.md](operations.md).
 
 Each new source means re-deciding the rule, not repeating it. Google Tasks was considered and deliberately left out: a task list is a rival system of record for the work itself, not evidence about it.
 
@@ -196,20 +196,14 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
 4. **One key per user.** Generating replaces the old, so two machines cannot
    hold separate keys.
 
-5. **One Google OAuth client serves every environment.** Local, staging, and
-   production all present the same `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`,
-   differing only in `GOOGLE_REDIRECT_URI`. This is the opposite of how the
-   Supabase and Microsoft credentials are handled, where the environment matrix
-   in [operations.md](operations.md) keeps production values out of staging, so
-   it is a deliberate exception rather than an oversight: a leaked staging
-   secret would be usable against production.
-
-   Accepted because `gmail.readonly` is a restricted scope, and a second client
-   means a second Google verification review — weeks of it — for an environment
-   that holds no real data. Split them before Gmail reaches production users,
-   not before it reaches staging. Splitting costs one new client, its own
-   redirect URI, and the staging values in Vercel and the edge function; no code
-   changes, since nothing hardcodes a client id.
+5. **One Google web OAuth client serves production and local development.**
+   Closed as a risk by retiring staging (#194). The concern was that staging and
+   production shared one client, so a secret leaked from the environment holding
+   no real data was usable against the one that did. With staging gone, the only
+   other user of the client is a developer's own `localhost:3000`, holding the
+   same secret production does. A second client still means a second Google
+   verification review for `gmail.readonly`; revisit only if a hosted
+   non-production environment returns.
 
 6. **Email is read one message at a time, never as a thread.** `list_emails`
    returns a `thread_id` and nothing consumes it, so a negotiation has to be
@@ -258,7 +252,8 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
 
    Confirmed on 2 September 2026: `vercel project ls --scope highnets-projects`
    reports both `artist-mcp` and `artist-mcp-staging` on **24.x**. Neither was
-   ever on 20, and the cutoff is no longer a risk to either deployment. The
+   ever on 20, and the cutoff is no longer a risk to either deployment.
+   (`artist-mcp-staging` has since been deleted, #194.) The
    version is a dashboard setting, so that command — not this repository — is
    where to read it.
 
@@ -268,7 +263,7 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
    repo change would not fix a project left on 20.
 
    Separately, the versions this repo names still disagree: `.nvmrc` pins
-   `22.22.2`, CI, the release workflow and both Vercel projects use `24`, the
+   `22.22.2`, CI, the release workflow and the Vercel project use `24`, the
    root and `apps/mcp` `engines.node` say `>=20`, and the README tells users
    "Node 20 or newer". `.nvmrc` is now the odd one out against everything that
    actually builds.
@@ -279,7 +274,7 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
    separate half.
 
    Remaining action, no longer dated: decide whether `.nvmrc` should follow the
-   24 that CI and both Vercel projects actually run, and whether `engines.node`
+   24 that CI and the Vercel project actually run, and whether `engines.node`
    should still promise a runtime with no security updates. Nothing is failing
    on either count.
 

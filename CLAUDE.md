@@ -79,8 +79,9 @@ trip costs two pull requests, four workflow runs, and an npm prerelease that can
 never be reused.
 
 Promote only for what cannot be checked locally: the published tarball (after
-packaging changes, or before a stable release) and the staging website. Otherwise
-batch verified work into one promotion. Full loop in
+packaging changes, or before a stable release), through `staging`. There is no
+staging website any more (#194) — verify `apps/web` locally, then promote
+`release` → `main`. Otherwise batch verified work into one promotion. Full loop in
 [docs/development.md](docs/development.md).
 
 ## Layout

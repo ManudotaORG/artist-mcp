@@ -6,22 +6,23 @@ services a release deploys into are in [operations.md](operations.md).
 
 ## Channels
 
-The npm package has two branch-backed channels, and the website has two Vercel
-projects tracking the same branches:
+The npm package has two branch-backed channels. The website has one deployment:
 
 | Branch | npm dist-tag | Website |
 | --- | --- | --- |
-| `staging` | `staging`, a unique prerelease such as `0.1.1-staging.123` | `artist-mcp-staging` |
+| `staging` | `staging`, a unique prerelease such as `0.1.1-staging.123` | none since 2026-09-13 |
 | `main` | `latest`, managed by Release Please | `artist-mcp` |
 
-`release` publishes and deploys nothing. Preview branch tracking is disabled on
-both Vercel projects, so `release` and pull requests create no deployment, and
+`release` publishes and deploys nothing. Preview branch tracking is disabled in
+Vercel, so `release`, `staging` and pull requests create no deployment, and
 GitHub Actions never builds or deploys the website — Vercel's own Git
-integration does.
+integration does. The staging website and its Supabase project were retired;
+the branch and its npm channel were kept. See *Staging is parked* in
+[operations.md](operations.md).
 
-The production footer shows the checked-in stable package version. The staging
-footer resolves the public npm `staging` dist-tag with a one-minute cache, so it
-shows the prerelease actually published rather than stale branch metadata.
+The footer shows the checked-in stable package version. A `DEPLOY_ENV=staging`
+build would resolve the public npm `staging` dist-tag instead; nothing deploys
+one now.
 
 ## Verify on `release`. Do not promote in order to test
 
@@ -56,7 +57,10 @@ Promote only for what cannot be checked locally:
   (`files`, build order, dependencies, the publish workflow) and before a stable
   release. Verify with `npm pack @manudota/artist-mcp@staging` and by running the
   published binary, not by reading a workflow log.
-- **The staging website**, for `apps/web` changes.
+
+`apps/web` changes have no hosted place to be tried before production any more.
+Verify them locally (see *Local web development* in
+[operations.md](operations.md)) before promoting to `main`.
 
 Otherwise batch several verified changes into one promotion.
 
@@ -103,8 +107,10 @@ trustworthy.
 
 - Develop and commit on `release` using Conventional Commits. Push early;
   CI runs lint, tests and builds there.
-- Promote a verified snapshot with a `release` → `staging` pull request, then,
-  after staging verification, the same snapshot with `release` → `main`.
+- Promote a verified snapshot with a `release` → `main` pull request. When the
+  published tarball needs checking first, promote the same snapshot to
+  `staging` beforehand and verify `@staging` from npm. Either way both are
+  promoted from `release`; never `staging` → `main`.
 - Never promote by pushing a branch directly. `staging` and `main` both require
   the `Lint and build` check with `enforce_admins`, so a direct push is rejected
   — and Commitlint runs only on `pull_request`, so a push that did land would
@@ -121,7 +127,7 @@ the next promotion is refused. Merge `origin/main` into `release` first — a
 `chore: sync ...` commit — then push and retry.
 
 Dependabot opens grouped weekly npm and Actions updates against `staging`, where
-PR CI runs without creating a Vercel preview. After merging one, synchronize
+PR CI runs and nothing deploys. After merging one, synchronize
 that commit into `release` before the next production promotion so branch
 history stays aligned. Automatic major-version PRs are disabled; handle breaking
 upgrades as planned migration work.
@@ -156,7 +162,8 @@ the GitHub `staging` environment and has been since 11 August 2026, once npm
 had the exact mapping above. Unset, the job verifies the package and skips the
 publish — the state to return to if the trusted-publisher mapping ever breaks.
 That job runs the MCP package tests only; website validation belongs to CI, and
-Vercel performs the deployment build.
+Vercel performs the deployment build. It never needed the staging website, which
+is why it survived that website's retirement unchanged.
 
 No `NPM_TOKEN` is needed, and **nothing is ever published from a laptop.**
 

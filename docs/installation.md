@@ -22,7 +22,10 @@ Channels:
 
 The examples below use production. On staging, add `@staging` to every npm
 package reference. `init` records the tag it was run from, so a staging install
-stays on staging across restarts and prints which environment it registered. Maintainers running local source should first run
+stays on staging across restarts and prints which environment it registered.
+Staging is a package channel only: there is no staging website, and a staging
+install signs in and reads Google's client configuration exactly as production
+does. Maintainers running local source should first run
 `pnpm --filter @manudota/artist-mcp build`; Claude Desktop can then use
 `node apps/mcp/dist/index.js init --local`, while Codex can register the
 absolute `$PWD/apps/mcp/dist/index.js` path.

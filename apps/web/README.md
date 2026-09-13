@@ -28,7 +28,7 @@ Fill in `.env.local`, then open
 
 Connecting a hosted account needs web OAuth clients — separate registrations
 from the package's desktop ones — and their redirect URIs are already
-registered for production, staging and `http://localhost:3000`. Without
+registered for production and `http://localhost:3000`. Without
 `ARTIST_MCP_WEB_*` set, connecting is refused with a message saying so rather
 than half-attempted.
 
@@ -86,7 +86,7 @@ harmless. Without `GOOGLE_DESKTOP_CLIENT_SECRET` set, it returns 503 and
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Publishable Supabase key. Read server-side only, despite the prefix |
 | `NEXT_PUBLIC_SITE_URL` | Absolute base for magic-link redirects, OAuth discovery and provider callbacks |
 | `GOOGLE_DESKTOP_CLIENT_SECRET` | Served by `/api/client-config` |
-| `DEPLOY_ENV` | Set to `staging` to show staging deployment metadata |
+| `DEPLOY_ENV` | `production` on Vercel. `staging` still renders staging metadata, though nothing deploys it since staging was retired |
 | `SUPABASE_SERVICE_ROLE_KEY` | Hosted MCP. Reads a connection for a user holding no browser session |
 | `TOKEN_ENCRYPTION_KEY` | Hosted MCP. pgcrypto key, different per environment, unrecoverable if lost |
 | `ARTIST_MCP_WEB_MS_CLIENT_ID` / `_SECRET` | Web OAuth client for connecting Microsoft. The id is the **same registration** the published package uses — see `docs/operations.md` |
