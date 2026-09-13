@@ -46,6 +46,24 @@ const MAX_RETRY_AFTER_MS = 30_000;
 const THROTTLE_BUDGET_MS = 8_000;
 
 /**
+ * What a OneNote 429 means, said once for single reads and batches alike.
+ *
+ * OneNote allows 120 requests a minute and 400 an hour per app per user, and
+ * sends no Retry-After, so the provider never says which limit was hit or for
+ * how long. "Wait a moment" is right for the first and wrong by an hour for the
+ * second; saying both is the only honest answer. Every failed request also
+ * counts against the same limit, so this retries once, not three times.
+ * https://learn.microsoft.com/en-us/graph/throttling-limits
+ */
+export const ONENOTE_THROTTLED =
+  'OneNote is limiting requests from artist-mcp for this account. It allows 120 ' +
+  'requests a minute and 400 an hour, and does not say which was reached: the ' +
+  'per-minute limit clears within a minute, the hourly one can take up to an hour. ' +
+  'Every retry counts against the same limit, so wait rather than asking again ' +
+  'straight away.';
+const isOneNote = (url: string): boolean => url.includes('/me/onenote/');
+
+/**
  * Spread, so a fanout that was throttled together does not retry together.
  *
  * This is the part that made throttling self-sustaining: N parallel requests
@@ -164,7 +182,7 @@ export const getWithRetry = async (
     if (res.ok) return res;
 
     const throttled = res.status === 429;
-    const limit = throttled ? THROTTLE_DELAYS.length : DELAYS.length;
+    const limit = throttled ? (isOneNote(url) ? 1 : THROTTLE_DELAYS.length) : DELAYS.length;
     const retryable = res.status >= 500 || throttled;
 
     // What the provider asked for, uncapped. The cap belongs to how long we are
@@ -234,6 +252,10 @@ export const getWithRetry = async (
       // says so. Everything else here is a fault to report, not a wait to sit
       // through, and conflating them sends people looking for a bug that is a
       // busy provider.
+      if (throttled && isOneNote(url)) {
+        throw new GraphError(`${ONENOTE_THROTTLED}${detail ? ` ${detail}` : ''}`, false);
+      }
+
       if (throttled) {
         const kind = throttleKind(detail);
         const subject =
@@ -288,7 +310,10 @@ export const graphGet = (path: string, token: string): Promise<Response> =>
  * not as a success and not as a failure of its neighbours.
  */
 export const GRAPH_BATCH_SIZE = 20;
-const BATCH_CONCURRENCY = 3;
+// One at a time. OneNote allows five concurrent requests per app per user, and
+// the documentation does not say whether a batch of twenty counts as one or as
+// twenty. One batch still walks a 56-section account in about fifteen seconds.
+const BATCH_CONCURRENCY = 1;
 const BATCHABLE = /^\/me\/onenote\/(sections|pages)\/[A-Za-z0-9!._~%-]+(\/[a-z]+)?(\?[^#\s]*)?$/;
 
 export type BatchResult = { ok: true; body: unknown } | { ok: false; error: string };
@@ -386,7 +411,7 @@ export const graphBatchGet = async (paths: readonly string[], token: string): Pr
         results[item.index] = {
           ok: false,
           error: throttled
-            ? `Microsoft Graph is rate limiting this account. Wait a moment and try again. ${detailOf(r.body)}`
+            ? `${ONENOTE_THROTTLED} ${detailOf(r.body)}`
             : `Microsoft Graph returned ${r.status}. ${detailOf(r.body)}`,
         };
       });
@@ -397,7 +422,7 @@ export const graphBatchGet = async (paths: readonly string[], token: string): Pr
       for (const item of retry) {
         results[item.index] = {
           ok: false,
-          error: 'Microsoft Graph is rate limiting this account. Wait a moment and try again.',
+          error: ONENOTE_THROTTLED,
         };
       }
       break;

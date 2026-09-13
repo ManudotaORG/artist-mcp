@@ -32,7 +32,10 @@ const MAP_MIN_DEADLINE_MS = 5_000;
 type Dispatch = <T>(op: Operation, params?: Record<string, unknown>) => Promise<T>;
 
 /** One call per page, so a notebook nobody put a number on does not become hundreds of requests. */
-const DEFAULT_MAP_PAGES = 40;
+// Twenty, not forty. Each page is a preview request against OneNote's 400 an
+// hour per app per user, and discovery used to spend a fifth of that on one
+// map. The reply says how many more there are, so nothing is hidden.
+const DEFAULT_MAP_PAGES = 20;
 
 type NoteSummary = {
   id: string;
@@ -200,8 +203,9 @@ const selectNotebook = async (
   // that reach here only need the names: to ask which notebook, or to check
   // that a supplied one exists. Paying for every page of every notebook to
   // print a list of names is what had Graph refusing with 20166.
-  const { notebooks } = await call<{
+  const { notebooks, section_list } = await call<{
     notebooks: { name: string; sections: number }[];
+    section_list?: unknown[];
   }>("list_notebooks");
   if (notebooks.length === 0) return { message: "No notes found." };
 
@@ -270,6 +274,7 @@ const selectNotebook = async (
     // The walk is narrowed to the chosen notebook before it starts: a map of one
     // season should not pay for every section on the account.
     ...(wanted === undefined ? {} : { notebook: wanted }),
+    ...(section_list === undefined ? {} : { sections: section_list }),
   });
 
   const pages = wanted
@@ -430,7 +435,10 @@ const findSectionAcrossNotebooks = async (
     }
   | null
 > => {
-  const { notebooks } = await call<{ notebooks: { name: string }[] }>("list_notebooks");
+  const { notebooks, section_list } = await call<{
+    notebooks: { name: string }[];
+    section_list?: unknown[];
+  }>("list_notebooks");
   // One notebook is not a choice; the ordinary path already handles it.
   if (notebooks.length <= 1) return null;
 
@@ -445,7 +453,7 @@ const findSectionAcrossNotebooks = async (
     sections?: SectionSummary[];
     page_dates_are_creation_dates?: boolean;
     all_sections?: { name: string; notebook: string | null }[];
-  }>("list_notes", { section });
+  }>("list_notes", { section, ...(section_list === undefined ? {} : { sections: section_list }) });
 
   const miss = renderSectionMiss(section, sections, all_sections, notebookKeyFor(names));
   if (miss !== null) return { message: miss };

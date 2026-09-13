@@ -148,3 +148,28 @@ test('a throttled request inside a batch is retried, and a persistent failure st
     globalThis.fetch = original;
   }
 });
+
+/**
+ * OneNote allows 400 requests an hour per app per user and sends no
+ * Retry-After, so a 429 there is retried once and then explained with both
+ * limits — never "wait a moment", which is wrong by an hour for the hourly one.
+ */
+test('a OneNote 429 is retried once and names both limits', async () => {
+  const { graphGet } = await import('../dist/api.js');
+  let calls = 0;
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response('{"error":{"code":"20166"}}', { status: 429 });
+  };
+  try {
+    await assert.rejects(() => graphGet('/me/onenote/pages/p1/content', 't'), (err) => {
+      assert.match(err.message, /120 requests a minute and 400 an hour/);
+      assert.doesNotMatch(err.message, /Wait a moment and try again/);
+      return true;
+    });
+    assert.equal(calls, 2, 'a OneNote 429 was retried more than once');
+  } finally {
+    globalThis.fetch = original;
+  }
+});
