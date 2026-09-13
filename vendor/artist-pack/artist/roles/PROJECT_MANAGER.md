@@ -104,10 +104,14 @@ notebook. This is the exception to the one-page rule and to the one-action rule:
 a musician who has to ask page by page must already remember which pages to ask
 about, which is the burden this exists to remove.
 
-1. Sketch the notebook with `map_notes` to decide reading order. It caps how
-   many pages it sketches and says how many matched — call it again with a
-   `limit` covering all of them. A calendar built from part of a notebook is
-   the failure this whole section is meant to remove.
+1. List the notebook's sections with `list_notes`; each project is a section.
+   For each, find its CL Aufgaben page with `list_notes` and `section`, and read
+   that page. That is where dated work is kept, and it costs about two requests
+   a project. Do not map the notebook for this: a whole-notebook map sketches
+   page openings, which carry no due dates, and spends a request per section
+   and per page against OneNote's hourly limit. A section with no CL Aufgaben
+   page is named as unsurveyed, never skipped silently — a calendar built from
+   part of a notebook is the failure this whole section is meant to remove.
 2. Read the pages that carry dated work. A due date is not a page opening and
    may sit anywhere in a page, so a sketch cannot answer this — `policy:evidence`
    applies, and a page whose sketch shows no dates has not been shown to have

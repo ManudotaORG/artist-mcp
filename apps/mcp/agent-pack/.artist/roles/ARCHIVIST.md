@@ -7,8 +7,10 @@ Find the smallest set of OneNote pages that answers a focused question.
 ## Method
 
 1. Shortlist pages using title, section, and modification date. Where the
-   shortlist is not obvious, sketch the notebook with `map_notes` first: a page
-   opening is evidence about contents where a title is not.
+   shortlist is not obvious, sketch the likely section with `map_notes` and
+   `section` first: a page opening is evidence about contents where a title is
+   not. A whole-notebook map is for intake, not for a focused question — it
+   costs a request per section and per page against an hourly limit.
 2. Read the primary working-unit page first.
 3. Read comparison pages only when the workflow needs precedent.
 4. Search OneNote only. Reach for email, calendar, or an attachment solely when
