@@ -9,14 +9,12 @@ Entra, and npm.
   [`ManudotaORG/artist-mcp`](https://github.com/ManudotaORG/artist-mcp) —
   Actions, environments, releases, and branch protection.
 - Vercel team [`highnets-projects`](https://vercel.com/highnets-projects), for
-  the [`artist-mcp`](https://vercel.com/highnets-projects/artist-mcp) and
-  [`artist-mcp-staging`](https://vercel.com/highnets-projects/artist-mcp-staging)
-  projects: configuration, environment variables, domains, deployment logs, and
-  the Node.js build version.
+  the [`artist-mcp`](https://vercel.com/highnets-projects/artist-mcp) project:
+  configuration, environment variables, domains, deployment logs, and the
+  Node.js build version.
 - Supabase owner or administrator access in
   [Manudota's Org](https://supabase.com/dashboard/org/rsaqwfluhbqeuyihthdj), for
-  production `zxiemadwrkcoovvpscfb` and permanent staging
-  `cakkwvxwlkdfzqjbvrpa`.
+  production `zxiemadwrkcoovvpscfb`.
 - Microsoft Entra access to manage the app registration, permissions, redirect
   URIs, and client credentials — app id
   `4e484257-2c48-4088-84b9-60ea3ca82e88`.
@@ -34,11 +32,11 @@ including in issues and documentation.
 
 | Secret                          | Stored in              | Rotation impact                                                                 |
 | ------------------------------- | ---------------------- | ------------------------------------------------------------------------------- |
-| Google desktop client secret    | Web runtime, both envs | Add the new secret in Google first, deploy, then delete the old one — see below |
-| Supabase secret key             | Web runtime, both envs | Create the replacement, deploy, then disable the old one                        |
-| `TOKEN_ENCRYPTION_KEY`          | Web runtime, both envs | **Not rotatable in place.** Every stored connection becomes unreadable; everyone reconnects |
-| Microsoft web client secret     | Web runtime, both envs | Add in Entra, deploy, then delete the old. Expires — note the date              |
-| Google web client secret        | Web runtime, both envs | Add in Google, deploy, then delete the old                                      |
+| Google desktop client secret    | Web runtime            | Add the new secret in Google first, deploy, then delete the old one — see below |
+| Supabase secret key             | Web runtime            | Create the replacement, deploy, then disable the old one                        |
+| `TOKEN_ENCRYPTION_KEY`          | Web runtime            | **Not rotatable in place.** Every stored connection becomes unreadable; everyone reconnects |
+| Microsoft web client secret     | Web runtime            | Add in Entra, deploy, then delete the old. Expires — note the date              |
+| Google web client secret        | Web runtime            | Add in Google, deploy, then delete the old                                      |
 
 The last four returned with the hosted MCP
 ([#55](https://github.com/ManudotaORG/artist-mcp/issues/55)); see *Hosted
@@ -60,7 +58,7 @@ secrets and will not show one twice:
 1. **Add** a second secret on the Desktop client and record it somewhere
    readable — a password manager. The console will never display it again, and
    neither Vercel nor GitHub can read a stored value back.
-2. Set `GOOGLE_DESKTOP_CLIENT_SECRET` in both Vercel projects and **redeploy**.
+2. Set `GOOGLE_DESKTOP_CLIENT_SECRET` in the Vercel project and **redeploy**.
    A variable changed in project settings does not reach a deployment that is
    already running.
 3. Only then **delete** the old secret. Installs cache the value they were given
@@ -72,60 +70,55 @@ remains the data authorization boundary.
 
 ## Web deployment
 
-The web app uses two Vercel projects connected directly to
-`ManudotaORG/artist-mcp` through the Vercel GitHub App:
+The web app is one Vercel project, `artist-mcp`, connected directly to
+`ManudotaORG/artist-mcp` through the Vercel GitHub App. It tracks only `main` as
+its production branch.
 
-- `artist-mcp` tracks only `main` as its production branch.
-- `artist-mcp-staging` tracks only `staging` as its production branch.
+Preview branch tracking is disabled, so `release`, `staging`, pull requests, and
+every other branch create no Vercel deployment. Vercel's native Git integration
+owns web deployment; GitHub Actions does not build or deploy the website.
 
-Preview branch tracking is disabled in both projects, so `release`, pull
-requests, and every unassigned branch create no Vercel deployment. Vercel's
-native Git integration owns web deployment; GitHub Actions does not build or
-deploy the website. Both stable targets are public, and staging has no password
-or deployment-protection gate.
+There used to be a second project, `artist-mcp-staging`, deploying from
+`staging` against its own Supabase project. Both were deleted on 2026-09-13
+([#194](https://github.com/ManudotaORG/artist-mcp/issues/194)): they cost money
+and nothing was being verified there. See *Staging is parked* below.
 
-Runtime application variables live in each Vercel project's Production
-environment. Set `DEPLOY_ENV=production` in `artist-mcp` and
-`DEPLOY_ENV=staging` in `artist-mcp-staging`. The footer reads the commit from
-Vercel's `VERCEL_GIT_COMMIT_SHA` system variable. No Vercel token or project ID
-is required in GitHub Actions.
+Runtime application variables live in the project's Production environment,
+with `DEPLOY_ENV=production`. The footer reads the commit from Vercel's
+`VERCEL_GIT_COMMIT_SHA` system variable. No Vercel token or project ID is
+required in GitHub Actions.
 
-Keep this environment matrix exact; never copy the production Supabase values
-into staging:
-
-| Setting                    | Production                                                  | Staging                                                             |
-| -------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------- |
-| `DEPLOY_ENV`               | `production`                                                | `staging`                                                           |
-| `NEXT_PUBLIC_SITE_URL`     | `https://artist-mcp.vercel.app`                             | `https://artist-mcp-staging.vercel.app`                             |
-| `NEXT_PUBLIC_SUPABASE_URL` | `https://zxiemadwrkcoovvpscfb.supabase.co`                  | `https://cakkwvxwlkdfzqjbvrpa.supabase.co`                          |
-| Microsoft redirect URI     | `https://artist-mcp.vercel.app/api/auth/microsoft/callback` | `https://artist-mcp-staging.vercel.app/api/auth/microsoft/callback` |
-| Google redirect URI        | `https://artist-mcp.vercel.app/api/auth/google/callback`    | `https://artist-mcp-staging.vercel.app/api/auth/google/callback`    |
+| Setting                    | Value                                                       |
+| -------------------------- | ----------------------------------------------------------- |
+| `DEPLOY_ENV`               | `production`                                                |
+| `NEXT_PUBLIC_SITE_URL`     | `https://artist-mcp.vercel.app`                             |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://zxiemadwrkcoovvpscfb.supabase.co`                  |
+| Microsoft redirect URI     | `https://artist-mcp.vercel.app/api/auth/microsoft/callback` |
+| Google redirect URI        | `https://artist-mcp.vercel.app/api/auth/google/callback`    |
 
 The last two rows are **not** environment variables. Nothing reads a
 `MS_REDIRECT_URI` or `GOOGLE_REDIRECT_URI`: `redirectUriFor` in
 `apps/web/src/lib/connect.ts` derives each callback from
 `NEXT_PUBLIC_SITE_URL`. They are listed because each value must be registered
-with the provider for that environment, and a wrong `NEXT_PUBLIC_SITE_URL`
-silently produces a redirect the provider will refuse.
+with the provider, and a wrong `NEXT_PUBLIC_SITE_URL` silently produces a
+redirect the provider will refuse.
 
-Both Vercel projects require their matching Supabase browser key,
-`GOOGLE_DESKTOP_CLIENT_SECRET` and the hosted secrets in the deployment table
-below, and nothing else that is secret.
-`NEXT_PUBLIC_SITE_URL` is mandatory in hosted builds; only local development may
-fall back to `http://localhost:3000`.
+The project requires the Supabase browser key, `GOOGLE_DESKTOP_CLIENT_SECRET`
+and the hosted secrets in the deployment table below, and nothing else that is
+secret. `NEXT_PUBLIC_SITE_URL` is mandatory in hosted builds; only local
+development may fall back to `http://localhost:3000`.
 
-A project missing `GOOGLE_DESKTOP_CLIENT_SECRET` answers `/api/client-config`
-with 503, and `artist-mcp connect google` fails against that environment.
-Microsoft is unaffected — it is a true public client and needs no secret.
+A deployment missing `GOOGLE_DESKTOP_CLIENT_SECRET` answers `/api/client-config`
+with 503, and `artist-mcp connect google` fails for every install that has not
+cached the secret — staging builds included, since they read it from production
+too. Microsoft is unaffected — it is a true public client and needs no secret.
 
-Local development is a third environment and uses staging's Supabase project,
-not production's — see "Local development runs against staging" below.
-
-Production uses `https://artist-mcp.vercel.app`; staging uses
-`https://artist-mcp-staging.vercel.app`. Add each `/api/auth/microsoft/callback`
-URL to the Microsoft Entra app, each `/api/auth/google/callback` URL to the
-Google Cloud OAuth client, and each `/auth/confirm` origin to the Supabase
-Auth redirect allowlist.
+Each provider registers the production callback and a `http://localhost:3000`
+callback for local development: the Microsoft Entra app for
+`/api/auth/microsoft/callback`, the Google Cloud web OAuth client for
+`/api/auth/google/callback`. The Entra app also carries the package's
+`http://localhost:8765/callback`; never remove it. Supabase's Auth redirect
+allowlist is in `supabase/config.toml`, below.
 
 Gmail's `gmail.readonly` scope is restricted: Google requires app verification
 before users outside the test list can consent, and that review takes weeks.
@@ -147,29 +140,27 @@ already set, so reconnecting grants the new scope without further work.
 
 ## Supabase changes
 
-Supabase uses one production project and one permanent, data-less staging
-branch:
-
-- Production: `zxiemadwrkcoovvpscfb`
-- Staging: `cakkwvxwlkdfzqjbvrpa`, mapped to Git branch `staging`
+Supabase has one hosted project, production `zxiemadwrkcoovvpscfb`. The
+staging project `cakkwvxwlkdfzqjbvrpa` was deleted on 2026-09-13, after its
+legacy API keys were disabled — deleting a project is not evidence that its keys
+stopped working.
 
 Auth URLs are configuration-as-code in `supabase/config.toml` under the
-`production` and `staging` remotes. Do not enable automatic ephemeral/PR
-branches; this project has only production and the permanent staging branch.
+`production` remote. Do not enable automatic ephemeral/PR branches.
 
-`supabase link` does not update `supabase/.temp/linked-project.json`
-immediately, so that file will happily claim you are pointed at production while
-you are not. Confirm with `supabase projects list`, which reports `linked` per
-project, before running anything destructive — or address a project by its URL,
-which cannot be ambiguous.
+**Keep the checkout unlinked.** There is no safe project for an accidental
+`--linked` command to land on any more, so link for the one command that needs
+it and unlink afterwards. `supabase link` does not update
+`supabase/.temp/linked-project.json` immediately, so that file will happily
+claim you are pointed at production while you are not. Confirm with
+`supabase projects list`, which reports `linked` per project, before running
+anything destructive — or address a project by its URL, which cannot be
+ambiguous.
 
-Apply that file with `supabase config push --project-ref <ref>`, which picks
-the `[remotes.*]` block whose `project_id` matches the ref. The CLI is linked
-to production, so always pass `--project-ref` explicitly. Both refs were pushed
-on 2026-08-13; before that the file had never been applied to either project
-and had drifted from both. Make auth changes in the file and push them. A
-change made only in the dashboard is invisible to the file, and the next push
-reverts it without warning.
+Apply that file with `supabase config push --project-ref zxiemadwrkcoovvpscfb`,
+which picks the `[remotes.*]` block whose `project_id` matches the ref. Make
+auth changes in the file and push them. A change made only in the dashboard is
+invisible to the file, and the next push reverts it without warning.
 
 `config push` applies api, db, auth, and storage. It does not apply
 `[functions.*]`; `verify_jwt` takes effect when the function is deployed.
@@ -178,36 +169,36 @@ Discover the installed CLI command shape with `supabase --help` before use.
 Review migrations and function diffs, run the security advisors, and verify the
 result against the linked hosted project.
 
-### Local development runs against staging
+### Local web development runs against a local Supabase
 
-`apps/web/.env.local` carries staging's Supabase URL, anon key, and
-service-role key — never production's. Copy them from the staging Vercel
-project or the Supabase dashboard rather than retyping: a mistyped key fails in
-ways that look like an auth bug.
+Until 2026-09-13 local development borrowed the staging project. That project
+is gone, and production is not a substitute: its redirect allowlist refuses
+`http://localhost:3000/**`, deliberately. A production magic link that can
+redirect to a developer's machine is a way to hand someone else a production
+session. Point a local server at production and the link lands on the deployed
+site instead — Supabase falls back to `site_url` silently rather than reporting
+an error. That is the intended refusal, not a bug to fix by re-adding localhost.
 
-The redirect allowlists follow from that, and the asymmetry is the point:
+The replacement is the local stack, which `config.toml`'s top-level `[auth]`
+block already targets:
 
-| Project    | `http://localhost:3000/**` allowed |
-| ---------- | ---------------------------------- |
-| Staging    | yes — local sign-in depends on it  |
-| Production | no, deliberately                   |
+```bash
+supabase start      # needs Docker; applies supabase/migrations
+supabase status     # prints the local API URL, publishable and secret keys
+```
 
-`getSiteUrl()` falls back to `http://localhost:3000` when
-`NEXT_PUBLIC_SITE_URL` is unset, so a local `signInWithOtp` asks for a
-localhost redirect. Staging allows it and the magic link opens on your machine.
-Production does not, and if you point a local server at production the link
-lands on the deployed site instead — Supabase falls back to `site_url` silently
-rather than reporting an error. That is the intended refusal, not a bug to fix
-by re-adding localhost to production. A production magic link that can redirect
-to a developer's machine is a way to hand someone else a production session.
+Put those values in `apps/web/.env.local`. The local database starts empty, and
+signup follows the top-level `[auth]` block, so create a test user through the
+local Studio or the admin API. Magic-link mail is caught by the local inbox that
+`supabase status` lists, not sent.
+
+**Not yet exercised end to end** — Docker was not installed when staging was
+retired. Treat the first run as verification and correct this section with what
+it finds. None of it is needed for work on `apps/mcp`, which uses no Supabase.
 
 To confirm which project a local sign-in actually used, read the emailed link:
-the host is the project ref, and `redirect_to` shows whether the allowlist was
+the host is the project, and `redirect_to` shows whether the allowlist was
 honoured or fell back.
-
-Staging holds no real data, so anything a feature needs must be set up there:
-a Google connection exists and works; Microsoft is not connected, so OneNote
-cannot be exercised locally until it is.
 
 Important invariants:
 
@@ -234,10 +225,10 @@ Important invariants:
   several calls rather than one that would exhaust the function. Search syntax is passed as a query parameter, never
   interpolated into a path.
 - Migrations deploy by hand, reviewed first. The Supabase
-  GitHub integration is deliberately not connected, so merging to `staging` or
-  `main` deploys the web app through Vercel and nothing else. Push with
-  `--db-url` for the branch you mean: the CLI is linked to production, so
-  `--linked` targets production whatever you intended.
+  GitHub integration is deliberately not connected, so merging to `main`
+  deploys the web app through Vercel and nothing else. Push with `--db-url` for
+  the database you mean rather than `--linked`, which targets whatever the
+  checkout was last linked to.
 
 ## Hosted credential storage
 
@@ -286,12 +277,12 @@ proves nothing.
 
 ### Deployment secrets
 
-Both Vercel projects carry these, all Sensitive except the two client IDs:
+The Vercel project carries these, all Sensitive except the two client IDs:
 
 | Variable | Purpose |
 | --- | --- |
 | `SUPABASE_SERVICE_ROLE_KEY` | Reads a connection for a user holding no browser session; bypasses RLS by design |
-| `TOKEN_ENCRYPTION_KEY` | pgcrypto key. **Different per environment.** Losing it makes every connection unreadable |
+| `TOKEN_ENCRYPTION_KEY` | pgcrypto key. **Never reuse production's anywhere else.** Losing it makes every connection unreadable |
 | `ARTIST_MCP_WEB_MS_CLIENT_ID` / `_SECRET` | Web OAuth client for connecting Microsoft |
 | `ARTIST_MCP_WEB_GOOGLE_CLIENT_ID` / `_SECRET` | Web OAuth client for connecting Google |
 
@@ -304,8 +295,8 @@ would have to be the weaker of the two.
 **Microsoft is the opposite: one registration serves both surfaces**, and must.
 `ARTIST_MCP_WEB_MS_CLIENT_ID` and the package's default client id in
 `apps/mcp/src/oauth.ts` are deliberately the same value
-(`4e484257-2c48-4088-84b9-60ea3ca82e88`). It carries a web redirect per
-environment plus the package's `http://localhost:8765/callback` as a public
+(`4e484257-2c48-4088-84b9-60ea3ca82e88`). It carries the production and
+localhost web redirects plus the package's `http://localhost:8765/callback` as a public
 client, with "Allow public client flows" enabled. Sharing it costs nothing —
 the package's Microsoft client is a true public client, so there is no secret to
 weaken — and it buys the thing that matters: `Notes.ReadWrite.CreatedByApp`
@@ -323,7 +314,9 @@ reconnected through the web page.
 
 1. Create the account. Signup is closed, so this is deliberate:
    `POST /auth/v1/admin/users` with the service role. `auth.users` **is** the
-   allowlist; no second mechanism exists.
+   allowlist; no second mechanism exists. This is the only way in: staging's
+   open signup went with staging, and production was kept invite-only rather
+   than opened to replace it.
 2. They sign in at `/sign-in` (unlinked from the landing page) and connect
    Microsoft and Google themselves at `/`. No maintainer handles their
    credentials.
@@ -340,8 +333,8 @@ tokens are unaffected and expire on their own.
 
 ### Supabase API keys
 
-Both projects are on `sb_publishable_` / `sb_secret_` keys with legacy keys
-**disabled**. Rotating a JWT *signing* key does **not** revoke the legacy
+Production is on `sb_publishable_` / `sb_secret_` keys with legacy keys
+**disabled**, as staging was before it was deleted. Rotating a JWT *signing* key does **not** revoke the legacy
 `anon` / `service_role` API keys — they are separate credentials, and verifying
 this by hand in August 2026 is the only reason a live exposed key was found.
 Disabling legacy keys is what revokes them.
@@ -385,6 +378,35 @@ key is not the same as no exposure.
 The current `TOKEN_ENCRYPTION_KEY` values were generated fresh in August 2026,
 one per environment. The old one was never recorded and nothing needs it.
 
+## Staging is parked
+
+The hosted staging environment was retired on 2026-09-13
+([#194](https://github.com/ManudotaORG/artist-mcp/issues/194)). What was kept
+is what is cheap to keep and expensive to rebuild from memory:
+
+| Kept | Why |
+| --- | --- |
+| The `staging` branch, protected | Still where a dist-tag build comes from |
+| `publish-staging` in `release.yml`, the `staging` GitHub environment, `set-staging-version.mjs` | Publishes `@manudota/artist-mcp@staging`, which needs no website |
+| Dependabot targeting `staging`, CI on `staging` | Unchanged |
+| `DEPLOY_ENV=staging` handling in `apps/web` | Harmless with nothing deploying it; the way back |
+
+What was removed: the `artist-mcp-staging` Vercel project and its variables,
+the Supabase project `cakkwvxwlkdfzqjbvrpa` (legacy keys disabled first), its
+`[remotes.staging]` block in `config.toml`, and the staging callbacks in Entra
+and the Google web client.
+
+A staging npm build is not a staging environment. It talks to the same
+providers as any install and reads Google's client configuration from
+production. It used to read it from the staging site, and the retirement broke
+`connect google` on staging builds until that was fixed.
+
+To bring staging back: a Supabase project with the migrations applied and
+signup decided, a `[remotes.staging]` block pushed to it, a Vercel project on
+`staging` with `DEPLOY_ENV=staging` and its own `TOKEN_ENCRYPTION_KEY`, the
+staging callbacks re-registered with both providers, and a decision on whether
+staging builds should read client configuration from it again.
+
 ## Publishing
 
 Releases, npm channels, the trusted-publisher mapping and what to do when a
@@ -404,7 +426,8 @@ against their own token file.
 5. User A cannot read user B's database rows or OneNote content.
 6. A write capability granted to user A appears for A and for nobody else.
 
-Run it against staging after any change to token custody, key resolution, or
+Run it against production, with two accounts created for the purpose, after any
+change to token custody, key resolution, or
 how grants reach `createServer`. Do not accept it on code inspection alone: the
 failure this catches is one user's state reaching another's session, which
 every test that runs one user at a time will pass.
