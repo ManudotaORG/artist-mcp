@@ -734,10 +734,19 @@ const renderWorkflowBriefing = async (
             "install time. Everything not listed here remains read-only, " +
             "including all of OneNote.",
           ...writes.map((name) => `- ${name}: ${WRITE_CAPABILITIES[name]}`),
-          "A disputed or UNKNOWN value may never be written. If two pages " +
-            "disagree, or a field is unsettled, refuse the write and say why — " +
-            "a written value persists and other people see it, which is exactly " +
-            "the decision policy:divergence refuses to make.",
+          // Recording a dispute is not settling one. The CL Aufgaben pages
+          // carry a convention for it — the field becomes UNGEKLÄRT and both
+          // values go under "Widersprüchliche Angaben" — and the earlier
+          // wording ("may never be written") read as forbidding that too, in
+          // the one surface that outranks the playbook saying to do it (#193).
+          "A disputed or UNKNOWN value may never be written as though it were " +
+            "settled. If two sources disagree, or a field is unsettled, never " +
+            "write one side as the value — a written value persists and other " +
+            "people see it, which is exactly the decision policy:divergence " +
+            "refuses to make. Recording the dispute itself is allowed where the " +
+            "page has a place for it: both values with their origins, and the " +
+            "field left UNGEKLÄRT or UNKNOWN. Where it has no such place, write " +
+            "nothing for that field and say why.",
         ];
 
   return [
