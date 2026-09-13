@@ -186,6 +186,8 @@ const selectNotebook = async (
   notebookKey: string | undefined,
   tool: string,
   section?: string,
+  /** Return the chosen notebook's sections without walking their pages. */
+  sectionsOnly = false,
 ): Promise<
   | {
       pages: NoteSummary[];
@@ -193,6 +195,8 @@ const selectNotebook = async (
       creationDates: boolean;
       scope: string | null;
       allSections?: { name: string; notebook: string | null }[];
+      /** Set only when sectionsOnly was asked for: the sections, and no pages were fetched. */
+      sectionList?: { name: string; notebook: string | null; last_modified: string | null }[];
     }
   | { message: string }
 > => {
@@ -256,6 +260,37 @@ const selectNotebook = async (
   // should cost one request to refuse, not a hundred.
   if (wanted !== undefined && !names.some((name) => name.trim().toLowerCase() === wanted)) {
     return { message: `No notebook named "${notebook}". Available: ${names.join(", ")}.` };
+  }
+
+  // Sections only: everything needed is already in hand from the notebook
+  // question, so this costs no request beyond it. Walking pages is one request
+  // per section against OneNote's 400 an hour, and an organised notebook is
+  // navigated by section before any page matters. See decision 0010.
+  if (sectionsOnly) {
+    const listed = ((section_list ?? []) as {
+      displayName?: string;
+      lastModifiedDateTime?: string;
+      parentNotebook?: { displayName?: string };
+    }[])
+      .map((sec) => ({
+        name: sec.displayName ?? "(unnamed section)",
+        notebook: sec.parentNotebook?.displayName ?? null,
+        last_modified: sec.lastModifiedDateTime ?? null,
+      }))
+      .filter((sec) => wanted === undefined || (sec.notebook ?? "").trim().toLowerCase() === wanted)
+      .sort((a, b) => (b.last_modified ?? "").localeCompare(a.last_modified ?? ""));
+    const others = names.filter((name) => name.trim().toLowerCase() !== wanted);
+    return {
+      pages: [],
+      sections: [],
+      creationDates: false,
+      scope:
+        wanted && others.length > 0
+          ? `Answered for "${notebook}" only. This account also has: ${others.join(", ")}. ` +
+            "Say which notebook this covers when you answer."
+          : null,
+      sectionList: listed,
+    };
   }
 
   // Settled. Only now are the pages worth what they cost.
@@ -1205,11 +1240,13 @@ const createServer = async (
     // It opens the description because a client may render the listing clipped
     // to one line, and because the first paragraph is what is read most often.
     PLAYBOOK_GATE +
-      "List the user's OneNote pages, with title, notebook, section and last " +
-      "date. Takes an optional notebook name. When the account holds " +
-      "more than one notebook and none is given, this returns the list of " +
-      "notebooks instead of any pages, so the user can say which one to work " +
-      "in.",
+      "List the user's OneNote notebooks, sections and pages. When the account " +
+      "holds more than one notebook and none is given, this returns the list of " +
+      "notebooks so the user can say which one to work in. For a notebook it " +
+      "returns its SECTIONS with when each last changed, for one request; pass " +
+      "`section` for that section's pages, one request more. Listing every page " +
+      "of a notebook costs a request per section against OneNote's 400 an hour, " +
+      "so go section by section.",
     {
       notebook: z
         .string()
@@ -1273,9 +1310,42 @@ const createServer = async (
           (section !== undefined && notebook === undefined
             ? await findSectionAcrossNotebooks(call, section)
             : null) ??
-          (await selectNotebook(call, notebook, notebook_key, "list_notes", section));
+          (await selectNotebook(
+            call,
+            notebook,
+            notebook_key,
+            "list_notes",
+            section,
+            section === undefined && since === undefined,
+          ));
         if ("message" in chosen) {
           return { content: [{ type: "text", text: chosen.message }] };
+        }
+        const sectionList = (chosen as {
+          sectionList?: { name: string; notebook: string | null; last_modified: string | null }[];
+        }).sectionList;
+        if (sectionList !== undefined) {
+          const lines = sectionList.map(
+            (sec) =>
+              `- ${sec.name}${sec.notebook ? ` (${sec.notebook})` : ""} — last changed ${sec.last_modified ?? "unknown"}`,
+          );
+          return {
+            content: [
+              {
+                type: "text",
+                text: [
+                  lines.length === 0 ? "No sections found." : lines.join("\n"),
+                  ...(chosen.scope ? [chosen.scope] : []),
+                  `${lines.length} section${lines.length === 1 ? "" : "s"}. Pages are not listed here: ` +
+                    "call list_notes again with `section` for one section's pages, which costs one " +
+                    "request. In an organised notebook a project is a section, so that is usually " +
+                    "the next step. To survey an unfamiliar notebook page by page, use map_notes " +
+                    "once. Reuse these names and ids for the rest of this conversation rather " +
+                    "than listing again.",
+                ].join("\n\n"),
+              },
+            ],
+          };
         }
         if (section !== undefined) {
           const miss = renderSectionMiss(section, chosen.sections, chosen.allSections ?? []);
@@ -1400,7 +1470,12 @@ const createServer = async (
       "which pages are worth read_note. What it returns is the TOP of a page, " +
       "not a summary of one: never classify a page, judge it complete, or call " +
       "two pages duplicates on a sketch alone. Read the page before saying " +
-      "anything the sketch cannot show.",
+      "anything the sketch cannot show. COST: about one OneNote request per " +
+      "section plus one per page sketched, against a limit of 400 an hour. It is " +
+      "for surveying an unfamiliar or unsorted notebook, once. In an organised " +
+      "notebook, where a project is a section, use list_notes with `section` " +
+      "and read the project's page instead, and pass `section` here to sketch " +
+      "just one section.",
     {
       notebook: z
         .string()
@@ -1437,16 +1512,35 @@ const createServer = async (
         .describe(
           `Cap how many pages are sketched, newest first. Defaults to ${DEFAULT_MAP_PAGES}.`,
         ),
+      section: z
+        .string()
+        .optional()
+        .describe(
+          "Exact name of one section, to sketch only its pages. Costs one request " +
+            "for the section plus one per page, instead of one per section in the notebook.",
+        ),
     },
-    async ({ notebook, notebook_key, since, limit }) => {
+    async ({ notebook, notebook_key, since, limit, section }) => {
       // The route has one budget, and the listing spends from it before a single
       // page is sketched. The map's own deadline used to start after the
       // listing, so the two together could never fit.
       const startedAt = Date.now();
       try {
-        const chosen = await selectNotebook(call, notebook, notebook_key, "map_notes");
+        const chosen =
+          (section !== undefined && notebook === undefined
+            ? await findSectionAcrossNotebooks(call, section)
+            : null) ??
+          (await selectNotebook(call, notebook, notebook_key, "map_notes", section));
         if ("message" in chosen) {
           return { content: [{ type: "text", text: chosen.message }] };
+        }
+        if (section !== undefined) {
+          const miss = renderSectionMiss(
+            section,
+            chosen.sections,
+            (chosen as { allSections?: { name: string; notebook: string | null }[] }).allSections ?? [],
+          );
+          if (miss !== null) return { content: [{ type: "text", text: miss.replace(/call list_notes again/g, "call map_notes again") }] };
         }
 
         // `since` cannot be honoured here when page dates are creation dates,

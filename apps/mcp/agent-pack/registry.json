@@ -31,7 +31,7 @@
       "name": "Intake",
       "description": "Turn an unorganized notebook into working units without inventing anything.",
       "file": ".artist/policies/INTAKE.md",
-      "sha256": "73fbc9af3c4df21c5d1e6c1df9e553825b73fa1c793f933b3ffeda673979d76f"
+      "sha256": "21c65ade15b4350b284eb04315a8f4750629926d45a436beab404fee2d31e2dd"
     },
     {
       "id": "policy:local-state",
@@ -87,7 +87,7 @@
       "name": "Archivist",
       "description": "Find the smallest set of OneNote pages that answers a focused question.",
       "file": ".artist/roles/ARCHIVIST.md",
-      "sha256": "fa814d9850de2bd32db418416eb7194f8ab82313c48309454d580b6171d858e9"
+      "sha256": "7835cb015f9f0668c3f3385ad05fa30f0b8dcf6c6ae45a5797d8819f7606b6db"
     },
     {
       "id": "role:auditor",
@@ -111,7 +111,7 @@
       "name": "Janitor",
       "description": "Identify working units or tasks that appear complete, expired, duplicated, or superseded and summarize the cleanup a human may choose to perform.",
       "file": ".artist/roles/JANITOR.md",
-      "sha256": "f7762bb005c95b31630b664a46de4078b8ea2ebbe63e4c10ff68acd068441cab"
+      "sha256": "b7ba1ce29d9fdbcab8d47347d26373c6333eccac9b1328ad35e148fc13425d42"
     },
     {
       "id": "role:orchestrator",
@@ -127,7 +127,7 @@
       "name": "Project Manager",
       "description": "Compare one working-unit page with its project-type playbook and identify the single most useful next project-management action. Or, across the chosen notebook, say what is due and what is overdue.",
       "file": ".artist/roles/PROJECT_MANAGER.md",
-      "sha256": "c6ad5de3580b421966ba77dcfc8689dabc359b714ef87312b13ba240a3762e40"
+      "sha256": "f2c3d4a767b97d8f33f778257d23adcb61ac737ffdf58265cb84d16dbcdc01c9"
     },
     {
       "id": "role:registrar",
