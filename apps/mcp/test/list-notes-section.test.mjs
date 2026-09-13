@@ -223,3 +223,45 @@ test('without a section, every section is walked as before', async () => {
     assert.ok(seen.some((u) => u.includes(`/sections/${id}/pages`)), `skipped ${id}`);
   }
 });
+
+/** The page an update goes to, named in the reply. Title shapes are the live notebook's. */
+test('the one CL Aufgaben page is named as the update target, whatever follows the prefix', async () => {
+  for (const title of ['CL Aufgaben', 'CL Aufgaben — Melk BCW (Barocktage 2027)']) {
+    const graph = { ...GRAPH, '/sections/melk/pages': pages([title, 'Programm']) };
+    const { text } = await callList(graph, { section: 'GPT Melk' });
+    assert.match(text, /An update to this project belongs on this page/, title);
+  }
+});
+
+test('the target is found even when limit cuts it from the list', async () => {
+  const graph = {
+    ...GRAPH,
+    '/sections/melk/pages': {
+      value: [
+        { id: 'new', title: 'Neu', lastModifiedDateTime: '2026-09-10T00:00:00Z' },
+        { id: 'cl', title: 'CL Aufgaben', lastModifiedDateTime: '2026-01-01T00:00:00Z' },
+      ],
+    },
+  };
+  const { text } = await callList(graph, { section: 'GPT Melk', limit: 1 });
+  assert.match(text, /CL Aufgaben page in this section: "CL Aufgaben" \(id: cl\)/);
+});
+
+test('a section without a CL Aufgaben page says the update has nowhere to go', async () => {
+  const { text } = await callList(GRAPH, { section: 'BCW Megeve' });
+  assert.match(text, /no CL Aufgaben page/);
+  assert.match(text, /do not write it onto another page/);
+});
+
+test('two CL Aufgaben pages are refused, not picked', async () => {
+  const graph = { ...GRAPH, '/sections/melk/pages': pages(['CL Aufgaben', 'CL Aufgaben alt']) };
+  const { text } = await callList(graph, { section: 'GPT Melk' });
+  assert.match(text, /2 CL Aufgaben pages/);
+  assert.match(text, /Do not pick one/);
+});
+
+test('other CL pages are not mistaken for the task page', async () => {
+  const graph = { ...GRAPH, '/sections/melk/pages': pages(['CL Status & Termine', 'CL Konditionen']) };
+  const { text } = await callList(graph, { section: 'GPT Melk' });
+  assert.match(text, /no CL Aufgaben page/);
+});

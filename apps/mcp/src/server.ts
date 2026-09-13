@@ -353,6 +353,40 @@ export const renderSectionMiss = (
 };
 
 /**
+ * Which page in a resolved section an update belongs to (#193).
+ *
+ * Matched on the title's start, not the whole title: the live notebook names
+ * them `CL Aufgaben — Montepulciano`, plain `CL Aufgaben`, and
+ * `CL Aufgaben — Melk BCW (Barocktage 2027)`, and a whole-title convention
+ * would miss two of three. Computed from every page in the section, before
+ * `limit` or `since` trim the list, so a capped listing cannot hide it.
+ *
+ * None and several are both said outright. None is a real finding — the update
+ * has nowhere to go, and it must not land on a neighbouring page instead.
+ */
+export const renderUpdateTarget = (pages: readonly NoteSummary[]): string => {
+  const targets = pages.filter((p) => sectionKey(p.title).startsWith("cl aufgaben"));
+  if (targets.length === 1) {
+    const [t] = targets;
+    return (
+      `CL Aufgaben page in this section: "${t.title}" (id: ${t.id}). ` +
+      "An update to this project belongs on this page."
+    );
+  }
+  if (targets.length === 0) {
+    return (
+      "This section has no CL Aufgaben page, so an update to this project has " +
+      "no page to go to. Say so; do not write it onto another page in the section."
+    );
+  }
+  return (
+    `This section has ${targets.length} CL Aufgaben pages: ` +
+    targets.map((t) => `"${t.title}" (id: ${t.id})`).join(", ") +
+    ". Ask the user which one an update belongs on. Do not pick one."
+  );
+};
+
+/**
  * `section` with no notebook, on an account holding several: the update flow's
  * case, since "Melk is confirmed" names a project and never a season.
  *
@@ -1257,6 +1291,7 @@ const createServer = async (
         const caveats: string[] = [];
         if (chosen.scope) caveats.push(chosen.scope);
         if (section !== undefined) {
+          caveats.push(renderUpdateTarget(chosen.pages));
           const [sec] = chosen.sections;
           // Stated whether or not it is short, because "has this page seen
           // everything in its section" is answered against this number (#193).
