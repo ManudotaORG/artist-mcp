@@ -137,7 +137,7 @@ test('a section at the listing cap says it may be incomplete', async () => {
 test('a miss is not reported as a project with no page', async () => {
   const { text } = await callList(GRAPH, { section: 'Montepulciano' });
   assert.match(text, /No section is named "Montepulciano"/);
-  assert.match(text, /do not read this as the project having no page/);
+  assert.match(text, /do not read this as the project having no page/i);
   // With nothing close, every section is offered instead.
   assert.match(text, /GPT Melk/);
   assert.match(text, /BCW Megeve/);
@@ -149,21 +149,72 @@ test('an empty section says so plainly', async () => {
   assert.doesNotMatch(text, /undefined/);
 });
 
-test('the same name in two notebooks is refused, not picked', async () => {
-  const twice = {
+/**
+ * Several notebooks, one per season, and an update that names only a project.
+ * Section names are searched across all of them; pages come back only for a
+ * single match, and the notebook they came from is named.
+ */
+const SEASONS = {
+  '/me/onenote/notebooks': {
+    value: [{ displayName: '2026-27' }, { displayName: '2027-28' }],
+  },
+  '/me/onenote/sections?': {
+    value: [
+      { id: 'melk', displayName: 'BCW Melk Gansch', parentNotebook: { displayName: '2026-27' } },
+      { id: 'mv26', displayName: 'MV 2', parentNotebook: { displayName: '2026-27' } },
+      { id: 'mv27', displayName: 'MV 2', parentNotebook: { displayName: '2027-28' } },
+    ],
+  },
+  '/sections/melk/pages': pages(['CL Aufgaben', 'Programm']),
+  '/sections/mv26/pages': pages(['Eins']),
+  '/sections/mv27/pages': pages(['Zwei']),
+};
+
+test('without a notebook, a section in one season is found and its season named', async () => {
+  const { text } = await callList(SEASONS, { section: 'BCW Melk Gansch' });
+  assert.match(text, /CL Aufgaben/);
+  assert.match(text, /Found in notebook "2026-27"/);
+  assert.match(text, /holds 2 pages; this is all of them/);
+});
+
+test('a unique match still names a similarly titled section in another season', async () => {
+  const graph = {
+    ...SEASONS,
     '/me/onenote/sections?': {
       value: [
-        { id: 'a', displayName: 'Archiv', parentNotebook: { displayName: 'Season' } },
-        { id: 'b', displayName: 'Archiv', parentNotebook: { displayName: 'Private' } },
+        { id: 'mp', displayName: 'Montepulciano', parentNotebook: { displayName: '2026-27' } },
+        { id: 'mp28', displayName: 'Montepulciano 2028', parentNotebook: { displayName: '2027-28' } },
       ],
     },
-    '/sections/a/pages': pages(['Eins']),
-    '/sections/b/pages': pages(['Zwei']),
+    '/sections/mp/pages': pages(['CL Aufgaben — Montepulciano']),
   };
-  // Straight to list_notes with the section: the notebook question comes first.
-  const { text } = await callList(twice, { section: 'Archiv' });
-  assert.match(text, /2 notebooks/);
-  assert.doesNotMatch(text, /Eins|Zwei/);
+  const { text } = await callList(graph, { section: 'Montepulciano' });
+  assert.match(text, /Found in notebook "2026-27"/);
+  assert.match(text, /Montepulciano 2028 \(notebook: 2027-28\)/);
+  assert.match(text, /ask before using this section/);
+});
+
+test('the same name in two seasons is refused, with the key to choose', async () => {
+  const { text } = await callList(SEASONS, { section: 'MV 2' });
+  assert.match(text, /2 sections are named "MV 2"/);
+  assert.match(text, /notebook: 2026-27/);
+  assert.match(text, /notebook: 2027-28/);
+  assert.match(text, /notebook_key: \S+/);
+  assert.doesNotMatch(text, /Eins|Zwei/, 'pages from an unchosen season were shown');
+});
+
+test('a project name alone is offered its section and season, not resolved', async () => {
+  const { text } = await callList(SEASONS, { section: 'Melk' });
+  assert.match(text, /Closest: BCW Melk Gansch \(notebook: 2026-27\)/);
+  assert.doesNotMatch(text, /CL Aufgaben/);
+});
+
+test('the key offered in a refusal is accepted on the follow-up call', async () => {
+  const first = await callList(SEASONS, { section: 'MV 2' });
+  const key = first.text.match(/notebook_key: (\S+)/)[1];
+  const { text } = await callList(SEASONS, { section: 'MV 2', notebook: '2027-28', notebook_key: key });
+  assert.match(text, /Zwei/);
+  assert.doesNotMatch(text, /Eins/);
 });
 
 test('without a section, every section is walked as before', async () => {

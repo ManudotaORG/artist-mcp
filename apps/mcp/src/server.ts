@@ -301,17 +301,29 @@ const selectNotebook = async (
  */
 export const renderSectionMiss = (
   section: string,
-  matched: SectionSummary[],
+  matched: { name: string; notebook: string | null }[],
   all: { name: string; notebook: string | null }[],
+  /** Set when the search spanned every notebook: names carry their notebook, and the key to choose one. */
+  notebookKey?: string,
 ): string | null => {
   if (matched.length === 1) return null;
 
+  const label = (sec: { name: string; notebook: string | null }) =>
+    notebookKey === undefined ? sec.name : `${sec.name} (notebook: ${sec.notebook ?? "unknown"})`;
+  const callAgain =
+    notebookKey === undefined
+      ? "call list_notes again with that section."
+      : "call list_notes again with that section, its notebook, and the notebook_key below";
+  // On its own line, so no sentence punctuation is ever read as part of it.
+  const keyLine = notebookKey === undefined ? "" : `\n\nnotebook_key: ${notebookKey}`;
+
   if (matched.length > 1) {
-    const where = matched.map((sec) => `- ${sec.name} (${sec.notebook ?? "unknown notebook"})`);
+    const where = matched.map((sec) => `- ${label(sec)}`);
     return (
       `${matched.length} sections are named "${section}":\n${where.join("\n")}\n\n` +
-      "Ask the user which one they mean, then call list_notes again with that " +
-      "notebook. Do not pick one."
+      `Ask the user which one they mean, then ${callAgain}. Do not pick one — ` +
+      "the same project name in two seasons is two different projects." +
+      keyLine
     );
   }
 
@@ -325,18 +337,92 @@ export const renderSectionMiss = (
     if (hay.includes(needle) || needle.includes(hay)) return words.length + 1;
     return words.filter((w) => hay.split(" ").includes(w)).length;
   };
-  const scored = all.map((sec) => ({ name: sec.name, s: score(sec.name) }));
+  const scored = all.map((sec) => ({ sec, s: score(sec.name) }));
   const best = Math.max(0, ...scored.map(({ s }) => s));
-  const near = scored.filter(({ s }) => best > 0 && s === best).map(({ name }) => name);
+  const near = scored.filter(({ s }) => best > 0 && s === best).map(({ sec }) => label(sec));
 
   return (
     `No section is named "${section}". ` +
     (near.length > 0
       ? `Closest: ${[...new Set(near)].join(", ")}. `
-      : `Sections: ${[...new Set(all.map((sec) => sec.name))].join(", ")}. `) +
-    "Ask the user which one they mean rather than choosing — and do not read " +
-    "this as the project having no page."
+      : `Sections: ${[...new Set(all.map(label))].join(", ")}. `) +
+    `Ask the user which one they mean rather than choosing, then ${callAgain}. ` +
+    "Do not read this as the project having no page." +
+    keyLine
   );
+};
+
+/**
+ * `section` with no notebook, on an account holding several: the update flow's
+ * case, since "Melk is confirmed" names a project and never a season.
+ *
+ * Section NAMES are searched across every notebook — they arrive in the one
+ * sections call either way, so this costs nothing. PAGES still come back only
+ * when exactly one section in exactly one notebook matched, and the reply names
+ * that notebook so the answer cannot silently drift into the wrong season.
+ * Everything else — two seasons, a partial name — goes back to the user with
+ * the notebook_key, the same proof `selectNotebook` asks for.
+ */
+const findSectionAcrossNotebooks = async (
+  call: Dispatch,
+  section: string,
+): Promise<
+  | { message: string }
+  | {
+      pages: NoteSummary[];
+      sections: SectionSummary[];
+      creationDates: boolean;
+      scope: string | null;
+      allSections?: { name: string; notebook: string | null }[];
+    }
+  | null
+> => {
+  const { notebooks } = await call<{ notebooks: { name: string }[] }>("list_notebooks");
+  // One notebook is not a choice; the ordinary path already handles it.
+  if (notebooks.length <= 1) return null;
+
+  const names = notebooks.map((n) => n.name);
+  const {
+    notes,
+    sections = [],
+    page_dates_are_creation_dates = false,
+    all_sections = [],
+  } = await call<{
+    notes: NoteSummary[];
+    sections?: SectionSummary[];
+    page_dates_are_creation_dates?: boolean;
+    all_sections?: { name: string; notebook: string | null }[];
+  }>("list_notes", { section });
+
+  const miss = renderSectionMiss(section, sections, all_sections, notebookKeyFor(names));
+  if (miss !== null) return { message: miss };
+
+  const [found] = sections;
+  // A unique exact match is not proof of the right season. Found live:
+  // "Montepulciano" resolved to 2026-27 while "Montepulciano 2028" sat in
+  // 2027-28, and an update naming the festival could mean either.
+  const wanted = sectionKey(section);
+  const similar = all_sections.filter((sec) => {
+    const key = sectionKey(sec.name);
+    return key !== wanted && (key.includes(wanted) || wanted.includes(key));
+  });
+  const others = names.filter(
+    (name) => name.trim().toLowerCase() !== (found.notebook ?? "").trim().toLowerCase(),
+  );
+  return {
+    pages: notes,
+    sections,
+    creationDates: page_dates_are_creation_dates,
+    scope:
+      `Found in notebook "${found.notebook ?? "unknown"}", the only notebook with a ` +
+      `section of this name (others: ${others.join(", ")}). Name that notebook when ` +
+      "you answer, so the user can catch a wrong season." +
+      (similar.length > 0
+        ? " Similarly named, and possibly the project meant: " +
+          similar.map((sec) => `${sec.name} (notebook: ${sec.notebook ?? "unknown"})`).join(", ") +
+          ". If the update could belong to one of these, ask before using this section."
+        : ""),
+  };
 };
 
 /**
@@ -1049,7 +1135,9 @@ const createServer = async (
         .describe(
           "Exact name of one section, to list only its pages. Much cheaper " +
             "than the whole notebook, and the reply gives the section's full " +
-            "page count. Use it to find the one page an update belongs to.",
+            "page count. Use it to find the one page an update belongs to. " +
+            "Works without `notebook`: the section is then looked for in every " +
+            "notebook, and the reply says which one it was found in.",
         ),
       notebook_key: z
         .string()
@@ -1087,7 +1175,11 @@ const createServer = async (
     },
     async ({ notebook, notebook_key, section, since, limit }) => {
       try {
-        const chosen = await selectNotebook(call, notebook, notebook_key, "list_notes", section);
+        const chosen =
+          (section !== undefined && notebook === undefined
+            ? await findSectionAcrossNotebooks(call, section)
+            : null) ??
+          (await selectNotebook(call, notebook, notebook_key, "list_notes", section));
         if ("message" in chosen) {
           return { content: [{ type: "text", text: chosen.message }] };
         }
