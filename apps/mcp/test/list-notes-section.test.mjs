@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createServer } from '../dist/server.js';
-import { listNotebooks, listNotes } from '../dist/notes.js';
+import { listNotebooks, listNotes, mapNotes } from '../dist/notes.js';
 import { withGraphBatch } from './support/graph-batch.mjs';
 
 /**
@@ -218,11 +218,19 @@ test('the key offered in a refusal is accepted on the follow-up call', async () 
   assert.doesNotMatch(text, /Eins/);
 });
 
-test('without a section, every section is walked as before', async () => {
-  const { seen } = await callList(GRAPH, {});
-  for (const id of ['melk', 'megeve', 'empty']) {
-    assert.ok(seen.some((u) => u.includes(`/sections/${id}/pages`)), `skipped ${id}`);
-  }
+/**
+ * A notebook without a section lists its sections and fetches no page at all.
+ * Walking pages is one OneNote request per section against 400 an hour, and an
+ * organised notebook is navigated by section first. See decision 0010.
+ */
+test('without a section, sections are listed and no page is fetched', async () => {
+  const { text, seen } = await callList(GRAPH, {});
+  assert.match(text, /GPT Melk/);
+  assert.match(text, /BCW Megeve/);
+  assert.match(text, /3 sections/);
+  assert.doesNotMatch(text, /CL Aufgaben/);
+  assert.ok(!seen.some((u) => u.includes('/pages')), 'a page listing was fetched');
+  assert.equal(seen.filter((u) => u.includes('/me/onenote/sections?')).length, 1);
 });
 
 /** The page an update goes to, named in the reply. Title shapes are the live notebook's. */
@@ -272,17 +280,44 @@ test('other CL pages are not mistaken for the task page', async () => {
  * the fact is what made a map of one season pay for all 56 sections on a real
  * account, and time out on hosted every time.
  */
-test('a chosen notebook walks only its own sections', async () => {
+test('a chosen notebook lists only its own sections', async () => {
   const first = await callList(SEASONS, {});
   const key = first.text.match(/notebook_key: (\S+)/)[1];
   const { text, seen } = await callList(SEASONS, { notebook: '2027-28', notebook_key: key });
 
+  assert.match(text, /MV 2 \(2027-28\)/);
+  assert.doesNotMatch(text, /BCW Melk Gansch/);
+  assert.ok(!seen.some((u) => u.includes('/pages')), 'a page listing was fetched');
+});
+
+/** With a section, only that section's pages are walked, in the chosen notebook. */
+test('a chosen notebook and section walk only that section', async () => {
+  const first = await callList(SEASONS, {});
+  const key = first.text.match(/notebook_key: (\S+)/)[1];
+  const { text, seen } = await callList(SEASONS, { notebook: '2027-28', notebook_key: key, section: 'MV 2' });
+
   assert.match(text, /Zwei/);
   assert.ok(seen.some((u) => u.includes('/sections/mv27/pages')));
-  assert.ok(
-    !seen.some((u) => u.includes('/sections/melk/pages') || u.includes('/sections/mv26/pages')),
-    'fetched pages of a notebook that was not chosen',
-  );
+  assert.ok(!seen.some((u) => u.includes('/sections/mv26/pages')), 'walked the other season');
+});
+
+/** map_notes can sketch one section for one section's cost. */
+test('map_notes with a section sketches only that section', async () => {
+  const graph = { ...SEASONS, '/preview': { previewText: 'x'.repeat(80) } };
+  const seen = stubGraph(graph);
+  const dispatch = async (op, params) => {
+    if (op === 'list_notebooks') return listNotebooks('token');
+    if (op === 'list_notes') return listNotes('token', params);
+    if (op === 'map_notes') return mapNotes('token', params.pages, { deadlineMs: params.deadline_ms });
+    throw new Error(`unexpected operation ${op}`);
+  };
+  const server = await createServer(dispatch);
+  const result = await server._registeredTools.map_notes.handler({ section: 'BCW Melk Gansch' });
+  const text = result.content.map((c) => c.text).join('\n');
+
+  assert.match(text, /## CL Aufgaben/);
+  assert.ok(seen.some((u) => u.includes('/sections/melk/pages')));
+  assert.ok(!seen.some((u) => u.includes('/sections/mv26/pages') || u.includes('/sections/mv27/pages')));
 });
 
 /** list_notebooks and list_notes used to fetch the same sections list twice per call. */

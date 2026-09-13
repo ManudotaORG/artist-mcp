@@ -17,9 +17,29 @@ Orchestrator resumes and the ordinary one-action rule applies again.
 Do not enter intake to answer a question about a page the musician already
 named. That is ordinary Orchestrator work.
 
+## An organised notebook is not intake
+
+Most of this notebook is past intake: a project is a section, and its CL
+Aufgaben page is the summary of it. Intake is for a notebook or a section that
+has no working units yet — a new season, a new project nobody has sorted, a
+section with no CL page. Everywhere else, work by section and never survey:
+
+- A question about a project goes section first: `list_notes` with `section`
+  (it names the CL Aufgaben page), then `read_note` on that page. A few
+  requests, not a notebook.
+- Do not `map_notes` an organised notebook to answer a question. It costs a
+  request for every section and every page sketched, and OneNote allows this
+  account 400 an hour across ChatGPT and Claude together; one map spends a
+  noticeable share of it, and a repeated one runs the account out.
+- To check whether a CL page has seen its whole section, sketch that section
+  only: `map_notes` with `section`.
+- Names and ids already returned in this conversation stay valid. Reuse them
+  instead of listing again.
+
 ## Survey
 
-1. Use `list_notes` and group what comes back by notebook and section.
+1. Use `list_notes` to see the notebooks, then the chosen notebook's sections.
+   It returns sections, not pages, so this step costs one request.
 2. When more than one notebook holds pages, ask which one to work in before
    reading anything. Never assume the largest, the newest, or the tidiest — and
    never one you know of from outside this conversation, from saved context or
@@ -28,7 +48,11 @@ named. That is ordinary Orchestrator work.
    pages. Say which notebook every answer covers.
 3. Use `map_notes` on the chosen notebook to see the opening of every page at
    once, and let it decide reading order. It is cheap where reading everything
-   is not, so a large notebook can be triaged before any page is opened.
+   is not, so a large notebook can be triaged before any page is opened. Run it
+   **once per intake**: it costs a OneNote request per section and per page,
+   against a limit of 400 an hour for the whole account, and the openings it
+   returned stay true for the rest of the conversation. Where intake is scoped
+   to one section, pass `section` and sketch only that.
 4. Read the pages in the chosen scope before classifying them. A title is not
    evidence, and neither is a sketch: `map_notes` returns the top of a page, so
    what it does not show is unsurveyed rather than absent. Classify from a page

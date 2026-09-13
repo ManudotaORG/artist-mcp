@@ -10,7 +10,9 @@ superseded and summarize the cleanup a human may choose to perform.
 1. Read statuses and dates from the page in hand.
 2. Distinguish explicit completion from age-based inference.
 3. For duplicated or superseded work, widen to the chosen notebook: sketch its
-   pages with `map_notes`, then read the ones that might be one event twice.
+   pages with `map_notes` — a section at a time where the notebook is sorted
+   into sections, since a whole-notebook map costs a request per section and
+   per page — then read the ones that might be one event twice.
    `policy:evidence` governs the widening — two openings that look unalike do
    not make two projects, so read before deciding either way.
 4. Return a compact proposed cleanup list with source evidence.
