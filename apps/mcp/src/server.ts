@@ -535,7 +535,7 @@ const renderChangedSections = (
  */
 const INDEX_ENTRIES = 12;
 
-const serverVersion = '2.3.1'; // x-release-please-version
+const serverVersion = '2.4.0'; // x-release-please-version
 
 const errorResult = (err: unknown) => {
   const message =
@@ -870,12 +870,23 @@ const ATTACHMENT_READING =
   "forwarded, or downloaded.";
 
 /**
+ * How a reversible write is agreed, stated once for the four that commit in one
+ * call (0009). The tool cannot tell a conversation from an automation, and does
+ * not pretend to: this is a rule for the model, as the confirmation always was.
+ */
+const WRITE_CONSENT =
+  "In a conversation, show the musician exactly what you will write and wait " +
+  "for their yes before calling this. In an automation the musician set up — a " +
+  "scheduled task, a recurring check — call it directly: setting that up was " +
+  "the decision. Either way, report the result. ";
+
+/**
  * What `source_page` means, said once.
  *
  * Seven tools take it and, until this constant existed, five of them explained
  * it differently and a sixth — reschedule — did not explain it at all, so a
  * model had no reason to pass it and that write's audit line lost its origin.
- * Only preview_onenote_page adds to this, because there the value does a second
+ * Only create_onenote_page adds to this, because there the value does a second
  * job: it decides which section the page lands in.
  */
 const SOURCE_PAGE =
@@ -1160,8 +1171,9 @@ const createServer = async (
     // does not deliver the `instructions` field to the model at all — verified
     // against a live session, which reported the tool list and no preamble —
     // so on the one client `init` configures, the handshake reaches nothing.
-    // A description does reach it: `preview_calendar_event`'s refusal clause
-    // sits ~650 characters in and a Desktop session acted on it. See #99.
+    // A description does reach it: a refusal clause in the calendar preview tool's
+    // description, since removed (0009), sat ~650 characters in and a Desktop
+    // session acted on it. See #99.
     //
     // It opens the description because a client may render the listing clipped
     // to one line, and because the first paragraph is what is read most often.
@@ -1969,23 +1981,27 @@ const createServer = async (
   // present and refusing: a tool that exists is a tool a model will try, and a
   // refusal in a tool result reads as an obstacle to route around rather than
   // as a boundary. See docs/decisions/0001-opt-in-calendar-writes.md.
+  //
+  // No preview tool and no confirmation token since 0009. A created event is
+  // visible and deletable by this tool, so the defence is that a wrong one is
+  // found and undone: the result carries what the preview used to show.
   if (isGranted(grants, "calendar-create")) {
     server.tool(
-      "preview_calendar_event",
-      "Call this before create_calendar_event — it is the only way to obtain the confirmation_token that one requires, and it is what puts the exact event in front of the musician. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. " +
-        "Renders a Google Calendar event exactly as it would be written, and " +
-        "lists what is already on the days it would occupy in that calendar, so an " +
-        "event that " +
-        "is already there is visible before a second one is added. Changes " +
-        "nothing. It searches ONE calendar — call list_calendars first if you " +
-        "have not established which calendar this gig would live on. A value " +
-        "the notebook has not settled (UNKNOWN, TBC, a disputed date) is " +
-        "refused here rather than written. Asking the musician to pick between " +
-        "two pages that disagree does NOT settle it: their answer in chat " +
-        "leaves the notebook recording both, while the event you would write is " +
-        "durable and seen by other people. Say the pages need settling first.",
+      "create_calendar_event",
+      WRITE_CONSENT +
+        "Creates ONE event in Google Calendar. It cannot update, move or delete " +
+        "anything, and there is no bulk form — 'add all the gigs' is not " +
+        "something this can do. It writes to ONE calendar — call list_calendars " +
+        "first if you have not established which calendar this belongs on. The " +
+        "result lists what was already on those dates there, so say if anything " +
+        "looks like the same event. Creating the exact same event twice is " +
+        "refused by Google rather than duplicated. A value the notebook has not " +
+        "settled (UNKNOWN, TBC, a disputed date) is refused rather than written. " +
+        "Asking the musician to pick between two pages that disagree does NOT " +
+        "settle it: the notebook still records both, while the event is durable " +
+        "and seen by other people. This tool never writes to OneNote.",
       {
-        summary: z.string().describe("The event title, as the page words it"),
+        summary: z.string().describe("The event title, as the page or source words it"),
         start: z
           .string()
           .describe("YYYY-MM-DD for an all-day event, or an RFC3339 date-time such as 2026-10-16T20:00:00"),
@@ -2000,88 +2016,35 @@ const createServer = async (
           .string()
           .optional()
           .describe("IANA name such as Europe/Madrid. Required for a timed event."),
-        location: z.string().optional().describe("Where, as the page words it"),
+        location: z.string().optional().describe("Where, as the source words it"),
         description: z.string().optional().describe("Notes to carry onto the event"),
         calendar_id: z
           .string()
           .optional()
           .describe("Which calendar, from list_calendars. Defaults to the primary one."),
+        source_page: z.string().optional().describe(SOURCE_PAGE),
       },
       async (params) => {
         try {
-          const { preview, confirmation_token, existing_in_range, calendar_searched } =
-            await call<{
-              preview: string;
-              confirmation_token: string;
-              existing_in_range: EventSummary[];
-              calendar_searched: string;
-            }>("preview_calendar_event", params);
-
-          // The day comes first. A preview that leads with what would be added
-          // invites exactly the question it is here to answer.
-          const already =
-            existing_in_range.length === 0
-              ? `Nothing else is on those dates in ${calendar_searched}. That is one ` +
-                "calendar only — it does not show the day is free elsewhere."
-              : `Already on those dates in ${calendar_searched}:\n` +
-                existing_in_range.map((e) => `- ${e.summary} — ${when(e)}`).join("\n");
-
-          return {
-            content: [
-              {
-                type: "text",
-                text:
-                  `${already}\n\nThis would be created:\n\n${preview}\n\n` +
-                  "Show this to the musician and wait for their yes. If they " +
-                  "agree, call create_calendar_event with the SAME values and " +
-                  `confirmation_token: ${confirmation_token}`,
-              },
-            ],
-          };
-        } catch (err) {
-          return errorResult(err);
-        }
-      },
-    );
-
-    server.tool(
-      "create_calendar_event",
-      "Only call this after preview_calendar_event AND after the musician has said yes to what the preview showed. Never call it to find out whether it would work. " +
-        "Creates ONE event in Google Calendar. It cannot update, move or delete " +
-        "anything, and there is no bulk form — 'add all the gigs' is not " +
-        "something this can do. Requires the confirmation_token from a preview " +
-        "of these exact values; change any field and the token stops matching, " +
-        "which means preview again and show the musician the new version. " +
-        "Creating the same event twice is refused by Google rather than " +
-        "duplicated. This tool never writes to OneNote — creating a page is a " +
-        "different tool, and it is absent unless granted. Never call this with " +
-        "a value the musician chose in chat to break a tie between pages that " +
-        "still disagree — the calendar is a derivative of the page, and a page " +
-        "that contradicts itself has nothing to derive from yet.",
-      {
-        summary: z.string().describe("Exactly what the preview showed"),
-        start: z.string().describe("Exactly what the preview showed"),
-        end: z.string().describe("Exactly what the preview showed"),
-        time_zone: z.string().optional().describe("Exactly what the preview showed"),
-        location: z.string().optional().describe("Exactly what the preview showed"),
-        description: z.string().optional().describe("Exactly what the preview showed"),
-        calendar_id: z.string().optional().describe("Exactly what the preview showed"),
-        confirmation_token: z
-          .string()
-          .describe("The token preview_calendar_event returned for these exact values"),
-        source_page: z
-          .string()
-          .optional()
-          .describe(SOURCE_PAGE),
-      },
-      async (params) => {
-        try {
-          const { created, link, calendar_id, written } = await call<{
+          const { created, link, calendar_id, written, existing_in_range } = await call<{
             created: EventSummary;
             link: string | null;
             calendar_id: string;
             written: string;
+            existing_in_range: EventSummary[];
           }>("create_calendar_event", params);
+
+          const already =
+            existing_in_range.length === 0
+              ? `Nothing else was on those dates in ${calendar_id}. That is one ` +
+                "calendar only — it does not show the dates were free elsewhere."
+              : `Already on those dates in ${calendar_id} before this was written:\n` +
+                existing_in_range.map((e) => `- ${e.summary} — ${when(e)}`).join("\n") +
+                "\nIf one of these is the same event, say so plainly.";
+
+          const undo = isGranted(grants, "calendar-delete")
+            ? `If it is wrong, delete_calendar_event removes it: event_id ${created.id}, calendar_id ${calendar_id}.`
+            : "If it is wrong, the musician can delete it in Google Calendar.";
 
           return {
             content: [
@@ -2090,9 +2053,9 @@ const createServer = async (
                 text:
                   `Created in ${calendar_id}:\n\n${written}\n` +
                   (link ? `\n${link}\n` : "") +
-                  "\nTell the musician it is in the calendar and that they can " +
-                  "delete it there if it is wrong. The page in OneNote was not " +
-                  "changed — this tool does not write to OneNote.",
+                  `\n${already}\n\n${undo} ` +
+                  "Tell the musician what was created. The page in OneNote was " +
+                  "not changed.",
               },
             ],
           };
@@ -2106,22 +2069,21 @@ const createServer = async (
   // Both grants, not a third one. A reschedule is exactly a create and a delete,
   // so an install holding both has already consented to everything it does —
   // and inventing `calendar-update` would make every hosted user re-consent for
-  // permission they already gave. Absent either grant, the tools are absent.
+  // permission they already gave. Absent either grant, the tool is absent.
   if (isGranted(grants, "calendar-create") && isGranted(grants, "calendar-delete")) {
     server.tool(
-      "preview_calendar_reschedule",
-      "Call this before reschedule_calendar_event — it is the only way to obtain the confirmation_token that one requires. SHOW THE MUSICIAN BOTH HALVES AND WAIT FOR THEIR YES. " +
-        "Shows the event as Google has it now and the values that would replace " +
-        "it, side by side, and lists what is already on the dates it would " +
-        "occupy. " +
-        "Changes nothing. Only an event artist-mcp created can be rescheduled; " +
-        "anything the musician made themselves, or that was shared onto their " +
-        "calendar, is refused. Use it to move an event in time, to rename it, or " +
-        "to move it to another calendar with to_calendar_id — those are one " +
-        "operation. A value the notebook has not settled (UNKNOWN, TBC, a " +
-        "disputed date) is refused here rather than written, and a new date the " +
-        "musician did not give you is not settled: a deadline that slipped is " +
-        "not a reason to invent the next one.",
+      "reschedule_calendar_event",
+      WRITE_CONSENT +
+        "Replaces ONE event that artist-mcp itself created: it writes the new " +
+        "event first and removes the old one after, so an interruption leaves a " +
+        "visible duplicate rather than a gap. Use it to move an event in time, to " +
+        "rename it, or to move it to another calendar with to_calendar_id. It is " +
+        "not an update — the replacement has its own id, and reminders or " +
+        "notifications on the old event are lost; say so. Anything the musician " +
+        "made themselves, or that was shared onto their calendar, is refused. A " +
+        "value the notebook has not settled is refused, and a new date nobody " +
+        "gave you is not settled. Google keeps the removed event in that " +
+        "calendar's bin for 30 days. There is no bulk form.",
       {
         event_id: z.string().describe("The id of the event to replace"),
         calendar_id: z
@@ -2132,7 +2094,7 @@ const createServer = async (
           .string()
           .optional()
           .describe("Move it to this calendar. Defaults to the one it is already on."),
-        summary: z.string().describe("The title it should have, as the page words it"),
+        summary: z.string().describe("The title it should have, as the source words it"),
         start: z
           .string()
           .describe(
@@ -2141,81 +2103,29 @@ const createServer = async (
         end: z
           .string()
           .describe(
-            "The same kind as start: both dates, or both date-times. For an all-day event Google reads this as EXCLUSIVE, so a task due on 2026-10-30 is start 2026-10-30, end 2026-10-31",
+            "The same kind as start. For an all-day event Google reads this as EXCLUSIVE, so a task due on 2026-10-30 is start 2026-10-30, end 2026-10-31",
           ),
         time_zone: z.string().optional(),
         location: z.string().optional(),
         description: z.string().optional(),
-      },
-      async (params) => {
-        try {
-          const { before, after, confirmation_token, existing_in_range, calendar_searched } =
-            await call<{
-              before: string;
-              after: string;
-              confirmation_token: string;
-              existing_in_range: unknown[];
-              calendar_searched: string;
-            }>("preview_calendar_reschedule", params);
-
-          const day =
-            existing_in_range.length === 0
-              ? `Nothing else is on those dates in ${calendar_searched}. That is one calendar only — it does not show they are free elsewhere.`
-              : `Already on those dates in ${calendar_searched}:\n${JSON.stringify(existing_in_range, null, 2)}`;
-
-          return {
-            content: [
-              {
-                type: "text",
-                text:
-                  `${day}\n\nThis event would be replaced:\n\n${before}\n\n` +
-                  `by this one:\n\n${after}\n\n` +
-                  "The replacement is a new event: reminders set on the old one, " +
-                  "and notifications other people arranged for it, do not come " +
-                  "across. Say so, show the musician both halves, and wait for " +
-                  "their yes. If they agree, call reschedule_calendar_event with " +
-                  `the SAME values and confirmation_token: ${confirmation_token}`,
-              },
-            ],
-          };
-        } catch (err) {
-          return errorResult(err);
-        }
-      },
-    );
-
-    server.tool(
-      "reschedule_calendar_event",
-      "Only call this after preview_calendar_reschedule AND after the musician has said yes to what the preview showed. " +
-        "Replaces ONE event that artist-mcp itself created: it writes the new " +
-        "event first and removes the old one after, so an interruption leaves a " +
-        "visible duplicate rather than a gap. It is not an update — the " +
-        "replacement has its own id, and reminders or notifications on the old " +
-        "event are lost. There is no bulk form. Google keeps the removed event " +
-        "in that calendar's bin for 30 days.",
-      {
-        event_id: z.string().describe("Exactly what the preview showed"),
-        calendar_id: z.string().optional().describe("Exactly what the preview showed"),
-        to_calendar_id: z.string().optional().describe("Exactly what the preview showed"),
-        summary: z.string().describe("Exactly what the preview showed"),
-        start: z.string().describe("Exactly what the preview showed"),
-        end: z.string().describe("Exactly what the preview showed"),
-        time_zone: z.string().optional(),
-        location: z.string().optional(),
-        description: z.string().optional(),
-        confirmation_token: z
-          .string()
-          .describe("The token preview_calendar_reschedule returned for these exact values"),
         source_page: z.string().optional().describe(SOURCE_PAGE),
       },
       async (params) => {
         try {
-          const { removed, written, link, calendar_id } = await call<{
+          const { removed, written, link, calendar_id, created, existing_in_range } = await call<{
             removed: string;
             written: string;
             link: string | null;
             calendar_id: string;
+            created: EventSummary;
+            existing_in_range: EventSummary[];
           }>("reschedule_calendar_event", params);
+
+          const already =
+            existing_in_range.length === 0
+              ? `Nothing else was on the new dates in ${calendar_id}.`
+              : `Already on the new dates in ${calendar_id}:\n` +
+                existing_in_range.map((e) => `- ${e.summary} — ${when(e)}`).join("\n");
 
           return {
             content: [
@@ -2225,10 +2135,11 @@ const createServer = async (
                   `Rescheduled in ${calendar_id}.\n\nRemoved:\n\n${removed}\n\n` +
                   `Created:\n\n${written}\n\n` +
                   (link ? `${link}\n\n` : "") +
-                  "Tell the musician it has moved, that the old one is in that " +
-                  "calendar's bin for 30 days, and that any reminder they had set " +
-                  "on it did not come across. The page in OneNote was not " +
-                  "changed — this tool does not write to OneNote.",
+                  `${already}\n\n` +
+                  `The new event is event_id ${created.id}. The old one is in that ` +
+                  "calendar's bin for 30 days, and any reminder set on it did not " +
+                  "come across — tell the musician both. The page in OneNote was " +
+                  "not changed.",
               },
             ],
           };
@@ -2241,62 +2152,21 @@ const createServer = async (
 
   if (isGranted(grants, "calendar-delete")) {
     server.tool(
-      "preview_calendar_delete",
-      "Call this before delete_calendar_event — it is the only way to obtain the confirmation_token that one requires. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. " +
-        "Shows the event that would be removed, read fresh from Google rather " +
-        "than from anything you were told about it. Changes nothing. Only an " +
-        "event artist-mcp created can be previewed here; anything the musician " +
-        "made themselves, or that was shared onto their calendar, is refused.",
+      "delete_calendar_event",
+      WRITE_CONSENT +
+        "Deletes ONE event that artist-mcp itself created. It cannot delete an " +
+        "event the musician made, or one shared onto their calendar — those are " +
+        "refused. It cannot change an event, only remove it, and there is no " +
+        "bulk form. The result is the whole event as it was, read from Google " +
+        "before removing it. Google keeps a deleted event in that calendar's bin " +
+        "for 30 days, so tell the musician they can restore it there.",
       {
         event_id: z.string().describe("The id of the event, as returned when it was created"),
         calendar_id: z
           .string()
           .optional()
           .describe("Which calendar it is on. Defaults to the primary one."),
-      },
-      async (params) => {
-        try {
-          const { preview, confirmation_token } = await call<{
-            preview: string;
-            confirmation_token: string;
-          }>("preview_calendar_delete", params);
-
-          return {
-            content: [
-              {
-                type: "text",
-                text:
-                  `This would be deleted:\n\n${preview}\n\n` +
-                  "Show this to the musician and wait for their yes. If they " +
-                  "agree, call delete_calendar_event with the same event_id and " +
-                  `confirmation_token: ${confirmation_token}`,
-              },
-            ],
-          };
-        } catch (err) {
-          return errorResult(err);
-        }
-      },
-    );
-
-    server.tool(
-      "delete_calendar_event",
-      "Only call this after preview_calendar_delete AND after the musician has said yes to what the preview showed. " +
-        "Deletes ONE event that artist-mcp itself created. It cannot delete an " +
-        "event the musician made, or one shared onto their calendar — those are " +
-        "theirs, and are refused. It cannot change an event, only remove it, and " +
-        "there is no bulk form. Google keeps a deleted event in that calendar's " +
-        "bin for 30 days, so tell the musician they can restore it there.",
-      {
-        event_id: z.string().describe("Exactly what the preview showed"),
-        calendar_id: z.string().optional().describe("Exactly what the preview showed"),
-        confirmation_token: z
-          .string()
-          .describe("The token preview_calendar_delete returned for this event"),
-        source_page: z
-          .string()
-          .optional()
-          .describe(SOURCE_PAGE),
+        source_page: z.string().optional().describe(SOURCE_PAGE),
       },
       async (params) => {
         try {
@@ -2327,24 +2197,29 @@ const createServer = async (
   /**
    * Creating a OneNote page: the first write to the knowledge base itself.
    *
-   * The tool text below leans on something none of the calendar tools can say —
-   * that editing and deleting are impossible rather than merely not offered.
-   * That is worth stating plainly to a model, because a model that believes a
-   * mistake is repairable will create more freely than one that knows the page
-   * is permanent the moment it exists. See docs/decisions/0003-onenote-writes.md.
+   * The tool text leans on something none of the calendar tools can say — that
+   * editing and deleting are impossible rather than merely not offered. A model
+   * that believes a mistake is repairable creates more freely, so it is said
+   * plainly. No preview since 0009: a new page overwrites nothing, and the result
+   * shows the page as written and where it landed. See 0003 and 0009.
    */
   if (isGranted(grants, "onenote-create")) {
     server.tool(
-      "preview_onenote_page",
-      "Call this before create_onenote_page — it is the only way to obtain the confirmation_token that one requires, and it is what puts the exact page in front of the musician. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. " +
-        "Renders a OneNote page exactly as it would be written and names the " +
-        "section it would land in, in words rather than as an id. Changes " +
-        "nothing. The page goes beside the page it was composed from, so pass " +
-        "source_page unless the musician named a section. A title the notebook " +
-        "has not settled (UNKNOWN, TBC, a disputed name) is refused here rather " +
-        "than written; the body may say a fee is still TBC, because that is the " +
-        "notebook recording an open question rather than this tool inventing an " +
-        "answer.",
+      "create_onenote_page",
+      WRITE_CONSENT +
+        "Creates ONE new page in OneNote, beside the page it was composed from — " +
+        "pass source_page unless the musician named a section. It CANNOT edit or " +
+        "delete any page, including the ones it creates: a page created by " +
+        "mistake stays until the musician removes it in OneNote themselves. There " +
+        "is no bulk form, and it never changes an existing page, so it is not a " +
+        "way to add a line to one: " +
+        (isGranted(grants, "onenote-edit")
+          ? "use preview_onenote_edit and edit_onenote_page for that. "
+          : "paste that for the musician as always. ") +
+        "A title the notebook has not settled (UNKNOWN, TBC, a disputed name) is " +
+        "refused; the body may say a fee is still TBC, because that records an " +
+        "open question. Never write a value the musician chose in chat to break a " +
+        "tie between pages that still disagree.",
       {
         title: z
           .string()
@@ -2362,9 +2237,7 @@ const createServer = async (
         source_page: z
           .string()
           .optional()
-          .describe(
-            `${SOURCE_PAGE} It also decides which section the new page lands in.`,
-          ),
+          .describe(`${SOURCE_PAGE} It also decides which section the new page lands in.`),
         section_id: z
           .string()
           .optional()
@@ -2375,77 +2248,12 @@ const createServer = async (
       },
       async (params) => {
         try {
-          const { preview, confirmation_token, section_name, section_id } = await call<{
-            preview: string;
-            confirmation_token: string;
-            section_name: string;
-            section_id: string;
-          }>("preview_onenote_page", params);
-
-          return {
-            content: [
-              {
-                type: "text",
-                text:
-                  `This would be created in ${section_name}:\n\n${preview}\n\n` +
-                  "Show this to the musician and wait for their yes. Say plainly " +
-                  "that this tool cannot undo it: once the page exists it cannot " +
-                  "edit or delete it, and removing it means doing so in OneNote " +
-                  "themselves. If they agree, call create_onenote_page with the " +
-                  "SAME title and body, and with both of these:\n" +
-                  // The id is only knowable from here. It is resolved from the
-                  // source page rather than supplied, so a create that had to
-                  // guess it would either fail or write to the wrong section.
-                  `  section_id: ${section_id}\n` +
-                  `  confirmation_token: ${confirmation_token}`,
-              },
-            ],
-          };
-        } catch (err) {
-          return errorResult(err);
-        }
-      },
-    );
-
-    server.tool(
-      "create_onenote_page",
-      "Only call this after preview_onenote_page AND after the musician has said yes to what the preview showed. Never call it to find out whether it would work. " +
-        "Creates ONE new page in OneNote. It CANNOT edit or delete any page, " +
-        "including the ones it creates — that is the permission this install " +
-        "holds, not a policy it follows, so a page created by mistake stays " +
-        "until the musician removes it in OneNote themselves. There is no bulk " +
-        "form. It never changes an existing page, so it is not a way to add a " +
-        "line to one: " +
-        (isGranted(grants, "onenote-edit")
-          ? "use preview_onenote_edit and edit_onenote_page for that. "
-          : "paste that for the musician as always. ") +
-        "Requires the " +
-        "confirmation_token from a preview of these exact values; change any " +
-        "field and the token stops matching, which means preview again and show " +
-        "the musician the new version. Never write a value the musician chose in " +
-        "chat to break a tie between pages that still disagree — a page is the " +
-        "record other sessions read back, and writing the tie-break makes it " +
-        "look settled when it is not.",
-      {
-        title: z.string().describe("Exactly what the preview showed"),
-        body: z.string().describe("Exactly what the preview showed"),
-        section_id: z
-          .string()
-          .describe("The section_id the preview returned, not one you chose yourself"),
-        source_page: z
-          .string()
-          .optional()
-          .describe(SOURCE_PAGE),
-        confirmation_token: z
-          .string()
-          .describe("The token preview_onenote_page returned for these exact values"),
-      },
-      async (params) => {
-        try {
-          const { title, web_url } = await call<{
+          const { title, web_url, section_name, written } = await call<{
             title: string;
             page_id: string | null;
             web_url: string | null;
+            section_name: string;
+            written: string;
           }>("create_onenote_page", params);
 
           return {
@@ -2453,12 +2261,11 @@ const createServer = async (
               {
                 type: "text",
                 text:
-                  `Created the page "${title}".` +
-                  (web_url ? `\n\n${web_url}\n` : "") +
+                  `Created the page "${title}" in ${section_name}:\n\n${written}\n` +
+                  (web_url ? `\n${web_url}\n` : "") +
                   "\nTell the musician the page is in their notebook, and that " +
                   "this tool cannot change or remove it — if it is wrong, they " +
-                  "edit or delete it in OneNote themselves. No existing page was " +
-                  "touched.",
+                  "delete it in OneNote themselves. No existing page was touched.",
               },
             ],
           };

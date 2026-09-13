@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { idempotencyId, previewRescheduleEvent, rescheduleEvent } from '../dist/calendar.js';
+import { idempotencyId, rescheduleEvent } from '../dist/calendar.js';
 
 /**
  * Rescheduling is a create and a delete, so everything here is about something
@@ -93,14 +93,6 @@ const stubCalendar = ({ insertFails = false, deleteFails = false } = {}) => {
   return { fetchImpl, calls };
 };
 
-const tokenFor = async (params) => {
-  const { fetchImpl } = stubCalendar();
-  const { confirmation_token } = await withFetch(fetchImpl, () =>
-    previewRescheduleEvent('t', params),
-  );
-  return confirmation_token;
-};
-
 // ------------------------------------------------------------- the refusals
 
 /**
@@ -112,7 +104,7 @@ test('an event this tool did not create cannot be rescheduled', async () => {
   await assert.rejects(
     () =>
       withFetch(fetchImpl, () =>
-        previewRescheduleEvent('t', { ...move, event_id: 'someoneElsesEvent' }),
+        rescheduleEvent('t', { ...move, event_id: 'someoneElsesEvent' }),
       ),
     /not created by artist-mcp/,
   );
@@ -123,7 +115,7 @@ test('the refusal says it is a reschedule being refused, not a delete', async ()
   await assert.rejects(
     () =>
       withFetch(fetchImpl, () =>
-        previewRescheduleEvent('t', { ...move, event_id: 'someoneElsesEvent' }),
+        rescheduleEvent('t', { ...move, event_id: 'someoneElsesEvent' }),
       ),
     /cannot be rescheduled here/,
   );
@@ -138,7 +130,7 @@ test('an unsettled value is refused rather than written', async () => {
   await assert.rejects(
     () =>
       withFetch(fetchImpl, () =>
-        previewRescheduleEvent('t', { ...move, description: 'Neuer Termin TBC' }),
+        rescheduleEvent('t', { ...move, description: 'Neuer Termin TBC' }),
       ),
     /not settled/,
   );
@@ -149,7 +141,7 @@ test('rescheduling an event to the values it already has is refused', async () =
   await assert.rejects(
     () =>
       withFetch(fetchImpl, () =>
-        previewRescheduleEvent('t', {
+        rescheduleEvent('t', {
           event_id: oldId,
           calendar_id: 'material',
           summary: OLD_DRAFT.summary,
@@ -161,11 +153,11 @@ test('rescheduling an event to the values it already has is refused', async () =
   );
 });
 
-test('no confirmation token means no write', async () => {
+/** A refusal happens before either write, since 0009 removed the preview that used to stand in front of them. */
+test('a refused reschedule writes nothing', async () => {
   const { fetchImpl, calls } = stubCalendar();
-  await assert.rejects(
-    () => withFetch(fetchImpl, () => rescheduleEvent('t', move)),
-    /No confirmation_token/,
+  await assert.rejects(() =>
+    withFetch(fetchImpl, () => rescheduleEvent('t', { ...move, description: 'Neuer Termin TBC' })),
   );
   assert.equal(
     calls.filter((c) => c.startsWith('POST') || c.startsWith('DELETE')).length,
@@ -174,35 +166,21 @@ test('no confirmation token means no write', async () => {
   );
 });
 
-/** The preview is over both halves, so changing either invalidates it. */
-test('a token from a different destination does not authorise this one', async () => {
-  const stale = await tokenFor({ ...move, start: '2026-12-01', end: '2026-12-02' });
-  const { fetchImpl, calls } = stubCalendar();
-  await assert.rejects(
-    () =>
-      withFetch(fetchImpl, () =>
-        rescheduleEvent('t', { ...move, confirmation_token: stale }),
-      ),
-    /does not match/,
-  );
-  assert.equal(calls.filter((c) => c.startsWith('POST')).length, 0);
+// ------------------------------------------- what the preview used to show
+
+test('the result shows both halves and what was already on the new dates', async () => {
+  const { fetchImpl } = stubCalendar();
+  const result = await withFetch(fetchImpl, () => rescheduleEvent('t', move));
+
+  assert.match(result.removed, /2026-11-17 to 2026-11-18/);
+  assert.match(result.written, /2026-11-24 to 2026-11-25/);
+  assert.match(result.removed, /\[Saarbrücken\]/);
+  assert.deepEqual(result.existing_in_range, []);
 });
 
-// -------------------------------------------------------------- the preview
-
-test('the preview shows both halves and does not write', async () => {
+test('the listing covers the destination, not the dates it is leaving', async () => {
   const { fetchImpl, calls } = stubCalendar();
-  const result = await withFetch(fetchImpl, () => previewRescheduleEvent('t', move));
-
-  assert.match(result.before, /2026-11-17 to 2026-11-18/);
-  assert.match(result.after, /2026-11-24 to 2026-11-25/);
-  assert.match(result.before, /\[Saarbrücken\]/);
-  assert.equal(calls.filter((c) => !c.startsWith('GET')).length, 0);
-});
-
-test('the preview enumerates the destination, not the dates it is leaving', async () => {
-  const { fetchImpl, calls } = stubCalendar();
-  await withFetch(fetchImpl, () => previewRescheduleEvent('t', move));
+  await withFetch(fetchImpl, () => rescheduleEvent('t', move));
   const listing = calls.find((c) => c.includes('timeMin'));
   assert.ok(listing?.includes('2026-11-24'), `listed the wrong day: ${listing}`);
   assert.ok(!listing?.includes('2026-11-17'), `listed the day it is leaving: ${listing}`);
@@ -217,8 +195,7 @@ test('the preview enumerates the destination, not the dates it is leaving', asyn
  */
 test('the new event is written before the old one is removed', async () => {
   const { fetchImpl, calls } = stubCalendar();
-  const confirmation_token = await tokenFor(move);
-  await withFetch(fetchImpl, () => rescheduleEvent('t', { ...move, confirmation_token }));
+  await withFetch(fetchImpl, () => rescheduleEvent('t', move));
 
   const post = calls.findIndex((c) => c.startsWith('POST'));
   const del = calls.findIndex((c) => c.startsWith('DELETE'));
@@ -228,9 +205,8 @@ test('the new event is written before the old one is removed', async () => {
 
 test('a failed insert removes nothing', async () => {
   const { fetchImpl, calls } = stubCalendar({ insertFails: true });
-  const confirmation_token = await tokenFor(move);
   await assert.rejects(() =>
-    withFetch(fetchImpl, () => rescheduleEvent('t', { ...move, confirmation_token })),
+    withFetch(fetchImpl, () => rescheduleEvent('t', move)),
   );
   assert.equal(
     calls.filter((c) => c.startsWith('DELETE')).length,
@@ -245,9 +221,8 @@ test('a failed insert removes nothing', async () => {
  */
 test('a failed delete reports both events, and names the one left behind', async () => {
   const { fetchImpl } = stubCalendar({ deleteFails: true });
-  const confirmation_token = await tokenFor(move);
   await assert.rejects(
-    () => withFetch(fetchImpl, () => rescheduleEvent('t', { ...move, confirmation_token })),
+    () => withFetch(fetchImpl, () => rescheduleEvent('t', move)),
     (err) => {
       assert.match(err.message, /both/);
       assert.match(err.message, new RegExp(oldId));
@@ -260,9 +235,8 @@ test('a failed delete reports both events, and names the one left behind', async
 test('a move to another calendar writes to the destination and deletes from the source', async () => {
   const { fetchImpl, calls } = stubCalendar();
   const params = { ...move, to_calendar_id: 'studium' };
-  const confirmation_token = await tokenFor(params);
   const result = await withFetch(fetchImpl, () =>
-    rescheduleEvent('t', { ...params, confirmation_token }),
+    rescheduleEvent('t', params),
   );
 
   assert.equal(result.from_calendar_id, 'material');
@@ -274,17 +248,16 @@ test('a move to another calendar writes to the destination and deletes from the 
 /** Both halves are audited, so the log stays a record of what reached Google. */
 test('both writes are recorded, under their own operation names', async () => {
   const { fetchImpl } = stubCalendar();
-  const confirmation_token = await tokenFor(move);
   const recorded = [];
   await withFetch(fetchImpl, () =>
-    rescheduleEvent('t', { ...move, confirmation_token }, async (line) => {
+    rescheduleEvent('t', move, async (line) => {
       recorded.push(line.operation);
     }),
   );
   assert.deepEqual(recorded, ['create_calendar_event', 'delete_calendar_event']);
 });
 
-// ------------------------------------------------ what the preview looks at
+// ------------------------------------------------ what the listing looks at
 
 /**
  * The start day alone was enough while every event was one day long. A span
@@ -292,10 +265,10 @@ test('both writes are recorded, under their own operation names', async () => {
  * day" — true about the one day it looked at, and misleading exactly where it
  * mattered. The window is now the event's whole range.
  */
-test('the preview enumerates every day the event would occupy, not just the first', async () => {
+test('the listing covers every day the event would occupy, not just the first', async () => {
   const { fetchImpl, calls } = stubCalendar();
   await withFetch(fetchImpl, () =>
-    previewRescheduleEvent('t', { ...move, start: '2026-11-24', end: '2026-12-01' }),
+    rescheduleEvent('t', { ...move, start: '2026-11-24', end: '2026-12-01' }),
   );
 
   const listing = calls.find((c) => c.includes('timeMin'));
@@ -305,7 +278,7 @@ test('the preview enumerates every day the event would occupy, not just the firs
 
 test('a single-day event still asks about its own day', async () => {
   const { fetchImpl, calls } = stubCalendar();
-  await withFetch(fetchImpl, () => previewRescheduleEvent('t', move));
+  await withFetch(fetchImpl, () => rescheduleEvent('t', move));
 
   const listing = calls.find((c) => c.includes('timeMin'));
   assert.ok(listing?.includes('2026-11-24'), `wrong window start: ${listing}`);

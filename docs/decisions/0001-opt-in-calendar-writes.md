@@ -3,6 +3,11 @@
 Status: accepted. Supersedes the unqualified "no writes" rule for Google
 Calendar and only for Google Calendar. Raised by issue #85.
 
+"How a write is confirmed" is **amended by
+[0009](0009-confirm-by-reversibility.md)**: create, reschedule and delete commit
+in one call, and their preview tools are gone. Read that record before the
+section below.
+
 ## What the old rule said
 
 `CLAUDE.md` said: "If you find yourself adding writes, sends, or

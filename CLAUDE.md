@@ -17,19 +17,22 @@ project types are loaded at runtime, and every result stays in chat.
 rule stands, with four exceptions, and none of them is a precedent.
 
 An install granted `--allow-writes calendar-create` may create a single Google
-Calendar event, previewed and confirmed, and one granted `calendar-delete` may
+Calendar event, and one granted `calendar-delete` may
 remove an event **that this tool itself created**, identified by the `artist`
 prefix on its id. An install holding *both* may also reschedule one, which is
-those two writes in one confirmed step — a create then a delete, never a
+those two writes in one step — a create then a delete, never a
 `PATCH`, because the event id is a hash of the event's own contents. An event
 the musician made is unreachable, and that prefix check is the only thing
 making delete safe to offer. Read
 [docs/decisions/0001-opt-in-calendar-writes.md](docs/decisions/0001-opt-in-calendar-writes.md)
 before touching that path — it says what was decided, what it cost, and what
-would reverse it.
+would reverse it. **Confirmation follows what a write can destroy**: every write
+this tool can undo commits in one call, and only `edit_onenote_page` keeps a
+preview and a token, because a replace overwrites the musician's text. See
+[0009](docs/decisions/0009-confirm-by-reversibility.md) before adding a preview
+back or taking the last one away.
 
-An install granted `onenote-create` may create a new OneNote page, previewed
-and confirmed. That capability alone cannot edit or delete any page, including
+An install granted `onenote-create` may create a new OneNote page. That capability alone cannot edit or delete any page, including
 one it created, and that is not a rule this repository keeps — the scope is
 `Notes.Create`, which cannot express an edit or a delete, verified as a 403 on
 both against a page the token had just created itself. This is the inverse of
