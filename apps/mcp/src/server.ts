@@ -6,7 +6,7 @@ import { WRITE_CAPABILITIES, isGranted, type WriteCapability } from "./grants.js
 import { listAgentWorkflows, loadAgentWorkflow, type ResolvedEntry } from "./agents.js";
 import { GraphError } from "./client.js";
 import { call as localCall, type Operation } from "./dispatch.js";
-import { narrowNotes, narrowSections, notebookKeyFor } from "./notes.js";
+import { PAGE_LISTING_CAP, narrowNotes, narrowSections, notebookKeyFor, sectionKey } from "./notes.js";
 
 /**
  * How a tool reaches the outside world. Injected rather than imported so the
@@ -168,12 +168,14 @@ const selectNotebook = async (
   notebook: string | undefined,
   notebookKey: string | undefined,
   tool: string,
+  section?: string,
 ): Promise<
   | {
       pages: NoteSummary[];
       sections: SectionSummary[];
       creationDates: boolean;
       scope: string | null;
+      allSections?: { name: string; notebook: string | null }[];
     }
   | { message: string }
 > => {
@@ -243,11 +245,13 @@ const selectNotebook = async (
     notes,
     sections = [],
     page_dates_are_creation_dates = false,
+    all_sections,
   } = await call<{
     notes: NoteSummary[];
     sections?: SectionSummary[];
     page_dates_are_creation_dates?: boolean;
-  }>("list_notes");
+    all_sections?: { name: string; notebook: string | null }[];
+  }>("list_notes", section === undefined ? {} : { section });
 
   const pages = wanted
     ? notes.filter((n) => (n.notebook ?? "").trim().toLowerCase() === wanted)
@@ -280,7 +284,59 @@ const selectNotebook = async (
     sections: inScope,
     creationDates: page_dates_are_creation_dates,
     scope,
+    allSections: wanted
+      ? all_sections?.filter((sec) => (sec.notebook ?? "").trim().toLowerCase() === wanted)
+      : all_sections,
   };
+};
+
+/**
+ * The answer to a `section` that matched nothing, or matched more than one.
+ *
+ * Neither is allowed to fall through to a page list. The update flow resolves a
+ * chat message to exactly one page, and an empty list reads as "this project
+ * has no page" — which is a real finding for a section like BCW Megeve and a
+ * false one for a typo. So the names are offered, closest first, and choosing
+ * is left to the user.
+ */
+export const renderSectionMiss = (
+  section: string,
+  matched: SectionSummary[],
+  all: { name: string; notebook: string | null }[],
+): string | null => {
+  if (matched.length === 1) return null;
+
+  if (matched.length > 1) {
+    const where = matched.map((sec) => `- ${sec.name} (${sec.notebook ?? "unknown notebook"})`);
+    return (
+      `${matched.length} sections are named "${section}":\n${where.join("\n")}\n\n` +
+      "Ask the user which one they mean, then call list_notes again with that " +
+      "notebook. Do not pick one."
+    );
+  }
+
+  // Scored by how many words are shared, and only the best score is offered.
+  // Against the real notebook, "any shared word" named every BCW section for a
+  // single BCW typo — a list that long is no closer than the full one.
+  const needle = sectionKey(section);
+  const words = needle.split(" ").filter((w) => w.length > 2);
+  const score = (name: string) => {
+    const hay = sectionKey(name);
+    if (hay.includes(needle) || needle.includes(hay)) return words.length + 1;
+    return words.filter((w) => hay.split(" ").includes(w)).length;
+  };
+  const scored = all.map((sec) => ({ name: sec.name, s: score(sec.name) }));
+  const best = Math.max(0, ...scored.map(({ s }) => s));
+  const near = scored.filter(({ s }) => best > 0 && s === best).map(({ name }) => name);
+
+  return (
+    `No section is named "${section}". ` +
+    (near.length > 0
+      ? `Closest: ${[...new Set(near)].join(", ")}. `
+      : `Sections: ${[...new Set(all.map((sec) => sec.name))].join(", ")}. `) +
+    "Ask the user which one they mean rather than choosing — and do not read " +
+    "this as the project having no page."
+  );
 };
 
 /**
@@ -987,6 +1043,14 @@ const createServer = async (
             "is indistinguishable from their choice and produces a confident " +
             "answer about the wrong notebook.",
         ),
+      section: z
+        .string()
+        .optional()
+        .describe(
+          "Exact name of one section, to list only its pages. Much cheaper " +
+            "than the whole notebook, and the reply gives the section's full " +
+            "page count. Use it to find the one page an update belongs to.",
+        ),
       notebook_key: z
         .string()
         .optional()
@@ -1021,11 +1085,15 @@ const createServer = async (
             "notebook.",
         ),
     },
-    async ({ notebook, notebook_key, since, limit }) => {
+    async ({ notebook, notebook_key, section, since, limit }) => {
       try {
-        const chosen = await selectNotebook(call, notebook, notebook_key, "list_notes");
+        const chosen = await selectNotebook(call, notebook, notebook_key, "list_notes", section);
         if ("message" in chosen) {
           return { content: [{ type: "text", text: chosen.message }] };
+        }
+        if (section !== undefined) {
+          const miss = renderSectionMiss(section, chosen.sections, chosen.allSections ?? []);
+          if (miss !== null) return { content: [{ type: "text", text: miss }] };
         }
         const selected = chosen.pages;
 
@@ -1052,6 +1120,14 @@ const createServer = async (
         // Narrowed only after the notebook is settled, so a `since` window can
         // never be what makes a notebook look empty enough to skip choosing.
         const { notes: shown, matched, undated } = narrowNotes(selected, { since, limit });
+
+        if (shown.length === 0 && section !== undefined && since === undefined) {
+          return {
+            content: [
+              { type: "text", text: `Section "${chosen.sections[0].name}" holds no pages.` },
+            ],
+          };
+        }
 
         if (shown.length === 0) {
           const scope = notebook ? `"${notebook}"` : "this account";
@@ -1088,6 +1164,18 @@ const createServer = async (
         // and the answer built on it is wrong without looking wrong.
         const caveats: string[] = [];
         if (chosen.scope) caveats.push(chosen.scope);
+        if (section !== undefined) {
+          const [sec] = chosen.sections;
+          // Stated whether or not it is short, because "has this page seen
+          // everything in its section" is answered against this number (#193).
+          caveats.push(
+            sec.pages >= PAGE_LISTING_CAP
+              ? `Section "${sec.name}" returned ${sec.pages} pages, which is the ` +
+                  "listing cap: there may be more that were not fetched (#178)."
+              : `Section "${sec.name}" holds ${sec.pages} page${sec.pages === 1 ? "" : "s"}; ` +
+                  "this is all of them.",
+          );
+        }
         if (shown.length < matched) {
           caveats.push(
             `Showing the ${shown.length} newest by date of ${matched} matching ` +

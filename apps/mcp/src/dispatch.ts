@@ -154,7 +154,9 @@ export const dispatchWith =
       case 'list_notebooks':
         return (await listNotebooks(token)) as T;
       case 'list_notes':
-        return (await listNotes(token)) as T;
+        return (await listNotes(token, {
+          section: typeof params.section === 'string' ? params.section : undefined,
+        })) as T;
       case 'map_notes':
         // The pages are chosen by the caller, which is where the notebook scope
         // is settled; nothing here maps a notebook it was not given.
