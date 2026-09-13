@@ -47,7 +47,7 @@ type OneNotePage = {
   lastModifiedDateTime?: string;
 };
 
-type OneNoteSection = {
+export type OneNoteSection = {
   id: string;
   displayName?: string;
   lastModifiedDateTime?: string;
@@ -168,6 +168,21 @@ export const htmlToText = (html: string): string =>
     .trim();
 
 /**
+ * Every section on the account, with what both listings need from it.
+ *
+ * lastModifiedDateTime is what the creation-date detector reads, and it is the
+ * field that actually tracks change — unlike the one on a page.
+ */
+const fetchSections = async (token: string): Promise<OneNoteSection[]> => {
+  const res = await graphGet(
+    '/me/onenote/sections?$select=id,displayName,lastModifiedDateTime' +
+      '&$expand=parentNotebook($select=displayName)&$top=100',
+    token,
+  );
+  return ((await res.json()) as { value?: OneNoteSection[] }).value ?? [];
+};
+
+/**
  * Which notebooks this account has, and nothing else.
  *
  * One Graph request. `listNotes` answers the same question as a side effect of
@@ -188,13 +203,12 @@ export const htmlToText = (html: string): string =>
  */
 export const listNotebooks = async (
   token: string,
-): Promise<{ notebooks: { name: string; sections: number }[] }> => {
-  const res = await graphGet(
-    '/me/onenote/sections?$select=id,displayName' +
-      '&$expand=parentNotebook($select=displayName)&$top=100',
-    token,
-  );
-  const sections = ((await res.json()) as { value?: OneNoteSection[] }).value ?? [];
+): Promise<{ notebooks: { name: string; sections: number }[]; section_list: OneNoteSection[] }> => {
+  // The same request listNotes needs, with the same fields, so a caller that
+  // asks for notebooks and then for pages can hand this back instead of paying
+  // for it twice. OneNote allows 400 requests an hour per app per user; one
+  // saved on every call is worth a parameter.
+  const sections = await fetchSections(token);
 
   const counts = new Map<string, number>();
   for (const section of sections) {
@@ -205,6 +219,7 @@ export const listNotebooks = async (
 
   return {
     notebooks: [...counts].map(([name, sectionCount]) => ({ name, sections: sectionCount })),
+    section_list: sections,
   };
 };
 
@@ -225,7 +240,11 @@ export const PAGE_LISTING_CAP = 100;
 
 export const listNotes = async (
   token: string,
-  { section, notebook }: { section?: string; notebook?: string } = {},
+  {
+    section,
+    notebook,
+    sections: known,
+  }: { section?: string; notebook?: string; sections?: OneNoteSection[] } = {},
 ): Promise<{
   notes: NoteSummary[];
   sections: SectionSummary[];
@@ -243,15 +262,9 @@ export const listNotes = async (
   let failure: string | null = null;
 
   try {
-  const sectionsRes = await graphGet(
-    // lastModifiedDateTime is what the detector reads, and it is the field
-    // that actually tracks change — unlike the one on a page. Selected here
-    // rather than fetched separately: the request is made either way.
-    '/me/onenote/sections?$select=id,displayName,lastModifiedDateTime' +
-      '&$expand=parentNotebook($select=displayName)&$top=100',
-    token,
-  );
-  const sections = ((await sectionsRes.json()) as { value?: OneNoteSection[] }).value ?? [];
+  // A list the caller already fetched through listNotebooks is used as is.
+  // Its ids are re-checked below like any other value before they reach a URL.
+  const sections = Array.isArray(known) ? known : await fetchSections(token);
 
   const valid = sections.filter((s) => typeof s.id === 'string' && ONENOTE_ID.test(s.id));
 
@@ -581,7 +594,8 @@ export const mapNotes = async (
   // deadline, the same rule a single page followed: work that has started is
   // allowed to finish, work that has not is reported as not reached.
   const previews: (string | Error | typeof NOT_REACHED)[] = new Array(pages.length).fill(NOT_REACHED);
-  const GROUP = GRAPH_BATCH_SIZE * 3;
+  // One batch per group, so the deadline is checked before every round trip.
+  const GROUP = GRAPH_BATCH_SIZE;
   for (let i = 0; i < pages.length; i += GROUP) {
     if (now() >= stopAt) break;
     const group = pages.slice(i, i + GROUP);
@@ -748,9 +762,6 @@ export const readNote = async (
   // Encoded, and shape-checked above, so it can only ever be one path segment.
   const id = encodeURIComponent(noteId);
 
-  const meta = await graphGet(`/me/onenote/pages/${id}?$select=title`, token);
-  const { title } = (await meta.json()) as { title?: string };
-
   // `includeIDs=true` is what makes an element addressable. It costs nothing —
   // the same fetch either way — and it is the difference between this read
   // being enough to patch from and the caller having to ask for the page again
@@ -758,6 +769,10 @@ export const readNote = async (
   // strip in htmlToText, so a reader who cannot edit sees no change at all.
   const content = await graphGet(`/me/onenote/pages/${id}/content?includeIDs=true`, token);
   const html = await content.text();
+  // The title is in the page's own <title>. It used to cost a second request,
+  // against a budget of 400 an hour, for a value the content already carried.
+  const titleMatch = /<title>([\s\S]*?)<\/title>/i.exec(html);
+  const title = titleMatch ? htmlToText(`<p>${titleMatch[1]}</p>`).trim() || undefined : undefined;
   const text = htmlToText(html);
   const attachments = pageResources(html).map(({ position: _position, ...rest }) => rest);
 
