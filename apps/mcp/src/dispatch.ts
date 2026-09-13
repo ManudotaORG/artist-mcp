@@ -142,11 +142,16 @@ export const dispatchWith =
       case 'list_notes':
         return (await listNotes(token, {
           section: typeof params.section === 'string' ? params.section : undefined,
+          notebook: typeof params.notebook === 'string' ? params.notebook : undefined,
         })) as T;
       case 'map_notes':
         // The pages are chosen by the caller, which is where the notebook scope
         // is settled; nothing here maps a notebook it was not given.
-        return (await mapNotes(token, params.pages as Parameters<typeof mapNotes>[1])) as T;
+        return (await mapNotes(token, params.pages as Parameters<typeof mapNotes>[1], {
+          // What is left of the route's budget once the listing has spent its
+          // share. Set by the tool handler, never by a model.
+          ...(typeof params.deadline_ms === 'number' ? { deadlineMs: params.deadline_ms } : {}),
+        })) as T;
       case 'read_note':
         return (await readNote(token, params.note_id, params.from_part, {
           withEditIds: params.with_edit_ids === true,

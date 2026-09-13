@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { htmlToText, listNotes, mapNotes, narrowNotes, readNote } from '../dist/notes.js';
+import { withGraphBatch } from './support/graph-batch.mjs';
 
 /** Serves canned responses by URL substring, recording every path requested. */
 const stubGraph = (routes) => {
   const seen = [];
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = withGraphBatch(async (url) => {
     const path = String(url);
     seen.push(path);
     const match = Object.keys(routes).find((key) => path.includes(key));
@@ -20,7 +21,7 @@ const stubGraph = (routes) => {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
-  };
+  });
   return seen;
 };
 

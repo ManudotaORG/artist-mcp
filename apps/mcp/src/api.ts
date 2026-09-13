@@ -267,6 +267,148 @@ export const getWithRetry = async (
 export const graphGet = (path: string, token: string): Promise<Response> =>
   getWithRetry(`${GRAPH}${path}`, token, 'Microsoft Graph');
 
+/**
+ * Many Graph reads in few round trips.
+ *
+ * OneNote answers each read in roughly 3.5–4.5 seconds, measured against a real
+ * account with no throttling at all. Walking 56 sections four at a time took
+ * sixty seconds locally and timed out on hosted every time, while the same 56
+ * listings sent as three `$batch` requests came back in seven to ten, with the
+ * same 237 pages and no 429s. Graph runs a batch's requests together, so the
+ * round trip, not the fanout, was the cost.
+ *
+ * `$batch` is a POST, and a POST that carries arbitrary methods would be a way
+ * round every write boundary in this file. So this can express one thing: GET,
+ * of OneNote paths, built by callers from fixed literals. Both are checked here
+ * rather than trusted, and `test/operation-boundary` pins it.
+ *
+ * Failure is per request. A 429 or 5xx inside a batch is retried once, in a later
+ * batch, after the wait the provider asked for and within the same throttle
+ * budget as a single read; what still fails comes back as that item's error,
+ * not as a success and not as a failure of its neighbours.
+ */
+export const GRAPH_BATCH_SIZE = 20;
+const BATCH_CONCURRENCY = 3;
+const BATCHABLE = /^\/me\/onenote\/(sections|pages)\/[A-Za-z0-9!._~%-]+(\/[a-z]+)?(\?[^#\s]*)?$/;
+
+export type BatchResult = { ok: true; body: unknown } | { ok: false; error: string };
+
+type BatchResponse = {
+  id: string;
+  status: number;
+  headers?: Record<string, string>;
+  body?: unknown;
+};
+
+const postBatch = async (
+  token: string,
+  requests: { id: string; path: string }[],
+): Promise<BatchResponse[]> => {
+  for (const r of requests) {
+    if (!BATCHABLE.test(r.path)) {
+      throw new GraphError(`Refusing to batch "${r.path}": only OneNote reads can be batched.`, false);
+    }
+  }
+  const payload = JSON.stringify({
+    requests: requests.map((r) => ({ id: r.id, method: 'GET', url: r.path })),
+  });
+
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${GRAPH}/$batch`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: payload,
+    });
+    if (res.ok) {
+      const { responses } = (await res.json()) as { responses?: BatchResponse[] };
+      return responses ?? [];
+    }
+    // Every request inside is a GET, so repeating the envelope is as safe as
+    // repeating a read. Same short ladder as a read for a 5xx.
+    if (res.status >= 500 && attempt < DELAYS.length) {
+      await new Promise((resolve) => setTimeout(resolve, DELAYS[attempt]));
+      continue;
+    }
+    const detail = (await res.text().catch(() => '')).slice(0, 300);
+    throw new GraphError(`Microsoft Graph returned ${res.status}.${detail ? ` ${detail}` : ''}`, false);
+  }
+};
+
+const detailOf = (body: unknown): string => {
+  try {
+    return JSON.stringify(body ?? '').slice(0, 300);
+  } catch {
+    return '';
+  }
+};
+
+export const graphBatchGet = async (paths: readonly string[], token: string): Promise<BatchResult[]> => {
+  const results: BatchResult[] = new Array(paths.length);
+  let pending = paths.map((path, index) => ({ index, path }));
+  let spentWaiting = 0;
+
+  for (let round = 0; pending.length > 0; round++) {
+    const chunks: (typeof pending)[] = [];
+    for (let i = 0; i < pending.length; i += GRAPH_BATCH_SIZE) {
+      chunks.push(pending.slice(i, i + GRAPH_BATCH_SIZE));
+    }
+
+    const retry: typeof pending = [];
+    let wait = 0;
+
+    await mapWithConcurrency(chunks, BATCH_CONCURRENCY, async (chunk) => {
+      const responses = await postBatch(
+        token,
+        chunk.map((item, i) => ({ id: String(i), path: item.path })),
+      );
+      const byId = new Map(responses.map((r) => [r.id, r]));
+      chunk.forEach((item, i) => {
+        const r = byId.get(String(i));
+        if (r === undefined) {
+          results[item.index] = { ok: false, error: 'Microsoft Graph returned no answer for this request.' };
+          return;
+        }
+        if (r.status >= 200 && r.status < 300) {
+          results[item.index] = { ok: true, body: r.body };
+          return;
+        }
+        const throttled = r.status === 429;
+        if ((throttled || r.status >= 500) && round === 0) {
+          const header = r.headers?.['Retry-After'] ?? r.headers?.['retry-after'];
+          const asked = header !== undefined && Number.isFinite(Number(header)) ? Number(header) * 1000 : undefined;
+          wait = Math.max(wait, Math.min(asked ?? jittered(THROTTLE_DELAYS[0]), MAX_RETRY_AFTER_MS));
+          if (throttled) {
+            console.warn(`[artist-mcp] Microsoft Graph batch 429 retry_after=${asked === undefined ? 'unset' : `${Math.round(asked / 1000)}s`}`);
+          }
+          retry.push(item);
+          return;
+        }
+        results[item.index] = {
+          ok: false,
+          error: throttled
+            ? `Microsoft Graph is rate limiting this account. Wait a moment and try again. ${detailOf(r.body)}`
+            : `Microsoft Graph returned ${r.status}. ${detailOf(r.body)}`,
+        };
+      });
+    });
+
+    if (retry.length === 0) break;
+    if (spentWaiting + wait > THROTTLE_BUDGET_MS) {
+      for (const item of retry) {
+        results[item.index] = {
+          ok: false,
+          error: 'Microsoft Graph is rate limiting this account. Wait a moment and try again.',
+        };
+      }
+      break;
+    }
+    spentWaiting += wait;
+    await new Promise((resolve) => setTimeout(resolve, wait));
+    pending = retry;
+  }
+  return results;
+};
+
 export const gmailGet = (path: string, token: string): Promise<Response> =>
   getWithRetry(`${GMAIL}${path}`, token, 'Gmail');
 
