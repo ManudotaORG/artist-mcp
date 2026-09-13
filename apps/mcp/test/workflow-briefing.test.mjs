@@ -22,6 +22,7 @@ const entries = [
   entry('policy:intake', 'policy'),
   entry('policy:local-state', 'policy'),
   entry('policy:patch', 'policy'),
+  entry('policy:tasks', 'policy'),
   entry('project-type:concert', 'project-type'),
   entry('project-type:rehearsal', 'project-type'),
   entry('role:orchestrator', 'role'),
@@ -77,6 +78,17 @@ test('the patch policy is in force, not summarised', async () => {
   const text = await renderWorkflowBriefing(entries, loadAll);
   assert.match(text, /body of policy:patch/);
   assert.doesNotMatch(text, /- policy:patch:/);
+});
+
+/**
+ * Tags are the record of open and done work (0008), and a fill that has only a
+ * summary of the task rules writes a task table as plain text — which is what a
+ * hosted session did (#193). A pack without the policy simply has no entry.
+ */
+test('the task policy is in force, not summarised', async () => {
+  const text = await renderWorkflowBriefing(entries, loadAll);
+  assert.match(text, /body of policy:tasks/);
+  assert.doesNotMatch(text, /- policy:tasks:/);
 });
 
 /**

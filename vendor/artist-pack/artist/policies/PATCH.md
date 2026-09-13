@@ -117,10 +117,8 @@ On a templated page:
 - *UNKNOWN and Nicht einschlägig* stay exactly as written wherever the update
   does not reach.
 
-**A finished task is ticked, per 0008.** "I sent the programme" sets
-`data-tag="to-do:completed"` on that task's line, leaving its wording alone. The
-line stays; nothing is deleted or rewritten into the past tense. Where the page
-also has a status cell for it, that cell changes in the same `changes` call.
+**Tasks follow `policy:tasks`.** A finished task is ticked, its status cell
+changes with it, and any task this change writes carries its tag.
 
 One message often settles two things — a date and a task. That is one preview
 with both changes, not two rounds.
