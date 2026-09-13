@@ -29,9 +29,9 @@
  * gets diagnosed as "the write tool is broken".
  */
 export const WRITE_CAPABILITIES = {
-  'calendar-create': 'add a single event to a Google Calendar, after showing it to you first',
+  'calendar-create': 'add a single event to a Google Calendar',
   'calendar-delete':
-    'remove an event that artist-mcp itself created, after showing it to you first. ' +
+    'remove an event that artist-mcp itself created. ' +
     'It cannot touch an event you made or one someone shared with you.',
   // The only capability here whose boundary is not this file's to keep.
   // `Notes.Create` permits creating pages and nothing else, so a token holding
@@ -40,7 +40,7 @@ export const WRITE_CAPABILITIES = {
   // other row above exists because Google would not draw that line for us.
   // See docs/decisions/0003-onenote-writes.md.
   'onenote-create':
-    'add a new page to a OneNote section, after showing it to you first. ' +
+    'add a new page to a OneNote section. ' +
     'It cannot change or delete any page, including the ones it made.',
   // Also not this file's boundary to keep, and for a stronger reason than
   // `onenote-create`: `Notes.ReadWrite.CreatedByApp` distinguishes *this* app

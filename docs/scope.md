@@ -127,7 +127,9 @@ Decisions and their cost: [decisions/0001-opt-in-calendar-writes.md](decisions/0
 
 ## Not in scope
 
-No autonomous agent processes. No writes to Gmail, ever. No message sending. No scheduled jobs. No teams or organisations. No billing. No copying or synchronizing source data. No workflow state in Supabase.
+No autonomous agent processes run by this product. No writes to Gmail, ever. No message sending. No scheduled jobs held by this product. No teams or organisations. No billing. No copying or synchronizing source data. No workflow state in Supabase.
+
+This line originally said "No autonomous agent processes" and "No scheduled jobs" without qualification. Both stay true of artist-mcp, which runs nothing on a schedule, but since [0009](decisions/0009-confirm-by-reversibility.md) a job someone else runs — a scheduled task in ChatGPT — can complete a reversible write without a person in the loop. Editing a page still cannot.
 
 This line originally read "No writes to any source — not OneNote, Gmail, or Calendar", and then "No writes to OneNote or Gmail, ever". Both are corrected here rather than quietly left standing, and the OneNote half had already been stale for a release:
 

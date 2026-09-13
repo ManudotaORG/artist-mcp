@@ -42,41 +42,6 @@ export type PageDraft = {
 
 export type SectionRef = { id: string; name: string; notebook: string | null };
 
-const canonical = (d: PageDraft): string => [d.section_id, d.title, d.body].join(' ');
-
-const base32hex = (bytes: Uint8Array): string => {
-  const alphabet = '0123456789abcdefghijklmnopqrstuv';
-  let bits = 0;
-  let value = 0;
-  let out = '';
-  for (const byte of bytes) {
-    value = (value << 8) | byte;
-    bits += 8;
-    while (bits >= 5) {
-      out += alphabet[(value >>> (bits - 5)) & 31];
-      bits -= 5;
-    }
-  }
-  return out;
-};
-
-/**
- * The token a preview returns and a create must carry back.
- *
- * Derived from the payload exactly as the calendar's is, so it proves the
- * create is for the values that were shown rather than that a preview happened
- * at some point. It cannot prove a human read them; nothing inside MCP can.
- *
- * `source_page` is deliberately not hashed. It is provenance for the audit
- * line, not part of what the musician approved, and hashing it would report a
- * caller that dropped the field between preview and create as though the page
- * itself had changed.
- */
-export const confirmationToken = async (draft: PageDraft): Promise<string> => {
-  const data = new TextEncoder().encode(`confirm-page ${canonical(draft)}`);
-  return base32hex(new Uint8Array(await crypto.subtle.digest('SHA-256', data)));
-};
-
 /**
  * The same placeholder rule the calendar enforces, and for a stronger reason.
  *
@@ -283,53 +248,20 @@ const sectionFor = async (
 };
 
 /**
- * Show the page that would be created, and hand back the token creating it
- * requires.
+ * Create the page.
  *
- * A read despite the name, exactly as the calendar preview is: it changes
- * nothing, and marking it a write would gate the very thing that has to happen
- * before a write is allowed.
- */
-export async function previewPage(token: string, params: Record<string, unknown>) {
-  const section = await sectionFor(token, params);
-  const draft = draftFrom({ ...params, section_id: section.id });
-  refuseUnsettled(draft);
-
-  return {
-    preview: renderDraft(draft, section),
-    section_id: section.id,
-    section_name: section.name,
-    confirmation_token: await confirmationToken(draft),
-    note:
-      'Show this to the musician and wait for their yes. Creating the page cannot ' +
-      'be undone by this tool: it can create pages and cannot edit or delete them, ' +
-      'including its own.',
-  };
-}
-
-/**
- * Create the page, having shown it.
- *
- * The token is checked against the payload rather than merely required, so a
- * create carrying a stale token — the values having changed since the preview —
- * is refused rather than writing something nobody saw.
+ * No preview and no token since 0009: a new page overwrites nothing. The section
+ * is resolved here, from source_page or section_id, and the result carries the
+ * page as written and the section it landed in — what the preview used to show.
  */
 export async function createPage(
   token: string,
   params: Record<string, unknown>,
   record: RecordWrite,
 ) {
-  const draft = draftFrom(params);
+  const section = await sectionFor(token, params);
+  const draft = draftFrom({ ...params, section_id: section.id });
   refuseUnsettled(draft);
-
-  const expected = await confirmationToken(draft);
-  if (params.confirmation_token !== expected) {
-    throw failure(
-      'The confirmation token does not match these values. Call ' +
-        'preview_onenote_page again with exactly what should be written, show the ' +
-        'musician what it returns, then create the page with those same values.',
-    );
-  }
 
   const res = await onenoteCreatePage(draft.section_id, pageXhtml(draft), token);
   const created = (await res.json().catch(() => ({}))) as {
@@ -352,6 +284,8 @@ export async function createPage(
     page_id: created.id ?? null,
     title: created.title ?? draft.title,
     web_url: created.links?.oneNoteWebUrl?.href ?? null,
+    section_name: section.name,
+    written: renderDraft(draft, section),
     note:
       'The page exists. This tool cannot edit or delete it — that is the permission ' +
       'it holds, not a policy it follows.',

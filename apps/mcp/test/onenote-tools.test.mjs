@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { createServer } from '../dist/server.js';
 
 const entry = resolve(fileURLToPath(new URL('../dist/index.js', import.meta.url)));
 
@@ -58,7 +59,7 @@ const listTools = async (args = []) => {
   }
 };
 
-const ONENOTE_WRITE_TOOLS = ['preview_onenote_page', 'create_onenote_page'];
+const ONENOTE_WRITE_TOOLS = ['create_onenote_page'];
 
 test('an ungranted install has no OneNote write tool at all', async () => {
   const tools = await listTools();
@@ -82,7 +83,7 @@ test('a calendar grant does not bring the OneNote tools with it', async () => {
   assert.ok(tools.includes('create_calendar_event'));
 });
 
-test('the granted install has both halves, since neither works alone', async () => {
+test('the granted install has the create tool', async () => {
   const tools = await listTools(['--allow-writes', 'onenote-create']);
   for (const name of ONENOTE_WRITE_TOOLS) assert.ok(tools.includes(name), `${name} is missing`);
   // And nothing else came with it: the calendar is a separate consent.
@@ -112,34 +113,19 @@ test('no OneNote tool edits or deletes, under any grant', async () => {
 });
 
 /**
- * Every value `create_onenote_page` requires must be obtainable from the
- * preview, and the preview's TEXT is the only part a model reads.
- *
- * This is not hypothetical. `section_id` is required by the create and is
- * resolved from the source page rather than supplied by the caller, so until
- * the preview printed it there was no way to obtain it — the create was
- * unreachable except by inventing an id. Every unit test passed throughout,
- * because each half was correct on its own.
+ * Since 0009 there is no preview to carry section_id, so the create must resolve
+ * it itself. The old defect was a create requiring a value only the preview
+ * printed; the equivalent now is a create requiring a value nobody can supply.
  */
-test('the preview text carries every value the create requires', async () => {
-  const server = await readFile(
-    resolve(dirname(fileURLToPath(import.meta.url)), '../src/server.ts'),
-    'utf8',
-  );
-  const preview = server.slice(
-    server.indexOf('"preview_onenote_page"'),
-    server.indexOf('"create_onenote_page"'),
-  );
-  assert.ok(preview.length > 0, 'the preview tool was not found in server.ts');
-
-  for (const field of ['section_id', 'confirmation_token']) {
-    assert.match(
-      preview,
-      new RegExp(`\\$\\{${field}\\}`),
-      `The preview never prints ${field}, which create_onenote_page requires. ` +
-        'A model has no way to obtain it.',
-    );
-  }
+test('create_onenote_page requires nothing a caller cannot supply', async () => {
+  const server = await createServer(async () => ({}), ['onenote-create']);
+  const shape = server._registeredTools.create_onenote_page.inputSchema;
+  const fields = shape.shape ?? shape;
+  const required = Object.entries(fields)
+    .filter(([, f]) => !f.isOptional())
+    .map(([n]) => n)
+    .sort();
+  assert.deepEqual(required, ['body', 'title']);
 });
 
 /**
