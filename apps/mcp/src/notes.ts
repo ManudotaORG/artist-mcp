@@ -217,13 +217,26 @@ export const listNotebooks = async (
  *
  * Do not "simplify" this back to the single call.
  */
+/** How a section name is compared: case and whitespace runs ignored, nothing else. */
+export const sectionKey = (name: string): string => name.trim().replace(/\s+/g, ' ').toLowerCase();
+
+/** Graph caps a page listing here, and the walk does not page past it. See #178. */
+export const PAGE_LISTING_CAP = 100;
+
 export const listNotes = async (
   token: string,
+  { section }: { section?: string } = {},
 ): Promise<{
   notes: NoteSummary[];
   sections: SectionSummary[];
   /** Whether `last_modified` on every page is really its creation date. */
   page_dates_are_creation_dates: boolean;
+  /**
+   * Every section on the account, by name, when `section` narrowed the walk.
+   * The pages of the others were never fetched, so they carry no count — but a
+   * name that matched nothing still needs something to be compared against.
+   */
+  all_sections?: { name: string; notebook: string | null }[];
 }> => {
   const startedAt = Date.now();
   let sectionCount = 0;
@@ -240,7 +253,18 @@ export const listNotes = async (
   );
   const sections = ((await sectionsRes.json()) as { value?: OneNoteSection[] }).value ?? [];
 
-  const usable = sections.filter((s) => typeof s.id === 'string' && ONENOTE_ID.test(s.id));
+  const valid = sections.filter((s) => typeof s.id === 'string' && ONENOTE_ID.test(s.id));
+
+  // Narrowed before the fan-out, which is the whole saving: one section's pages
+  // instead of every section's. Matched on the whole name, not a substring —
+  // "BCW" would otherwise walk every BCW project and hand back a page from the
+  // wrong one, and the update flow needs exactly one page.
+  //
+  // Runs of whitespace count as one space: a real section is named
+  // "BCW  Klagenfurt 03.07.2027 Vidala", and nobody types the second space.
+  const wanted = section === undefined ? undefined : sectionKey(section);
+  const usable =
+    wanted === undefined ? valid : valid.filter((s) => sectionKey(s.displayName ?? '') === wanted);
   sectionCount = usable.length;
 
   const perSection = await mapWithConcurrency(usable, FANOUT_LIMIT, async (section) => {
@@ -248,7 +272,7 @@ export const listNotes = async (
       `/me/onenote/sections/${section.id}/pages` +
         // createdDateTime is selected only so the two can be compared. It
         // costs nothing — the request is made either way.
-        '?$select=id,title,createdDateTime,lastModifiedDateTime&$top=100',
+        `?$select=id,title,createdDateTime,lastModifiedDateTime&$top=${PAGE_LISTING_CAP}`,
       token,
     );
     const pages = ((await res.json()) as { value?: OneNotePage[] }).value ?? [];
@@ -284,7 +308,18 @@ export const listNotes = async (
     (b.last_modified ?? '').localeCompare(a.last_modified ?? ''),
   );
 
-  return { notes, sections: sectionList, page_dates_are_creation_dates: creationDates };
+  if (wanted === undefined) {
+    return { notes, sections: sectionList, page_dates_are_creation_dates: creationDates };
+  }
+  return {
+    notes,
+    sections: sectionList,
+    page_dates_are_creation_dates: creationDates,
+    all_sections: valid.map((s) => ({
+      name: s.displayName ?? '(unnamed section)',
+      notebook: s.parentNotebook?.displayName ?? null,
+    })),
+  };
   } catch (err) {
     failure = err instanceof Error ? err.message : String(err);
     throw err;
