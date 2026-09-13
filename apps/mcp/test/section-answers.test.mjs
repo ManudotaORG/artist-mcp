@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { createServer } from '../dist/server.js';
 import { listNotes, listNotebooks } from '../dist/notes.js';
+import { withGraphBatch } from './support/graph-batch.mjs';
 
 /**
  * The whole path, from what Graph returns to what the musician is told.
@@ -13,7 +14,7 @@ import { listNotes, listNotebooks } from '../dist/notes.js';
  */
 
 const stubGraph = (routes) => {
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = withGraphBatch(async (url) => {
     const path = String(url);
     const match = Object.keys(routes).find((key) => path.includes(key));
     if (match === undefined) return new Response('{}', { status: 404 });
@@ -21,7 +22,7 @@ const stubGraph = (routes) => {
       status: 200,
       headers: { 'content-type': 'application/json' },
     });
-  };
+  });
 };
 
 const originalFetch = globalThis.fetch;

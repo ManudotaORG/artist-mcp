@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { createServer } from '../dist/server.js';
 import { listNotes, mapNotes, notebookKeyFor, listNotebooks } from '../dist/notes.js';
+import { withGraphBatch } from './support/graph-batch.mjs';
 
 /**
  * The gate that decides whether a notebook name was actually chosen.
@@ -50,7 +51,7 @@ test.afterEach(() => {
 });
 
 const stub = () => {
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = withGraphBatch(async (url) => {
     const path = String(url);
     const match = Object.keys(TWO_NOTEBOOKS).find((key) => path.includes(key));
     if (match === undefined) return new Response('{}', { status: 404 });
@@ -58,7 +59,7 @@ const stub = () => {
       status: 200,
       headers: { 'content-type': 'application/json' },
     });
-  };
+  });
 };
 
 const freshServer = async () => {

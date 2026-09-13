@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { createServer } from '../dist/server.js';
 import { listNotebooks, listNotes, mapNotes, notebookKeyFor } from '../dist/notes.js';
+import { withGraphBatch } from './support/graph-batch.mjs';
 
 /**
  * Asking which notebook must not cost every page in every notebook.
@@ -39,7 +40,7 @@ test.afterEach(() => {
 
 const serverCountingRequests = async () => {
   const paths = [];
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = withGraphBatch(async (url) => {
     const path = String(url);
     paths.push(path);
     const match = Object.keys(ACCOUNT).find((key) => path.includes(key));
@@ -48,7 +49,7 @@ const serverCountingRequests = async () => {
       status: 200,
       headers: { 'content-type': 'application/json' },
     });
-  };
+  });
 
   const dispatch = async (op, args) => {
     if (op === 'list_notebooks') return listNotebooks('token');

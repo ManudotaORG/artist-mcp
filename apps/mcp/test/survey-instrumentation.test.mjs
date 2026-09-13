@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { listNotes } from '../dist/notes.js';
+import { withGraphBatch } from './support/graph-batch.mjs';
 
 /**
  * The measurement must exist for the runs that failed.
@@ -15,7 +16,7 @@ import { listNotes } from '../dist/notes.js';
 
 const withFetch = async (impl, run) => {
   const original = globalThis.fetch;
-  globalThis.fetch = impl;
+  globalThis.fetch = withGraphBatch(impl);
   try {
     return await run();
   } finally {
