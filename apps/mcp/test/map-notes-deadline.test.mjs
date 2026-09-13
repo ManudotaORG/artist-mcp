@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { MAP_DEADLINE_MS, mapNotes } from '../dist/notes.js';
+import { withGraphBatch } from './support/graph-batch.mjs';
 
 /**
  * The survey must return something rather than nothing.
@@ -18,7 +19,7 @@ import { MAP_DEADLINE_MS, mapNotes } from '../dist/notes.js';
 
 const withFetch = async (impl, run) => {
   const original = globalThis.fetch;
-  globalThis.fetch = impl;
+  globalThis.fetch = withGraphBatch(impl);
   try {
     return await run();
   } finally {
@@ -50,25 +51,35 @@ test('a survey that fits the deadline reports nothing unreached', async () => {
 
 test('the deadline returns the pages already sketched instead of nothing', async () => {
   // A clock the test drives, so the deadline is reached without spending it.
+  // Previews go out sixty pages at a time (three batches of twenty), and the
+  // deadline is checked before each group, so the unit it stops is a group.
   let clock = 0;
   const now = () => clock;
 
   let calls = 0;
-  const { sketches, not_reached } = await withFetch(
-    async () => {
-      calls += 1;
-      // Every page costs a second of the notional clock; the deadline is five.
-      clock += 1_000;
-      return ok();
-    },
-    () => mapNotes('token', pagesOf(40), { deadlineMs: 5_000, now }),
-  );
+  const batched = withGraphBatch(async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ previewText: PREVIEW }), { status: 200 });
+  });
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    // Every round trip costs three seconds of the notional clock; the deadline is five.
+    clock += 3_000;
+    return batched(url, init);
+  };
+  let result;
+  try {
+    result = await mapNotes('token', pagesOf(130), { deadlineMs: 5_000, now });
+  } finally {
+    globalThis.fetch = original;
+  }
+  const { sketches, not_reached } = result;
 
   assert.equal(sketches.length > 0, true, 'the deadline returned nothing at all');
-  assert.equal(sketches.length < 40, true, 'the deadline did not stop anything');
+  assert.equal(sketches.length < 130, true, 'the deadline did not stop anything');
   assert.equal(
     sketches.length + not_reached,
-    40,
+    130,
     'pages went missing rather than being counted as unreached',
   );
   assert.equal(calls, sketches.length, 'a page was requested but not returned');

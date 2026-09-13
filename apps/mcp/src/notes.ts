@@ -10,7 +10,7 @@
 import { createHash } from 'node:crypto';
 import { MAX_TEXT_CHARS } from './attachments.js';
 import { GraphError } from './client.js';
-import { FANOUT_LIMIT, graphGet, mapWithConcurrency } from './api.js';
+import { FANOUT_LIMIT, GRAPH_BATCH_SIZE, graphBatchGet, graphGet, mapWithConcurrency } from './api.js';
 import { pageResources, type PageResource } from './page-attachments.js';
 import { editablePartsFrom, type EditablePart } from './onenote-patch.js';
 
@@ -225,7 +225,7 @@ export const PAGE_LISTING_CAP = 100;
 
 export const listNotes = async (
   token: string,
-  { section }: { section?: string } = {},
+  { section, notebook }: { section?: string; notebook?: string } = {},
 ): Promise<{
   notes: NoteSummary[];
   sections: SectionSummary[];
@@ -263,19 +263,35 @@ export const listNotes = async (
   // Runs of whitespace count as one space: a real section is named
   // "BCW  Klagenfurt 03.07.2027 Vidala", and nobody types the second space.
   const wanted = section === undefined ? undefined : sectionKey(section);
-  const usable =
-    wanted === undefined ? valid : valid.filter((s) => sectionKey(s.displayName ?? '') === wanted);
+  // A chosen notebook narrows the walk the same way, before any page is
+  // fetched. Filtering afterwards is what made a map of one 28-section
+  // notebook pay for all 56 sections on the account.
+  const inNotebook = notebook?.trim().toLowerCase();
+  const usable = valid.filter(
+    (s) =>
+      (wanted === undefined || sectionKey(s.displayName ?? '') === wanted) &&
+      (inNotebook === undefined || (s.parentNotebook?.displayName ?? '').trim().toLowerCase() === inNotebook),
+  );
   sectionCount = usable.length;
 
-  const perSection = await mapWithConcurrency(usable, FANOUT_LIMIT, async (section) => {
-    const res = await graphGet(
-      `/me/onenote/sections/${section.id}/pages` +
+  // Batched: one round trip per twenty sections instead of one per section.
+  // See graphBatchGet for the measurements. A section that fails fails the
+  // listing, as it did when each was its own request — a partial page list
+  // read as the whole notebook is the answer this file refuses to give.
+  const listed = await graphBatchGet(
+    usable.map(
+      (section) =>
+        `/me/onenote/sections/${section.id}/pages` +
         // createdDateTime is selected only so the two can be compared. It
         // costs nothing — the request is made either way.
         `?$select=id,title,createdDateTime,lastModifiedDateTime&$top=${PAGE_LISTING_CAP}`,
-      token,
-    );
-    const pages = ((await res.json()) as { value?: OneNotePage[] }).value ?? [];
+    ),
+    token,
+  );
+  const perSection = listed.map((result, i) => {
+    if (!result.ok) throw new GraphError(result.error, false);
+    const section = usable[i];
+    const pages = (result.body as { value?: OneNotePage[] } | undefined)?.value ?? [];
     return pages.map((p) => ({
       id: p.id,
       title: p.title ?? '(untitled)',
@@ -308,7 +324,7 @@ export const listNotes = async (
     (b.last_modified ?? '').localeCompare(a.last_modified ?? ''),
   );
 
-  if (wanted === undefined) {
+  if (wanted === undefined && inNotebook === undefined) {
     return { notes, sections: sectionList, page_dates_are_creation_dates: creationDates };
   }
   return {
@@ -495,12 +511,6 @@ export type NoteSketch = NoteSummary & {
   error: string | null;
 };
 
-const previewOf = async (token: string, id: string): Promise<string> => {
-  const res = await graphGet(`/me/onenote/pages/${encodeURIComponent(id)}/preview`, token);
-  const { previewText } = (await res.json()) as { previewText?: string | null };
-  return (previewText ?? '').trim();
-};
-
 /**
  * How long a survey may spend before it returns what it has.
  *
@@ -567,11 +577,28 @@ export const mapNotes = async (
   let mapFailure: string | null = null;
 
   try {
-  const outcomes = await mapWithConcurrency(pages, FANOUT_LIMIT, async (page): Promise<NoteSketch | typeof NOT_REACHED> => {
-    // Checked before the work, not during it: a page that has started is
-    // allowed to finish, because abandoning a request mid-flight costs the
-    // same quota as completing it and returns nothing for the spend.
-    if (now() >= stopAt) {
+  // Previews first, in batches. Each group of batches starts only before the
+  // deadline, the same rule a single page followed: work that has started is
+  // allowed to finish, work that has not is reported as not reached.
+  const previews: (string | Error | typeof NOT_REACHED)[] = new Array(pages.length).fill(NOT_REACHED);
+  const GROUP = GRAPH_BATCH_SIZE * 3;
+  for (let i = 0; i < pages.length; i += GROUP) {
+    if (now() >= stopAt) break;
+    const group = pages.slice(i, i + GROUP);
+    const results = await graphBatchGet(
+      group.map((page) => `/me/onenote/pages/${encodeURIComponent(page.id)}/preview`),
+      token,
+    );
+    results.forEach((result, j) => {
+      previews[i + j] = result.ok
+        ? String((result.body as { previewText?: string | null } | undefined)?.previewText ?? '').trim()
+        : new Error(result.error);
+    });
+  }
+
+  const outcomes = await mapWithConcurrency(pages, FANOUT_LIMIT, async (page, index): Promise<NoteSketch | typeof NOT_REACHED> => {
+    const got = previews[index];
+    if (got === NOT_REACHED) {
       notReached += 1;
       return NOT_REACHED;
     }
@@ -580,14 +607,14 @@ export const mapNotes = async (
 
     let preview = '';
     let reason: string | null = null;
-    try {
-      preview = await previewOf(token, page.id);
+    if (got instanceof Error) {
+      reason = `the preview call failed (${got.message})`;
+    } else {
+      preview = got;
       // A preview this thin cannot separate a working unit from a stray
       // note, which is the one thing the map exists to do.
       if (preview === '') reason = 'the page has no preview text';
       else if (preview.length < PREVIEW_FLOOR) reason = `the preview was only ${preview.length} characters`;
-    } catch (err) {
-      reason = `the preview call failed (${err instanceof Error ? err.message : String(err)})`;
     }
 
     if (reason === null) {
@@ -603,7 +630,12 @@ export const mapNotes = async (
       };
     }
 
-    // Case by case, and only for the pages that need it.
+    // Case by case, and only for the pages that need it — and only while there
+    // is time. A fallback is a whole page read, the slowest thing this does.
+    if (now() >= stopAt) {
+      notReached += 1;
+      return NOT_REACHED;
+    }
     try {
       const { text, chars_total } = await readNote(token, page.id);
       return {
