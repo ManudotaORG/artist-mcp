@@ -6,7 +6,21 @@ import { WRITE_CAPABILITIES, isGranted, type WriteCapability } from "./grants.js
 import { listAgentWorkflows, loadAgentWorkflow, type ResolvedEntry } from "./agents.js";
 import { GraphError } from "./client.js";
 import { call as localCall, type Operation } from "./dispatch.js";
-import { PAGE_LISTING_CAP, narrowNotes, narrowSections, notebookKeyFor, sectionKey } from "./notes.js";
+import {
+  MAP_DEADLINE_MS,
+  PAGE_LISTING_CAP,
+  narrowNotes,
+  narrowSections,
+  notebookKeyFor,
+  sectionKey,
+} from "./notes.js";
+
+/**
+ * The least a map is given even when the listing overran, so a slow listing
+ * still returns some sketches rather than none. Kept well inside the gap
+ * between MAP_DEADLINE_MS and the route's sixty seconds.
+ */
+const MAP_MIN_DEADLINE_MS = 5_000;
 
 /**
  * How a tool reaches the outside world. Injected rather than imported so the
@@ -251,7 +265,12 @@ const selectNotebook = async (
     sections?: SectionSummary[];
     page_dates_are_creation_dates?: boolean;
     all_sections?: { name: string; notebook: string | null }[];
-  }>("list_notes", section === undefined ? {} : { section });
+  }>("list_notes", {
+    ...(section === undefined ? {} : { section }),
+    // The walk is narrowed to the chosen notebook before it starts: a map of one
+    // season should not pay for every section on the account.
+    ...(wanted === undefined ? {} : { notebook: wanted }),
+  });
 
   const pages = wanted
     ? notes.filter((n) => (n.notebook ?? "").trim().toLowerCase() === wanted)
@@ -1412,6 +1431,10 @@ const createServer = async (
         ),
     },
     async ({ notebook, notebook_key, since, limit }) => {
+      // The route has one budget, and the listing spends from it before a single
+      // page is sketched. The map's own deadline used to start after the
+      // listing, so the two together could never fit.
+      const startedAt = Date.now();
       try {
         const chosen = await selectNotebook(call, notebook, notebook_key, "map_notes");
         if ("message" in chosen) {
@@ -1475,7 +1498,10 @@ const createServer = async (
           sketches: NoteSketch[];
           read_in_full: number;
           not_reached: number;
-        }>("map_notes", { pages });
+        }>("map_notes", {
+          pages,
+          deadline_ms: Math.max(MAP_MIN_DEADLINE_MS, MAP_DEADLINE_MS - (Date.now() - startedAt)),
+        });
 
         const blocks = sketches.map((s) => {
           const location = [s.notebook, s.section].filter(Boolean).join(" / ");

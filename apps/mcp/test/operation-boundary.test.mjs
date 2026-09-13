@@ -106,16 +106,45 @@ test('the HTTP layer sends exactly one non-GET, and it is the sanctioned one', a
   const api = await readFile(resolve(srcRoot, 'api.ts'), 'utf8');
   const methods = [...api.matchAll(/method\s*:\s*['"`](\w+)['"`]/g)].map((m) => m[1].toUpperCase());
   const nonGet = methods.filter((m) => m !== 'GET');
-  // Two POSTs, one DELETE and one PATCH: calendarInsertEvent,
-  // calendarDeleteEvent, onenoteCreatePage and onenotePatchPage. Not "no
-  // writes" any more, but still a counted set — each one had to be argued for
-  // here before it could ship, and the PATCH took a decision record and a probe
-  // against a real notebook.
+  // Three POSTs, one DELETE and one PATCH: graphBatchGet's envelope,
+  // calendarInsertEvent, calendarDeleteEvent, onenoteCreatePage and
+  // onenotePatchPage. Not "no writes" any more, but still a counted set — each
+  // one had to be argued for here before it could ship, and the PATCH took a
+  // decision record and a probe against a real notebook.
+  //
+  // The batch POST is a read: it carries only GETs of OneNote paths, checked in
+  // graphBatchGet and pinned by the next test, because a `$batch` that accepted
+  // any method would be a way round everything else asserted here.
   assert.deepEqual(
     nonGet,
-    ['POST', 'DELETE', 'POST', 'PATCH'],
+    ['POST', 'POST', 'DELETE', 'POST', 'PATCH'],
     `api.ts sends ${nonGet.join(', ') || 'nothing but GET'}. Any change here is a boundary change.`,
   );
+});
+
+test('a Graph batch carries only GETs of OneNote paths', async () => {
+  const { graphBatchGet } = await import('../dist/api.js');
+  let sent;
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    sent = JSON.parse(init.body);
+    return new Response(
+      JSON.stringify({ responses: sent.requests.map((r) => ({ id: r.id, status: 200, body: {} })) }),
+      { status: 200 },
+    );
+  };
+  try {
+    await graphBatchGet(['/me/onenote/sections/0-AB!s1/pages?$top=100', '/me/onenote/pages/p1/preview'], 't');
+    assert.deepEqual([...new Set(sent.requests.map((r) => r.method))], ['GET']);
+
+    sent = undefined;
+    for (const path of ['/me/events', '/me/onenote/pages/p1/content?x=1#', '/users/x/onenote/pages/p1', 'https://graph.microsoft.com/v1.0/me/onenote/pages/p1']) {
+      await assert.rejects(() => graphBatchGet([path], 't'), /only OneNote reads can be batched/, path);
+    }
+    assert.equal(sent, undefined, 'a refused batch still reached the network');
+  } finally {
+    globalThis.fetch = original;
+  }
 });
 
 /**

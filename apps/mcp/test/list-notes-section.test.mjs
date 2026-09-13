@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { createServer } from '../dist/server.js';
 import { listNotebooks, listNotes } from '../dist/notes.js';
+import { withGraphBatch } from './support/graph-batch.mjs';
 
 /**
  * `list_notes` with `section`: the first step of resolving a chat update to one
@@ -34,7 +35,7 @@ const GRAPH = {
 
 const stubGraph = (routes) => {
   const seen = [];
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = withGraphBatch(async (url) => {
     const path = String(url);
     seen.push(path);
     const match = Object.keys(routes).find((key) => path.includes(key));
@@ -43,7 +44,7 @@ const stubGraph = (routes) => {
       status: 200,
       headers: { 'content-type': 'application/json' },
     });
-  };
+  });
   return seen;
 };
 
@@ -264,4 +265,22 @@ test('other CL pages are not mistaken for the task page', async () => {
   const graph = { ...GRAPH, '/sections/melk/pages': pages(['CL Status & Termine', 'CL Konditionen']) };
   const { text } = await callList(graph, { section: 'GPT Melk' });
   assert.match(text, /no CL Aufgaben page/);
+});
+
+/**
+ * A chosen notebook narrows the walk before any page is fetched. Filtering after
+ * the fact is what made a map of one season pay for all 56 sections on a real
+ * account, and time out on hosted every time.
+ */
+test('a chosen notebook walks only its own sections', async () => {
+  const first = await callList(SEASONS, {});
+  const key = first.text.match(/notebook_key: (\S+)/)[1];
+  const { text, seen } = await callList(SEASONS, { notebook: '2027-28', notebook_key: key });
+
+  assert.match(text, /Zwei/);
+  assert.ok(seen.some((u) => u.includes('/sections/mv27/pages')));
+  assert.ok(
+    !seen.some((u) => u.includes('/sections/melk/pages') || u.includes('/sections/mv26/pages')),
+    'fetched pages of a notebook that was not chosen',
+  );
 });
