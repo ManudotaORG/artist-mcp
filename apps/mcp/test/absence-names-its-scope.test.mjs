@@ -111,7 +111,8 @@ test('the map tools do not claim to be a cheap look', async () => {
 });
 
 /**
- * Seven tools take `source_page`. They used to explain it five different ways,
+ * Six tools take `source_page` (seven until 0009 removed preview_onenote_page's
+ * copy of it). They used to explain it five different ways,
  * and reschedule did not explain it at all — so a model had no reason to pass
  * it there, and that write's audit line lost the page it came from.
  */
@@ -131,7 +132,7 @@ test('every tool taking source_page describes it, and describes it the same way'
     described.push([name, field._def?.description ?? '']);
   }
 
-  assert.equal(described.length, 7, 'seven tools take source_page');
+  assert.equal(described.length, 6, 'six tools take source_page');
   for (const [name, description] of described) {
     assert.ok(description.length > 0, `${name} leaves source_page undocumented`);
     assert.match(description, /traced back/, `${name} has drifted from the shared wording`);
@@ -143,6 +144,6 @@ test('every tool taking source_page describes it, and describes it the same way'
   const extended = described.filter(([, d]) => d.includes('section'));
   assert.deepEqual(
     extended.map(([n]) => n),
-    ['preview_onenote_page'],
+    ['create_onenote_page'],
   );
 });

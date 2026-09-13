@@ -1,12 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {
-  confirmationToken,
-  draftFrom,
-  pageXhtml,
-  refuseUnsettled,
-} from '../dist/onenote-write.js';
+import { draftFrom, pageXhtml, refuseUnsettled } from '../dist/onenote-write.js';
 
 const draft = (over = {}) => ({
   section_id: '0-AE14106C4F7C7DCC!sedce32b208ec46618fd34301f03b8cba',
@@ -100,31 +95,4 @@ test('everything the caller supplied is escaped, in both title and body', () => 
 test('the ampersand is escaped once, not twice', () => {
   assert.match(pageXhtml(draft({ body: 'Bass & drums' })), /<p>Bass &amp; drums<\/p>/);
   assert.ok(!pageXhtml(draft({ body: 'Bass & drums' })).includes('&amp;amp;'));
-});
-
-/**
- * The token proves the create is for the values that were shown, not that a
- * preview happened at some point.
- */
-test('the token changes when any shown value changes', async () => {
-  const base = await confirmationToken(draft());
-  for (const change of [{ title: 'Other' }, { body: 'Other' }, { section_id: 'other-id' }]) {
-    assert.notEqual(await confirmationToken(draft(change)), base, JSON.stringify(change));
-  }
-});
-
-test('the token is stable for identical values', async () => {
-  assert.equal(await confirmationToken(draft()), await confirmationToken(draft()));
-});
-
-/**
- * source_page is provenance for the audit line, not part of what the musician
- * approved. Hashing it would report a caller that dropped the field between
- * preview and create as though the page itself had changed.
- */
-test('the token ignores source_page, which is provenance rather than content', async () => {
-  assert.equal(
-    await confirmationToken(draft({ source_page: '1-abc' })),
-    await confirmationToken(draft({ source_page: null })),
-  );
 });

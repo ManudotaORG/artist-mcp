@@ -113,10 +113,11 @@ Then choose a returned page and ask:
 
 > Read the note titled “Test”.
 
-The MCP server exposes fourteen tools that read, and up to ten more depending
+The MCP server exposes fourteen tools that read, and up to six more depending
 on which write capabilities this install was granted — see the four sections
-starting at "Letting it add a calendar event" below. Each capability adds a
-pair: one tool that previews the change, one that applies it.
+starting at "Letting it add a calendar event" below. Creating an event, moving
+one, removing one and creating a page are one tool each; editing a page is a
+pair, one tool that previews the change and one that applies it.
 
 OneNote holds the working unit:
 
@@ -209,25 +210,26 @@ insisted on.
 
 `--allow-writes calendar-create,calendar-delete` also lets it remove an event
 it created itself, identified by the `artist` prefix on the event id, through
-`preview_calendar_delete` and `delete_calendar_event`. Holding both also adds
-`preview_calendar_reschedule` and `reschedule_calendar_event`. An event
+`delete_calendar_event`. Holding both also adds `reschedule_calendar_event`. An event
 you made, or one shared onto your calendar, is refused — this is an undo for its
 own mistakes, not calendar management. Google keeps a deleted event in that
 calendar's bin for 30 days. Delete needs no extra consent beyond create, because
 Google has one scope for both.
 
-Creating adds two tools and nothing else. `preview_calendar_event` shows the exact
-event and what is already on that day; `create_calendar_event` writes it, and
-only accepts the confirmation token the preview returned for those exact values.
-Change any field after the preview and the token stops matching, so the event
-has to be shown again.
+Creating adds one tool and nothing else: `create_calendar_event` writes the
+event in a single call, and its result shows exactly what was written, what was
+already on those dates in that calendar, and how to delete it. There is no
+separate preview step. In a conversation the assistant is told to show you the
+event and wait for your yes first; a scheduled task you set up may create it
+directly. See [0009](decisions/0009-confirm-by-reversibility.md) for why only
+editing a page still has a preview.
 
 What it deliberately cannot do:
 
 - Respond to an event, or edit one in place. Google grants both with the same
   scope as creating one; the tools to do them do not exist here. An install
   holding *both* calendar capabilities can reschedule an event this tool
-  created, which is a delete and a create in one confirmed step, never a
+  created, which is a create and a delete in one step, never a
   `PATCH` — an event you made stays untouchable.
 - Delete an event it did not create, even with `calendar-delete` granted.
 - Add more than one event per call. There is no "add all the gigs".
@@ -262,13 +264,14 @@ a created page is wrong, you delete it in OneNote yourself. That is the trade
 for the guarantee above. `onenote-edit`, below, is a separate grant that lifts
 the "no changes" half of it — and only for pages this tool created.
 
-Creating adds two tools. `preview_onenote_page` renders the page and names the
-section it would land in; `create_onenote_page` writes it, and only accepts the
-confirmation token the preview returned for those exact values.
+Creating adds one tool, `create_onenote_page`, which writes the page in a single
+call and reports the page as written and the section it landed in. There is no
+separate preview step; in a conversation the assistant is told to show you the
+page first.
 
 The page goes beside the page it was composed from, so the section is resolved
-from `source_page` rather than chosen. The preview names it in words, and you
-can pass a section explicitly if that is not where it should go.
+from `source_page` rather than chosen. The result names it in words, and you can
+pass a section explicitly if that is not where it should go.
 
 What it deliberately cannot do:
 
