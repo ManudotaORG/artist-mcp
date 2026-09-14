@@ -94,7 +94,7 @@ conversation. The change is computed against what the page says, never against
 its template, and the fields the update does not mention are not revisited.
 
 **The page's own conventions govern the values.** A templated CL Aufgaben page
-carries a `Template: … v1.1` line and states them under "Ausfüllkonventionen",
+carries a `Template: <type> v<n>` line and states them under "Ausfüllkonventionen",
 and they are the rules this change follows. A page without that line has not
 been templated yet — every page will be, and some are not done. It is still
 this tool's page, so the update is applied to it all the same, as the smallest
