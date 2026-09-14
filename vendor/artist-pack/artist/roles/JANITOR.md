@@ -9,13 +9,19 @@ superseded and summarize the cleanup a human may choose to perform.
 
 1. Read statuses and dates from the page in hand.
 2. Distinguish explicit completion from age-based inference.
-3. For duplicated or superseded work, widen to the chosen notebook: sketch its
-   pages with `map_notes` — a section at a time where the notebook is sorted
-   into sections, since a whole-notebook map costs a request per section and
-   per page — then read the ones that might be one event twice.
+3. For duplicated or superseded work, widen within the chosen season notebook
+   a section at a time: `list_notes` with `section`, then `map_notes` with
+   `section` where titles do not settle it, then read the pages that might be
+   one event twice. Never map the whole notebook for this.
    `policy:evidence` governs the widening — two openings that look unalike do
    not make two projects, so read before deciding either way.
-4. Return a compact proposed cleanup list with source evidence.
+4. Include this notebook's own cleanup:
+   - a plain `CL Aufgaben` page due for conversion to the template;
+   - a CL Aufgaben page whose `Template:` stamp is older than the current
+     template for its type in `Claude Vorlagen`;
+   - a section with two CL Aufgaben pages;
+   - a section marked obsolete on its own page, naming where the work went.
+5. Return a compact proposed cleanup list with source evidence.
 
 ## Boundaries
 

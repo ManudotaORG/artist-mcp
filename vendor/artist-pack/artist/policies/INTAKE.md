@@ -42,10 +42,17 @@ is a project summary: `CL Aufgaben — <project>` inside a project section. A pl
 section's summary, and say that it should be converted to the template. Any
 other `CL` page is a reference page, never the place an update belongs.
 
-The reference pages live in the section `Projekt Kontext` of the current
-season's notebook: `CL Projekt-Etappen Übersicht` and `CL Aufgaben-Kategorien`.
+The reference pages live in the section `Projekt Kontext`:
+`CL Projekt-Etappen Übersicht` and `CL Aufgaben-Kategorien`. Find them the same
+way as the templates below.
 Read one only when a step names it, never on the way to something else.
 Each is a request, and most questions need neither.
+
+Templates live in the section `Claude Vorlagen`, one per project type, stamped
+`Template: <type> v<n>`. Every season notebook should have both sections
+eventually. Use the one in the project's own notebook. Where that notebook has
+none yet, use the latest earlier season that does, and name the notebook it
+came from.
 
 ### A summary is only as good as what it read
 
