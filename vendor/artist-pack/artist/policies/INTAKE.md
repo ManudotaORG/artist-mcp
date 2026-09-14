@@ -51,8 +51,7 @@ Each is a request, and most questions need neither.
 Templates live in the section `Claude Vorlagen`, one per project type, stamped
 `Template: <type> v<n>`. Every season notebook should have both sections
 eventually. Use the one in the project's own notebook. Where that notebook has
-none yet, use the latest earlier season that does, and name the notebook it
-came from.
+none yet, use the latest earlier season that does.
 
 ### A summary is only as good as what it read
 
@@ -100,7 +99,8 @@ what it never read. Three cases need saying out loud.
    never one you know of from outside this conversation, from saved context or
    an earlier session. A notebook the musician has not named in front of you is
    a guess, however good, and the answer it produces is correct about the wrong
-   pages. Say which notebook every answer covers.
+   pages. Where the musician has not named the notebook, say which one the
+   answer covers.
 3. Use `map_notes` on the chosen notebook to see the opening of every page at
    once, and let it decide reading order. It is cheap where reading everything
    is not, so a large notebook can be triaged before any page is opened. Run it
@@ -171,9 +171,9 @@ template's shape drift.
   what identifies a template; where it sits is a hint.
 - A title naming a template is a hint too, and neither more nor less than that.
   A musician who paste-names their pages differently still has templates.
-- Reuse what you find: their shape, their headings, their fields. Say which
-  template governed, its version, and when it last changed, so the transcript
-  shows whether the shape came from them or from a playbook.
+- Reuse what you find: their shape, their headings, their fields. Where no
+  template of theirs was found and the shape came from a playbook, say so.
+  Name the template, its version and when it last changed only when asked.
 - Two stamps for one project type: ask which. Never take the newer, the fuller
   or the tidier.
 - A stamp naming a project type no playbook covers: ask what it is for. Do not

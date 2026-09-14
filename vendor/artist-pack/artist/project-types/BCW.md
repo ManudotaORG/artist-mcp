@@ -123,10 +123,9 @@ BCW projects have a register of their own: a section `BCW ÜBERSICHT` in a
 season notebook. Notebooks are named by season (`2026-27`, then `2027-28`,
 `2028-29`, and so on), so read the register in the notebook the project sits
 in. Where that notebook has none, a register in an earlier season may already
-cover the project, since one register can reach into the following season. Name
-the notebook the register came from. If more than one register covers the
-project, `policy:divergence` holds between them. The register belongs to BCW
-only. Never read it for any other category.
+cover the project, since one register can reach into the following season. If
+more than one register covers the project, `policy:divergence` holds between
+them. The register belongs to BCW only. Never read it for any other category.
 
 A register holds a `Tabelle` page (every project in date order, with the undated
 ones below) and a prose page per season, which ends with what each project still

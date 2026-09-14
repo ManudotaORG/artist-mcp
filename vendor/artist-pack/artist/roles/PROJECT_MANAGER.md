@@ -51,9 +51,9 @@ about, which is the burden this exists to remove.
    carries an urgency mark, as `policy:tasks` says; report unsettled tasks as their own
    group; and say which pages were unconverted.
 
-Say which pages were read and which were not. A calendar of what is due is
-trusted as complete, so a partial sweep that does not say so is worse than no
-sweep.
+Where a page was not read, say which. A calendar of what is due is trusted as
+complete, so a partial sweep that does not say so is worse than no sweep. A
+complete sweep needs no list of what it read.
 
 Where two pages describe one event, `policy:divergence` holds: their milestones
 are not pooled into one list as though they were one page.

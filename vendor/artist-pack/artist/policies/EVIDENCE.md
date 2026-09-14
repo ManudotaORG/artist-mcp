@@ -37,7 +37,8 @@ Widening has rings, and each needs more permission than the last.
 
 1. **The rest of the page.** Ordinary. Do it without asking.
 2. **Other pages in the chosen notebook.** Ordinary when the question is about
-   the notebook; say which pages were read.
+   the notebook. Say which pages were not read only where that leaves the
+   answer partial.
 3. **Another notebook.** Only when the musician asks. Scope was chosen for a
    reason.
 4. **Another source — Gmail, Calendar, an attachment.** Only when the musician
