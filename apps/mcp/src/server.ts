@@ -286,8 +286,7 @@ const selectNotebook = async (
       creationDates: false,
       scope:
         wanted && others.length > 0
-          ? `Answered for "${notebook}" only. This account also has: ${others.join(", ")}. ` +
-            "Say which notebook this covers when you answer."
+          ? `Answered for "${notebook}" only. This account also has: ${others.join(", ")}.`
           : null,
       sectionList: listed,
     };
@@ -327,8 +326,8 @@ const selectNotebook = async (
   const scope =
     wanted && others.length > 0
       ? `Answered for "${notebook}" only. This account also has: ${others.join(", ")}. ` +
-        "Say which notebook this covers when you answer. If the user did not name " +
-        "one, do not infer it from anything outside this conversation — ask."
+        "If the user did not name this notebook, do not infer it from anything " +
+        "outside this conversation — ask."
       : null;
 
   // Sections are narrowed to the chosen notebook the same way the pages are:
@@ -519,14 +518,17 @@ const findSectionAcrossNotebooks = async (
   const others = names.filter(
     (name) => name.trim().toLowerCase() !== (found.notebook ?? "").trim().toLowerCase(),
   );
+  // Naming the notebook is for catching a wrong season, so it is asked for only
+  // where one could be caught: the user named no notebook here, and a unique
+  // match said nothing about which season they meant (#229).
   return {
     pages: notes,
     sections,
     creationDates: page_dates_are_creation_dates,
     scope:
       `Found in notebook "${found.notebook ?? "unknown"}", the only notebook with a ` +
-      `section of this name (others: ${others.join(", ")}). Name that notebook when ` +
-      "you answer, so the user can catch a wrong season." +
+      `section of this name (others: ${others.join(", ")}). If the user has not ` +
+      "named a notebook in this conversation, name this one in the answer, once." +
       (similar.length > 0
         ? " Similarly named, and possibly the project meant: " +
           similar.map((sec) => `${sec.name} (notebook: ${sec.notebook ?? "unknown"})`).join(", ") +
