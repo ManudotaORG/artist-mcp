@@ -103,6 +103,29 @@ test('a doubled space in the real name does not defeat the match', async () => {
   assert.match(text, /holds 1 page; this is all of them/);
 });
 
+/** Found against the live notebook's `Projekt Kontext` section: see #225. */
+test('a reference CL page is not taken for the update target', async () => {
+  const kontext = {
+    '/me/onenote/sections?': {
+      value: [{ id: 'pk', displayName: 'Projekt Kontext', parentNotebook: { displayName: 'S' } }],
+    },
+    '/sections/pk/pages': pages(['CL Aufgaben-Kategorien', 'CL Projekt-Etappen Übersicht']),
+  };
+  const { text } = await callList(kontext, { section: 'Projekt Kontext' });
+  assert.match(text, /This section has no CL Aufgaben page/);
+  assert.doesNotMatch(text, /belongs on this page/);
+});
+
+test('a plain CL Aufgaben page counts, and is named as due for the template', async () => {
+  const { text } = await callList(SEASONS, { section: 'BCW Melk Gansch' });
+  assert.match(text, /CL Aufgaben page in this section: "CL Aufgaben"/);
+  assert.match(text, /due to be converted/);
+
+  const templated = await callList(GRAPH, { section: 'GPT Melk' });
+  assert.match(templated.text, /CL Aufgaben page in this section: "CL Aufgaben — GPT Melk"/);
+  assert.doesNotMatch(templated.text, /due to be converted/);
+});
+
 test('closest offers the best match, not every section sharing a word', async () => {
   const { text } = await callList(
     {
@@ -263,7 +286,7 @@ test('a section without a CL Aufgaben page says the update has nowhere to go', a
 });
 
 test('two CL Aufgaben pages are refused, not picked', async () => {
-  const graph = { ...GRAPH, '/sections/melk/pages': pages(['CL Aufgaben', 'CL Aufgaben alt']) };
+  const graph = { ...GRAPH, '/sections/melk/pages': pages(['CL Aufgaben', 'CL Aufgaben — GPT Melk']) };
   const { text } = await callList(graph, { section: 'GPT Melk' });
   assert.match(text, /2 CL Aufgaben pages/);
   assert.match(text, /Do not pick one/);
