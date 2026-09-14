@@ -117,6 +117,34 @@ venue's version is its own fact.
 read the rehearsal structure from "CL Projekt-Etappen Übersicht" rather than
 assuming it works like a house production.
 
+## The season register
+
+BCW projects have a register of their own: a section `BCW ÜBERSICHT` in a
+season notebook. Notebooks are named by season (`2026-27`, then `2027-28`,
+`2028-29`, and so on), so read the register in the notebook the project sits
+in. Where that notebook has none, a register in an earlier season may already
+cover the project, since one register can reach into the following season. Name
+the notebook the register came from. If more than one register covers the
+project, `policy:divergence` holds between them. The register belongs to BCW
+only. Never read it for any other category.
+
+A register holds a `Tabelle` page (every project in date order, with the undated
+ones below) and a prose page per season, which ends with what each project still
+lacks.
+
+- **Read `Tabelle` when working a BCW project.** One request. It is often more
+  current than the project's own CL Aufgaben page, so a project page alone can
+  answer with a date or a Gage that has already moved on.
+- **It is a second record, not the record.** Where it and the project page
+  disagree, `policy:divergence` holds. Give both, and name the page each comes
+  from. Do not settle it by treating the newer page as right. Offer the register's
+  value to the project page as a patch the musician decides on.
+- **It is not where an update goes.** It is not a CL Aufgaben page. An update
+  belongs on the project's page, and the register is brought in step only when
+  the musician asks.
+- **Absent from the register says nothing.** A BCW project missing from it has
+  not been added yet. That is not a sign the project is cancelled.
+
 ## Workflow
 
 1. Verify the headline facts — Konzertdatum, venue, Gage, contract status — and
