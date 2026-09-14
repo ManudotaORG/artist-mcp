@@ -5,9 +5,9 @@
       "id": "policy:answering",
       "kind": "policy",
       "name": "Answering",
-      "description": "Answer the question that was asked, in as few words as it takes, and keep the machinery out of it.",
+      "description": "Answer the question, in as few words as it takes. This policy decides what is said, and every other playbook decides what is true. Where another playbook says to \"say\", \"name\", \"report\", \"offer\" or \"mention\" something, it is said only if this policy allows it.",
       "file": ".artist/policies/ANSWERING.md",
-      "sha256": "cd24def1d3946ee602aa592767361e86791415ea78f01a0631c577e75e869e95"
+      "sha256": "7886eff2dfdf061cb631c0967117f6b74292a7fcffa4581e5c42d38909d3478c"
     },
     {
       "id": "policy:divergence",
@@ -15,7 +15,7 @@
       "name": "Divergence",
       "description": "When two pages in the notebook describe the same event, say so, and let the musician settle each fact the two disagree on. Neither page is the project — the event is, and the pages are two records of it.",
       "file": ".artist/policies/DIVERGENCE.md",
-      "sha256": "af0e1139bd842a3adcc551f9c8cf7b6fce89fd0a7133025a56ff4eac6909d6ef"
+      "sha256": "a14cacc20c0f9f48c5233b14097ae869e440eb0864ea6e300f0b7e9153fe1deb"
     },
     {
       "id": "policy:evidence",
@@ -23,7 +23,7 @@
       "name": "Evidence",
       "description": "Assume the likely shape of a page, then verify it. When the assumption does not hold, widen the search — never report the assumption's failure as a finding.",
       "file": ".artist/policies/EVIDENCE.md",
-      "sha256": "69025e82df3ef07176a292b894bb9a6e5c06bcf21be5cbdc0eb5377eb9153eb8"
+      "sha256": "cc417be662a86fc4ddc8fdfd5342c688703b069dccbb3e50d3ae9e314a596919"
     },
     {
       "id": "policy:intake",
@@ -31,7 +31,7 @@
       "name": "Intake",
       "description": "Turn an unorganized notebook into working units without inventing anything.",
       "file": ".artist/policies/INTAKE.md",
-      "sha256": "21c65ade15b4350b284eb04315a8f4750629926d45a436beab404fee2d31e2dd"
+      "sha256": "3442ea49c9072e3e9c84257b50c0ce0782169c3f3ed605c545c3401552d3f092"
     },
     {
       "id": "policy:local-state",
@@ -55,7 +55,7 @@
       "name": "Concert",
       "description": "One OneNote page describing one concert. Expected fields include name, date, venue, audience, project lead, budget, description, milestones, tasks, and musician or supplier contacts.",
       "file": ".artist/project-types/CONCERT.md",
-      "sha256": "84f45b97be57cc8335e460b2095eb3759bc354d62d50a691317351e93cf6faec"
+      "sha256": "be42919b0e73c2f828a16e5e8bdad08f43a456d42ea58d7ed9d366c42df818e5"
     },
     {
       "id": "project-type:large-concert",
@@ -119,15 +119,15 @@
       "name": "Orchestrator",
       "description": "Turn the user's request and live OneNote evidence into one useful next action.",
       "file": ".artist/roles/ORCHESTRATOR.md",
-      "sha256": "c7496baa5d5e86cdc905ed37b3a72265bb6e982d7084091ed8fe024fddf50c2b"
+      "sha256": "1a710bb0d404b6319ba20f0566ddffcb2fe0986196d1cf7da9c5718a4dd7fe87"
     },
     {
       "id": "role:project-manager",
       "kind": "role",
       "name": "Project Manager",
-      "description": "Compare one working-unit page with its project-type playbook and identify the single most useful next project-management action. Or, across the chosen notebook, say what is due and what is overdue.",
+      "description": "Compare one working-unit page with its project-type playbook and find what is overdue, contradictory or missing. Or, across the chosen notebook, say what is due and what is overdue.",
       "file": ".artist/roles/PROJECT_MANAGER.md",
-      "sha256": "f2c3d4a767b97d8f33f778257d23adcb61ac737ffdf58265cb84d16dbcdc01c9"
+      "sha256": "f670aedf05d120c6518db692e668ede235d6ab5cc4b84e773d969f20fe5e7782"
     },
     {
       "id": "role:registrar",

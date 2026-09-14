@@ -116,10 +116,9 @@ test('a since window on a broken account answers with sections, not pages', asyn
   assert.doesNotMatch(text, /Contacts/, 'a page was named as changed');
 });
 
-test('the section answer says which page is unknowable, and how to look', async () => {
+test('the section answer says which page is unknowable', async () => {
   const text = await callList(BROKEN, { notebook: 'Season', since: '2026-08-20' });
-  assert.match(text, /cannot say which page/i);
-  assert.match(text, /list_notes with that notebook and no `since`/);
+  assert.match(text, /which page changed is unknown/i);
 });
 
 test('"changed" is not overclaimed as "edited"', async () => {
@@ -172,8 +171,8 @@ const callMap = async (graph, args) => {
 
 test('map_notes refuses a since window it cannot honour, and says where to go', async () => {
   const text = await callMap(BROKEN, { notebook: 'Season', since: '2026-08-20' });
-  assert.match(text, /Cannot map by change on this account/);
-  assert.match(text, /list_notes with `since` instead/);
+  assert.match(text, /`since` is unavailable on this account/);
+  assert.match(text, /Use list_notes with `since`/);
   // It must not quietly sketch the pages created in that window.
   assert.doesNotMatch(text, /Rehearsal schedule/);
 });

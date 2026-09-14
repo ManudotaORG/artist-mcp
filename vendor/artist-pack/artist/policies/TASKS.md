@@ -17,7 +17,7 @@ they are read and not ignored.
   the work rather than its finish. Lead with it — it is the state most likely
   to send someone to redo finished work.
 - **Where a status cell disagrees with its tag, the tag stands** and the cell is
-  out of date. Say so, and offer to correct the cell; do not report the task as
+  out of date. Say so; do not report the task as
   unsettled on the strength of a cell alone.
 - **A line with no tag is not a tracked task, which is not the same as no
   task.** A page whose work is prose, or a task table without tags, has not
@@ -117,9 +117,7 @@ date is missing.
 
 Never derive a deadline from a rule the reference page does not state. A
 convention holding across three projects is still not written down, and the
-fourth project is not bound by it. Where a rule seems to be missing, say so and
-offer it for the page — that is a patch under `policy:patch`, decided by the
-musician, never a rule applied on the strength of having noticed it.
+fourth project is not bound by it, and a rule noticed is never a rule applied.
 
 ### What is missing, not only what is late
 
@@ -153,13 +151,8 @@ calendar, not about the page in front of you.
 
 Before reporting a task as undated, undatable, or missing:
 
-- Offer to look at the calendars — a fourth-ring source under
-  `policy:evidence`, so it needs asking — and cover all of them rather than the
-  likeliest one.
-- Where that look has not happened, say what the claim actually rests on. "No
-  date on the page; the calendars were not checked" is honest and useful.
-  "Unscheduled" is neither, and it sends the musician to schedule something
-  twice.
+- Say "no date on the page", never "unscheduled", unless every calendar was
+  checked at the musician's request.
 
 ### The calendar is a projection of the page
 

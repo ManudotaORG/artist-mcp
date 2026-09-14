@@ -111,9 +111,8 @@ obbligato player is a substantive musical decision here, not a staffing detail.
 2. Check what the contract still lacks and what it commits him to.
 3. Establish what the house is waiting on and what he is waiting on from the
    house, and keep those two apart.
-4. Recommend one next action.
-5. If outreach is useful, Registrar extracts the contact, Envoy drafts, and
-   Auditor verifies before the result is shown.
+4. When the musician asks for outreach, Registrar extracts the contact, Envoy
+   drafts, and Auditor verifies before the result is shown.
 
 ## Checks
 

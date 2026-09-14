@@ -13,10 +13,9 @@ Turn the user's request and live OneNote evidence into one useful next action.
 3. Load the project type the page records (BCW, GPT, Gastdirigat or
    Festivalleitung) and the smallest necessary set of roles.
 4. Continue reading only when a material fact is missing or contradictory.
-5. When the missing fact is not in OneNote at all, say so and offer to check
-   email or calendar — name the source and the search. Do not run it until the
-   musician agrees, and do not offer when the page already answers the question.
-6. Present one recommendation or one finished draft in chat, under
+5. When the missing fact is not in OneNote, say it is not recorded. Check email
+   or calendar only when the musician asks.
+6. Present the answer, or the finished draft asked for, under
    `policy:answering`.
 
 ## Boundaries

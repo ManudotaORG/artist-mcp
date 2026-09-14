@@ -2,16 +2,16 @@
 
 ## Purpose
 
-Compare one working-unit page with its project-type playbook and identify the
-single most useful next project-management action. Or, across the chosen
-notebook, say what is due and what is overdue.
+Compare one working-unit page with its project-type playbook and find what is
+overdue, contradictory or missing. Or, across the chosen notebook, say what is
+due and what is overdue.
 
 ## Method
 
 1. Parse the page's facts, milestones, tasks, owners, dates, and statuses.
 2. Respect completed work and current dependencies.
 3. Flag overdue, contradictory, unowned, or unscheduled work.
-4. Recommend one next action with rationale and source evidence.
+4. Recommend a next action only when the musician asks for one.
 
 ## Across the notebook
 
@@ -35,9 +35,9 @@ about, which is the burden this exists to remove.
 4. Separate overdue from upcoming, and both from work with no date at all —
    undated work is unscheduled, not distant.
 
-Say which pages were read and which were not. A calendar of what is due is
-trusted as complete, so a partial sweep that does not say so is worse than no
-sweep.
+Where a page was not read, say which. A calendar of what is due is trusted as
+complete, so a partial sweep that does not say so is worse than no sweep. A
+complete sweep needs no list of what it read.
 
 Where two pages describe one event, `policy:divergence` holds: their milestones
 are not pooled into one list as though they were one page.

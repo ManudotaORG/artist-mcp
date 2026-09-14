@@ -71,14 +71,6 @@ From the moment it is suspected, not from when it is confirmed:
 - **Show conflicts side by side**, with both page titles, and leave them
   standing. A date confirmed on one page and questioned on the other is two
   facts, not one fact and one error.
-- **Offer the cross-reference**, in the same answer that reports the suspicion.
-  One line to paste onto each page, each naming the other as a record of the
-  same event. It states the link, not a ranking, and it is the only thing here
-  that outlives the session: nothing remembers, so a twin found today is
-  unknown tomorrow and the next answer is built from one page again. Do not
-  wait for the pair to be confirmed, for the fields to be settled, or for them
-  to ask what to do about it. `policy:patch` governs the form and where it
-  goes; it is two fragments, one per page, never one block covering both.
 
 One line means one line. This is the whole of it, for a wedding recorded twice:
 
