@@ -64,8 +64,7 @@ what it never read. Three cases need saying out loud.
   whether the page is complete, compare the pages the summary cites with the
   section's page list from `list_notes` with `section` (one request). Name any
   page it does not cite as unread by the summary. The fact may be there, so
-  never call it absent. Offer to read those pages, or to bring the summary up to
-  date under `policy:patch`.
+  never call it absent.
 - **A section with no CL Aufgaben page.** It is a project nobody has summarised
   yet, not a project with nothing in it. Say so, and answer from the section's
   own pages, read within that section only. What intake owes it is this section's
@@ -81,8 +80,7 @@ what it never read. Three cases need saying out loud.
     source cannot be found in the section.
   - **An email or a calendar event**, read through the supporting-evidence
     tools. That is a real source that simply is not a page, so the value is not
-    unbacked. Report it with that origin. Checking it again is
-    `policy:evidence`'s fourth ring: offer the look, and wait.
+    unbacked. Check it again only when asked.
   - **A chat update**, stamped `(Angabe von …, <date>)` under `policy:patch`.
     Its origin is the stamp itself.
 

@@ -136,8 +136,7 @@ lacks.
   answer with a date or a Gage that has already moved on.
 - **It is a second record, not the record.** Where it and the project page
   disagree, `policy:divergence` holds. Give both, and name the page each comes
-  from. Do not settle it by treating the newer page as right. Offer the register's
-  value to the project page as a patch the musician decides on.
+  from. Do not settle it by treating the newer page as right.
 - **It is not where an update goes.** It is not a CL Aufgaben page. An update
   belongs on the project's page, and the register is brought in step only when
   the musician asks.
@@ -152,9 +151,8 @@ lacks.
 2. Establish whether the programme is settled. Programming is where BCW projects
    sit longest: a final work list, its duration, and who still has to approve it.
 3. Identify the first commitment whose prerequisites appear met.
-4. Recommend one next action.
-5. If outreach is useful, Registrar extracts the contact, Envoy drafts, and
-   Auditor verifies before the result is shown.
+4. When the musician asks for outreach, Registrar extracts the contact, Envoy
+   drafts, and Auditor verifies before the result is shown.
 
 ## Checks
 
