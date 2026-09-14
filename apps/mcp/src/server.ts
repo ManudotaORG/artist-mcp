@@ -549,9 +549,8 @@ const renderChangedSections = (
   const where = notebook ? `"${notebook}"` : "this account";
 
   const preamble =
-    "OneNote is not reporting page modification times on this account — " +
-    "Microsoft returns each page's creation date in that field — so this " +
-    "answers at section level, which does report change correctly.";
+    "OneNote is not reporting page modification times on this account, so " +
+    "this answers with sections.";
 
   if (changed.length === 0) {
     return (
@@ -573,10 +572,7 @@ const renderChangedSections = (
   });
 
   const caveats = [
-    "Tell the musician WHICH SECTIONS changed. Do not name pages as changed — " +
-      "OneNote cannot say which page it was, and a section holds several. " +
-      "To look inside one, call list_notes with that notebook and no `since`, " +
-      "then read the pages of that section.",
+    "Do not name pages as changed: which page changed is unknown.",
     "\"Changed\" includes a page being added, removed or moved, not only edited.",
     "A section shows only its most recent change, so an older edit in a section " +
       "that changed again later cannot be seen separately.",
@@ -763,8 +759,7 @@ const renderWorkflowBriefing = async (
       ? [
           `WARNING: ${failed.length} playbook(s) could not be read and are ` +
             `NOT in force: ${failed.join(", ")}. The work is proceeding ` +
-            "without them. Say so rather than answering as if the full set " +
-            "applied.",
+            "without them.",
           "",
         ]
       : [];
@@ -1163,8 +1158,7 @@ const createServer = async (
     "— it is not reference material to consult if a question seems to call for " +
     "it. Working from these tool descriptions alone means working with no " +
     "policy in force, which is not a lighter version of this server's " +
-    "behaviour but a different one. If a call fails or the briefing reports a " +
-    "playbook it could not read, say so before answering." +
+    "behaviour but a different one." +
     // What this install may change, in the handshake as well as the briefing.
     //
     // The briefing is the statement of the rules and stays so. But a client
@@ -2140,15 +2134,10 @@ const createServer = async (
 
           const already =
             existing_in_range.length === 0
-              ? `Nothing else was on those dates in ${calendar_id}. That is one ` +
-                "calendar only — it does not show the dates were free elsewhere."
-              : `Already on those dates in ${calendar_id} before this was written:\n` +
+              ? ""
+              : `\nAlready on those dates in ${calendar_id}; a duplicate if one is the same event:\n` +
                 existing_in_range.map((e) => `- ${e.summary} — ${when(e)}`).join("\n") +
-                "\nIf one of these is the same event, say so plainly.";
-
-          const undo = isGranted(grants, "calendar-delete")
-            ? `If it is wrong, delete_calendar_event removes it: event_id ${created.id}, calendar_id ${calendar_id}.`
-            : "If it is wrong, the musician can delete it in Google Calendar.";
+                "\n";
 
           return {
             content: [
@@ -2157,9 +2146,8 @@ const createServer = async (
                 text:
                   `Created in ${calendar_id}:\n\n${written}\n` +
                   (link ? `\n${link}\n` : "") +
-                  `\n${already}\n\n${undo} ` +
-                  "Tell the musician what was created. The page in OneNote was " +
-                  "not changed.",
+                  already +
+                  `\nevent_id ${created.id}, calendar_id ${calendar_id}`,
               },
             ],
           };
@@ -2227,9 +2215,10 @@ const createServer = async (
 
           const already =
             existing_in_range.length === 0
-              ? `Nothing else was on the new dates in ${calendar_id}.`
+              ? ""
               : `Already on the new dates in ${calendar_id}:\n` +
-                existing_in_range.map((e) => `- ${e.summary} — ${when(e)}`).join("\n");
+                existing_in_range.map((e) => `- ${e.summary} — ${when(e)}`).join("\n") +
+                "\n\n";
 
           return {
             content: [
@@ -2239,11 +2228,9 @@ const createServer = async (
                   `Rescheduled in ${calendar_id}.\n\nRemoved:\n\n${removed}\n\n` +
                   `Created:\n\n${written}\n\n` +
                   (link ? `${link}\n\n` : "") +
-                  `${already}\n\n` +
-                  `The new event is event_id ${created.id}. The old one is in that ` +
-                  "calendar's bin for 30 days, and any reminder set on it did not " +
-                  "come across — tell the musician both. The page in OneNote was " +
-                  "not changed.",
+                  already +
+                  `event_id ${created.id}. Reminders on the old event did not carry over; ` +
+                  "it stays in the bin for 30 days.",
               },
             ],
           };
@@ -2263,7 +2250,7 @@ const createServer = async (
         "refused. It cannot change an event, only remove it, and there is no " +
         "bulk form. The result is the whole event as it was, read from Google " +
         "before removing it. Google keeps a deleted event in that calendar's bin " +
-        "for 30 days, so tell the musician they can restore it there.",
+        "for 30 days.",
       {
         event_id: z.string().describe("The id of the event, as returned when it was created"),
         calendar_id: z
@@ -2285,9 +2272,7 @@ const createServer = async (
                 type: "text",
                 text:
                   `Deleted from ${calendar_id}:\n\n${deleted}\n\n` +
-                  "Google keeps it in that calendar's bin for 30 days, so the " +
-                  "musician can restore it there if this was wrong. What it " +
-                  "said is recorded locally either way.",
+                  "In the calendar's bin for 30 days.",
               },
             ],
           };
@@ -2367,9 +2352,7 @@ const createServer = async (
                 text:
                   `Created the page "${title}" in ${section_name}:\n\n${written}\n` +
                   (web_url ? `\n${web_url}\n` : "") +
-                  "\nTell the musician the page is in their notebook, and that " +
-                  "this tool cannot change or remove it — if it is wrong, they " +
-                  "delete it in OneNote themselves. No existing page was touched.",
+                  "\nThis tool cannot change or remove it.",
               },
             ],
           };
@@ -2565,11 +2548,8 @@ const createServer = async (
                       ? TABLE_MARKUP
                       : ""
                   }\n\n` +
-                  "Show this to the musician and wait for their yes. If this is a " +
-                  "replace, say plainly what it overwrites: OneNote keeps no " +
-                  "version of a page, so the previous text will exist only in this " +
-                  "install's write log afterwards. If they agree, call " +
-                  "edit_onenote_page with the SAME values and:\n" +
+                  "Show this to the musician and wait for their yes. If they agree, " +
+                  "call edit_onenote_page with the SAME values and:\n" +
                   `  confirmation_token: ${confirmation_token}`,
               },
             ],

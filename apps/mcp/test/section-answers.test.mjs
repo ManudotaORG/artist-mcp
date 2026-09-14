@@ -116,10 +116,9 @@ test('a since window on a broken account answers with sections, not pages', asyn
   assert.doesNotMatch(text, /Contacts/, 'a page was named as changed');
 });
 
-test('the section answer says which page is unknowable, and how to look', async () => {
+test('the section answer says which page is unknowable', async () => {
   const text = await callList(BROKEN, { notebook: 'Season', since: '2026-08-20' });
-  assert.match(text, /cannot say which page/i);
-  assert.match(text, /list_notes with that notebook and no `since`/);
+  assert.match(text, /which page changed is unknown/i);
 });
 
 test('"changed" is not overclaimed as "edited"', async () => {

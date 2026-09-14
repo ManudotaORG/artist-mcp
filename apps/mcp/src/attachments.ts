@@ -732,7 +732,7 @@ export function describeGaps(extracted: {
         `through it. Pages ${extracted.first_page ?? 1} to ` +
         `${extracted.pages_read} are attached so the file can be identified. ` +
         `Ask which pages are needed and request those with from_page and ` +
-        `page_count, or say plainly that this one is better opened directly.`
+        `page_count.`
       : null,
     // The way out of every cap above: ask for the rest. Without this the
     // caller is told what is missing and not that it is obtainable.
