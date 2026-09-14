@@ -242,15 +242,10 @@ const selectNotebook = async (
         `This account has ${names.length} notebooks:\n${counts.join("\n")}\n\n` +
         `notebook_key: ${expected}\n\n` +
         (unproven
-          ? `You asked for "${notebook}" without the notebook_key from this ` +
-            "list, so nothing in this conversation had seen the notebooks yet. " +
-            "Ask the user which one they mean — including whether it is that " +
-            `one — and call ${tool} again with that name AND the notebook_key ` +
-            "above. A notebook you know of from elsewhere is a guess, and a " +
-            "guess here produces an answer that is correct about the wrong pages."
-          : `Ask the user which notebook to work in, then call ${tool} again ` +
-            "with that name and the notebook_key above. Do not guess, and do " +
-            "not work across notebooks unless the user asks for it."),
+          ? `"${notebook}" came without the notebook_key. Ask the user to confirm ` +
+            `the notebook, then call ${tool} again with it and the notebook_key.`
+          : `Ask the user which notebook, then call ${tool} again with it and the ` +
+            "notebook_key. Do not guess."),
     };
   }
 
@@ -440,15 +435,14 @@ export const renderUpdateTarget = (pages: readonly NoteSummary[]): string => {
       `CL Aufgaben page in this section: "${t.title}" (id: ${t.id}). ` +
       "An update to this project belongs on this page." +
       (sectionKey(t.title) === LEGACY_UPDATE_TARGET
-        ? " Its title has no project name, so it predates the template: say it is " +
-          "due to be converted into a templated `CL Aufgaben — <project>` page."
+        ? " Its title has no project name: it predates the template."
         : "")
     );
   }
   if (targets.length === 0) {
     return (
-      "This section has no CL Aufgaben page, so an update to this project has " +
-      "no page to go to. Say so; do not write it onto another page in the section."
+      "This section has no CL Aufgaben page. Do not write an update onto another " +
+      "page in the section."
     );
   }
   return (
@@ -1352,12 +1346,7 @@ const createServer = async (
                 text: [
                   lines.length === 0 ? "No sections found." : lines.join("\n"),
                   ...(chosen.scope ? [chosen.scope] : []),
-                  `${lines.length} section${lines.length === 1 ? "" : "s"}. Pages are not listed here: ` +
-                    "call list_notes again with `section` for one section's pages, which costs one " +
-                    "request. In an organised notebook a project is a section, so that is usually " +
-                    "the next step. To survey an unfamiliar notebook page by page, use map_notes " +
-                    "once. Reuse these names and ids for the rest of this conversation rather " +
-                    "than listing again.",
+                  `${lines.length} section${lines.length === 1 ? "" : "s"}. Pages not listed: pass \`section\`.`,
                 ].join("\n\n"),
               },
             ],
@@ -1445,8 +1434,7 @@ const createServer = async (
             sec.pages >= PAGE_LISTING_CAP
               ? `Section "${sec.name}" returned ${sec.pages} pages, which is the ` +
                   "listing cap: there may be more that were not fetched (#178)."
-              : `Section "${sec.name}" holds ${sec.pages} page${sec.pages === 1 ? "" : "s"}; ` +
-                  "this is all of them.",
+              : `Section "${sec.name}": ${sec.pages} page${sec.pages === 1 ? "" : "s"}, complete.`,
           );
         }
         if (shown.length < matched) {
@@ -1574,14 +1562,8 @@ const createServer = async (
               {
                 type: "text",
                 text:
-                  "Cannot map by change on this account: OneNote is not " +
-                  "reporting page modification times — Microsoft returns each " +
-                  "page's creation date in that field — so `since` here would " +
-                  "sketch the pages CREATED since then, which is a different " +
-                  "set and would be reported as the wrong answer.\n\n" +
-                  "Call list_notes with `since` instead: it reports which " +
-                  "SECTIONS changed, which does work. Then map that notebook " +
-                  "without `since` and read the pages of the sections it named.",
+                  "`since` is unavailable on this account, which reports creation " +
+                  "dates only. Use list_notes with `since`.",
               },
             ],
           };
@@ -1612,7 +1594,7 @@ const createServer = async (
           };
         }
 
-        const { sketches, read_in_full, not_reached } = await call<{
+        const { sketches, not_reached } = await call<{
           sketches: NoteSketch[];
           read_in_full: number;
           not_reached: number;
@@ -1629,13 +1611,9 @@ const createServer = async (
           if (s.sketch === null) {
             // Named as a gap. A page missing from a survey reads as a page
             // that is not there.
-            return `${head}\nNOT SKETCHED: ${s.error ?? "unknown error"} (${s.fell_back}). ` +
-              "Treat this page as unsurveyed, not as empty.";
+            return `${head}\nNOT SKETCHED — unsurveyed, not empty.`;
           }
-          const how =
-            s.source === "preview"
-              ? "opening of the page"
-              : `read in full because ${s.fell_back}`;
+          const how = s.source === "preview" ? "opening of the page" : "full page";
           // "Probably", because Graph does not say it truncated — a preview
           // that arrived at full length is the only evidence there is more.
           return `${head}\n[${how}${s.more ? "; the page probably continues past this" : ""}]\n${s.sketch}`;
@@ -1647,26 +1625,14 @@ const createServer = async (
             "is unsurveyed rather than absent — read the page with read_note " +
             "before concluding a field, a date or a decision is missing.",
         ];
-        if (read_in_full > 0) {
-          // Said plainly: these sketches are better evidence than the others,
-          // and a caller that cannot tell them apart will trust the weaker one
-          // exactly as much.
-          caveats.push(
-            `${read_in_full} of ${sketches.length} page${read_in_full === 1 ? "" : "s"} had no ` +
-              "usable preview and were read in full instead, so those sketches " +
-              "cover more of the page than the rest.",
-          );
-        }
         if (not_reached > 0) {
           // Said before the other truncations, because it is the one the
           // caller did not ask for: `limit` is their own cap and this is the
           // clock running out. A partial survey that does not say so is a
           // survey the caller will read as complete.
           caveats.push(
-            `Stopped after ${sketches.length} of ${sketches.length + not_reached} pages: the ` +
-              "survey ran out of time before the rest were reached. Those pages are " +
-              "UNSURVEYED, not empty — call map_notes again with a smaller `limit` to " +
-              "cover them, or read_note the ones you already know you need.",
+            `Stopped after ${sketches.length} of ${sketches.length + not_reached} pages; the ` +
+              "rest are UNSURVEYED, not empty.",
           );
         }
         if (pages.length < matched) {
@@ -1725,7 +1691,6 @@ const createServer = async (
           title,
           text,
           attachments,
-          chars_total,
           parts_total,
           part,
           next_from_part,
@@ -1755,13 +1720,11 @@ const createServer = async (
         // be, and nothing says why.
         const note =
           parts_total > 1
-            ? `\n\n(Part ${part} of ${parts_total} — this page is ${chars_total} ` +
-              "characters, more than fits in one answer, and is split by length " +
-              "alone, so a heading may fall across the join." +
+            ? `\n\n(Part ${part} of ${parts_total}` +
               (next_from_part === null
-                ? " This is the last part."
-                : ` Continue with from_part ${next_from_part}.`) +
-              " Do not treat this part as the whole page.)"
+                ? ", the last."
+                : `; continue with from_part ${next_from_part}. Not the whole page.`) +
+              ")"
             : "";
 
         // The manifest says what is on the page, not what it says. Nothing is
@@ -1812,11 +1775,8 @@ const createServer = async (
             "",
             "## Editable parts of this page",
             "",
-            "Element ids for edit_onenote_page, one line each, good until the " +
-              "next write to this page. Pass one to preview_onenote_edit — " +
-              "there is no need to call it first just to see this list. A " +
-              "table is replaced whole; a paragraph inside one cannot be " +
-              "changed on its own.",
+            "Element ids for preview_onenote_edit, valid until the next write. " +
+              "A table is replaced whole.",
             "",
             ...editableParts.map(
               (entry) =>
@@ -1847,7 +1807,7 @@ const createServer = async (
 
   server.tool(
     "list_emails",
-    "Only call this when the musician has asked for this specific look, and wait for their yes. A connected account is not standing permission; a gap, a contradiction, or two pages disagreeing is not a reason to search. Offer, name the search, and stop. " +
+    EVIDENCE_GATE +
       "Search the user's Gmail and list matching messages, newest first, with " +
       "subject, sender, date and snippet. Email is supporting evidence for a " +
       "OneNote working unit — it corroborates a page once the musician has " +
@@ -2755,7 +2715,7 @@ const createServer = async (
 
   server.tool(
     "list_events",
-    "Only call this when the musician has asked for this specific look, and wait for their yes. A connected account is not standing permission; a gap, a contradiction, or two pages disagreeing is not a reason to search. Offer, name the search, and stop. " +
+    EVIDENCE_GATE +
       "List Google Calendar events in a time window, earliest first. Calendar is " +
       "supporting evidence for a OneNote working unit — asked to, it can " +
       "corroborate or contradict what a page claims about a date, venue or " +

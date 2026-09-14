@@ -100,7 +100,7 @@ test('a doubled space in the real name does not defeat the match', async () => {
     '/sections/kl/pages': pages(['CL Aufgaben']),
   };
   const { text } = await callList(spaced, { section: 'BCW Klagenfurt Vidala' });
-  assert.match(text, /holds 1 page; this is all of them/);
+  assert.match(text, /1 page, complete/);
 });
 
 /** Found against the live notebook's `Projekt Kontext` section: see #225. */
@@ -116,14 +116,14 @@ test('a reference CL page is not taken for the update target', async () => {
   assert.doesNotMatch(text, /belongs on this page/);
 });
 
-test('a plain CL Aufgaben page counts, and is named as due for the template', async () => {
+test('a plain CL Aufgaben page counts, and is marked as predating the template', async () => {
   const { text } = await callList(SEASONS, { section: 'BCW Melk Gansch' });
   assert.match(text, /CL Aufgaben page in this section: "CL Aufgaben"/);
-  assert.match(text, /due to be converted/);
+  assert.match(text, /predates the template/);
 
   const templated = await callList(GRAPH, { section: 'GPT Melk' });
   assert.match(templated.text, /CL Aufgaben page in this section: "CL Aufgaben — GPT Melk"/);
-  assert.doesNotMatch(templated.text, /due to be converted/);
+  assert.doesNotMatch(templated.text, /predates the template/);
 });
 
 test('closest offers the best match, not every section sharing a word', async () => {
@@ -145,7 +145,7 @@ test('closest offers the best match, not every section sharing a word', async ()
 
 test('the reply states the section is complete, so completeness can be checked', async () => {
   const { text } = await callList(GRAPH, { section: 'GPT Melk' });
-  assert.match(text, /Section "GPT Melk" holds 3 pages; this is all of them/);
+  assert.match(text, /Section "GPT Melk": 3 pages, complete/);
 });
 
 test('a section at the listing cap says it may be incomplete', async () => {
@@ -155,7 +155,7 @@ test('a section at the listing cap says it may be incomplete', async () => {
   };
   const { text } = await callList(full, { section: 'GPT Melk', limit: 5 });
   assert.match(text, /listing cap: there may be more/);
-  assert.doesNotMatch(text, /this is all of them/);
+  assert.doesNotMatch(text, /complete\./);
 });
 
 test('a miss is not reported as a project with no page', async () => {
@@ -198,7 +198,7 @@ test('without a notebook, a section in one season is found and its season named'
   const { text } = await callList(SEASONS, { section: 'BCW Melk Gansch' });
   assert.match(text, /CL Aufgaben/);
   assert.match(text, /Found in notebook "2026-27"/);
-  assert.match(text, /holds 2 pages; this is all of them/);
+  assert.match(text, /2 pages, complete/);
 });
 
 test('a unique match still names a similarly titled section in another season', async () => {
@@ -282,7 +282,7 @@ test('the target is found even when limit cuts it from the list', async () => {
 test('a section without a CL Aufgaben page says the update has nowhere to go', async () => {
   const { text } = await callList(GRAPH, { section: 'BCW Megeve' });
   assert.match(text, /no CL Aufgaben page/);
-  assert.match(text, /do not write it onto another page/);
+  assert.match(text, /Do not write an update onto another page/);
 });
 
 test('two CL Aufgaben pages are refused, not picked', async () => {

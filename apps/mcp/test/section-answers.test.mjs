@@ -172,8 +172,8 @@ const callMap = async (graph, args) => {
 
 test('map_notes refuses a since window it cannot honour, and says where to go', async () => {
   const text = await callMap(BROKEN, { notebook: 'Season', since: '2026-08-20' });
-  assert.match(text, /Cannot map by change on this account/);
-  assert.match(text, /list_notes with `since` instead/);
+  assert.match(text, /`since` is unavailable on this account/);
+  assert.match(text, /Use list_notes with `since`/);
   // It must not quietly sketch the pages created in that window.
   assert.doesNotMatch(text, /Rehearsal schedule/);
 });
