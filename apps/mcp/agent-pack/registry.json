@@ -23,7 +23,7 @@
       "name": "Evidence",
       "description": "Assume the likely shape of a page, then verify it. When the assumption does not hold, widen the search — never report the assumption's failure as a finding.",
       "file": ".artist/policies/EVIDENCE.md",
-      "sha256": "69025e82df3ef07176a292b894bb9a6e5c06bcf21be5cbdc0eb5377eb9153eb8"
+      "sha256": "31d72bedd32d9102fdb5a83a2e6bb500aa5c531f7ba39fb3950a76bf9b052716"
     },
     {
       "id": "policy:intake",
@@ -31,7 +31,7 @@
       "name": "Intake",
       "description": "Turn an unorganized notebook into working units without inventing anything.",
       "file": ".artist/policies/INTAKE.md",
-      "sha256": "21c65ade15b4350b284eb04315a8f4750629926d45a436beab404fee2d31e2dd"
+      "sha256": "3442ea49c9072e3e9c84257b50c0ce0782169c3f3ed605c545c3401552d3f092"
     },
     {
       "id": "policy:local-state",
@@ -127,7 +127,7 @@
       "name": "Project Manager",
       "description": "Compare one working-unit page with its project-type playbook and identify the single most useful next project-management action. Or, across the chosen notebook, say what is due and what is overdue.",
       "file": ".artist/roles/PROJECT_MANAGER.md",
-      "sha256": "f2c3d4a767b97d8f33f778257d23adcb61ac737ffdf58265cb84d16dbcdc01c9"
+      "sha256": "2fe1c21a3007b214c3ebdddbf6b9d7c4e39945bddfdb6a8010db89a40bbba39f"
     },
     {
       "id": "role:registrar",

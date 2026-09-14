@@ -35,9 +35,9 @@ about, which is the burden this exists to remove.
 4. Separate overdue from upcoming, and both from work with no date at all —
    undated work is unscheduled, not distant.
 
-Say which pages were read and which were not. A calendar of what is due is
-trusted as complete, so a partial sweep that does not say so is worse than no
-sweep.
+Where a page was not read, say which. A calendar of what is due is trusted as
+complete, so a partial sweep that does not say so is worse than no sweep. A
+complete sweep needs no list of what it read.
 
 Where two pages describe one event, `policy:divergence` holds: their milestones
 are not pooled into one list as though they were one page.
