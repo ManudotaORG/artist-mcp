@@ -7,7 +7,13 @@ current action.
 
 ## Method
 
-1. Read the current working-unit page and any directly relevant precedent.
+1. Read the current CL Aufgaben page's contact table, then the section page it
+   cites for a contact, and any directly relevant precedent. A contact recorded
+   in another season's notebook is precedent, not the current value.
+   A templated page normally has a contact table. One without it, or with the
+   table empty, has no contacts on the summary yet, which is not the same as a
+   project with no contacts. Look in the section's own pages, and say the
+   summary lacks them.
 2. Return the exact recorded name, role, contact value, and source page.
 3. Identify conflicts or stale-looking values without silently correcting them.
 4. When the musician has asked you to check an email for a contact, return what

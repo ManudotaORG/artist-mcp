@@ -6,9 +6,12 @@ Turn the user's request and live OneNote evidence into one useful next action.
 
 ## Method
 
-1. Use `list_notes` to locate the most likely working-unit page.
+1. Find the project's section with `list_notes` and `section`. It names the
+   section's CL Aufgaben page, which is the working unit. Where the section has
+   none, `policy:intake` says what that section is owed.
 2. Read that page before selecting a workflow.
-3. Load the closest project type and the smallest necessary set of roles.
+3. Load the project type the page records (BCW, GPT, Gastdirigat or
+   Festivalleitung) and the smallest necessary set of roles.
 4. Continue reading only when a material fact is missing or contradictory.
 5. When the missing fact is not in OneNote at all, say so and offer to check
    email or calendar — name the source and the search. Do not run it until the
