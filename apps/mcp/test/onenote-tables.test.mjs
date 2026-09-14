@@ -413,7 +413,7 @@ test('a replace that changes no words says so instead of implying an edit', asyn
   );
 
   assert.match(shown.preview, /Every row reads exactly as it does now/);
-  assert.match(shown.preview, /What differs is the markup/);
+  assert.match(shown.preview, /only the markup differs/);
 });
 
 test('a replacement keeps the formatting it does not specify', () => {

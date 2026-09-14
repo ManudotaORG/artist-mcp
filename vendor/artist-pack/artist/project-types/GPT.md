@@ -86,9 +86,8 @@ Klavierproben, but no Strichfassung and no szenische Proben.
    preview is not a settled schedule, and saying so is part of the answer.
 3. Identify what the house is waiting on. A GPT project is most often blocked by
    an answer Ruben owes, not by work nobody has started.
-4. Recommend one next action.
-5. If outreach is useful, Registrar extracts the contact, Envoy drafts, and
-   Auditor verifies before the result is shown.
+4. When the musician asks for outreach, Registrar extracts the contact, Envoy
+   drafts, and Auditor verifies before the result is shown.
 
 ## Checks
 

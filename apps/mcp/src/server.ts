@@ -242,15 +242,10 @@ const selectNotebook = async (
         `This account has ${names.length} notebooks:\n${counts.join("\n")}\n\n` +
         `notebook_key: ${expected}\n\n` +
         (unproven
-          ? `You asked for "${notebook}" without the notebook_key from this ` +
-            "list, so nothing in this conversation had seen the notebooks yet. " +
-            "Ask the user which one they mean — including whether it is that " +
-            `one — and call ${tool} again with that name AND the notebook_key ` +
-            "above. A notebook you know of from elsewhere is a guess, and a " +
-            "guess here produces an answer that is correct about the wrong pages."
-          : `Ask the user which notebook to work in, then call ${tool} again ` +
-            "with that name and the notebook_key above. Do not guess, and do " +
-            "not work across notebooks unless the user asks for it."),
+          ? `"${notebook}" came without the notebook_key. Ask the user to confirm ` +
+            `the notebook, then call ${tool} again with it and the notebook_key.`
+          : `Ask the user which notebook, then call ${tool} again with it and the ` +
+            "notebook_key. Do not guess."),
     };
   }
 
@@ -286,8 +281,7 @@ const selectNotebook = async (
       creationDates: false,
       scope:
         wanted && others.length > 0
-          ? `Answered for "${notebook}" only. This account also has: ${others.join(", ")}. ` +
-            "Say which notebook this covers when you answer."
+          ? `Answered for "${notebook}" only. This account also has: ${others.join(", ")}.`
           : null,
       sectionList: listed,
     };
@@ -327,8 +321,8 @@ const selectNotebook = async (
   const scope =
     wanted && others.length > 0
       ? `Answered for "${notebook}" only. This account also has: ${others.join(", ")}. ` +
-        "Say which notebook this covers when you answer. If the user did not name " +
-        "one, do not infer it from anything outside this conversation — ask."
+        "If the user did not name this notebook, do not infer it from anything " +
+        "outside this conversation — ask."
       : null;
 
   // Sections are narrowed to the chosen notebook the same way the pages are:
@@ -441,15 +435,14 @@ export const renderUpdateTarget = (pages: readonly NoteSummary[]): string => {
       `CL Aufgaben page in this section: "${t.title}" (id: ${t.id}). ` +
       "An update to this project belongs on this page." +
       (sectionKey(t.title) === LEGACY_UPDATE_TARGET
-        ? " Its title has no project name, so it predates the template: say it is " +
-          "due to be converted into a templated `CL Aufgaben — <project>` page."
+        ? " Its title has no project name: it predates the template."
         : "")
     );
   }
   if (targets.length === 0) {
     return (
-      "This section has no CL Aufgaben page, so an update to this project has " +
-      "no page to go to. Say so; do not write it onto another page in the section."
+      "This section has no CL Aufgaben page. Do not write an update onto another " +
+      "page in the section."
     );
   }
   return (
@@ -519,14 +512,17 @@ const findSectionAcrossNotebooks = async (
   const others = names.filter(
     (name) => name.trim().toLowerCase() !== (found.notebook ?? "").trim().toLowerCase(),
   );
+  // Naming the notebook is for catching a wrong season, so it is asked for only
+  // where one could be caught: the user named no notebook here, and a unique
+  // match said nothing about which season they meant (#229).
   return {
     pages: notes,
     sections,
     creationDates: page_dates_are_creation_dates,
     scope:
       `Found in notebook "${found.notebook ?? "unknown"}", the only notebook with a ` +
-      `section of this name (others: ${others.join(", ")}). Name that notebook when ` +
-      "you answer, so the user can catch a wrong season." +
+      `section of this name (others: ${others.join(", ")}). If the user has not ` +
+      "named a notebook in this conversation, name this one in the answer, once." +
       (similar.length > 0
         ? " Similarly named, and possibly the project meant: " +
           similar.map((sec) => `${sec.name} (notebook: ${sec.notebook ?? "unknown"})`).join(", ") +
@@ -553,9 +549,8 @@ const renderChangedSections = (
   const where = notebook ? `"${notebook}"` : "this account";
 
   const preamble =
-    "OneNote is not reporting page modification times on this account — " +
-    "Microsoft returns each page's creation date in that field — so this " +
-    "answers at section level, which does report change correctly.";
+    "OneNote is not reporting page modification times on this account, so " +
+    "this answers with sections.";
 
   if (changed.length === 0) {
     return (
@@ -577,10 +572,7 @@ const renderChangedSections = (
   });
 
   const caveats = [
-    "Tell the musician WHICH SECTIONS changed. Do not name pages as changed — " +
-      "OneNote cannot say which page it was, and a section holds several. " +
-      "To look inside one, call list_notes with that notebook and no `since`, " +
-      "then read the pages of that section.",
+    "Do not name pages as changed: which page changed is unknown.",
     "\"Changed\" includes a page being added, removed or moved, not only edited.",
     "A section shows only its most recent change, so an older edit in a section " +
       "that changed again later cannot be seen separately.",
@@ -767,8 +759,7 @@ const renderWorkflowBriefing = async (
       ? [
           `WARNING: ${failed.length} playbook(s) could not be read and are ` +
             `NOT in force: ${failed.join(", ")}. The work is proceeding ` +
-            "without them. Say so rather than answering as if the full set " +
-            "applied.",
+            "without them.",
           "",
         ]
       : [];
@@ -1167,8 +1158,7 @@ const createServer = async (
     "— it is not reference material to consult if a question seems to call for " +
     "it. Working from these tool descriptions alone means working with no " +
     "policy in force, which is not a lighter version of this server's " +
-    "behaviour but a different one. If a call fails or the briefing reports a " +
-    "playbook it could not read, say so before answering." +
+    "behaviour but a different one." +
     // What this install may change, in the handshake as well as the briefing.
     //
     // The briefing is the statement of the rules and stays so. But a client
@@ -1350,12 +1340,7 @@ const createServer = async (
                 text: [
                   lines.length === 0 ? "No sections found." : lines.join("\n"),
                   ...(chosen.scope ? [chosen.scope] : []),
-                  `${lines.length} section${lines.length === 1 ? "" : "s"}. Pages are not listed here: ` +
-                    "call list_notes again with `section` for one section's pages, which costs one " +
-                    "request. In an organised notebook a project is a section, so that is usually " +
-                    "the next step. To survey an unfamiliar notebook page by page, use map_notes " +
-                    "once. Reuse these names and ids for the rest of this conversation rather " +
-                    "than listing again.",
+                  `${lines.length} section${lines.length === 1 ? "" : "s"}. Pages not listed: pass \`section\`.`,
                 ].join("\n\n"),
               },
             ],
@@ -1443,8 +1428,7 @@ const createServer = async (
             sec.pages >= PAGE_LISTING_CAP
               ? `Section "${sec.name}" returned ${sec.pages} pages, which is the ` +
                   "listing cap: there may be more that were not fetched (#178)."
-              : `Section "${sec.name}" holds ${sec.pages} page${sec.pages === 1 ? "" : "s"}; ` +
-                  "this is all of them.",
+              : `Section "${sec.name}": ${sec.pages} page${sec.pages === 1 ? "" : "s"}, complete.`,
           );
         }
         if (shown.length < matched) {
@@ -1572,14 +1556,8 @@ const createServer = async (
               {
                 type: "text",
                 text:
-                  "Cannot map by change on this account: OneNote is not " +
-                  "reporting page modification times — Microsoft returns each " +
-                  "page's creation date in that field — so `since` here would " +
-                  "sketch the pages CREATED since then, which is a different " +
-                  "set and would be reported as the wrong answer.\n\n" +
-                  "Call list_notes with `since` instead: it reports which " +
-                  "SECTIONS changed, which does work. Then map that notebook " +
-                  "without `since` and read the pages of the sections it named.",
+                  "`since` is unavailable on this account, which reports creation " +
+                  "dates only. Use list_notes with `since`.",
               },
             ],
           };
@@ -1610,7 +1588,7 @@ const createServer = async (
           };
         }
 
-        const { sketches, read_in_full, not_reached } = await call<{
+        const { sketches, not_reached } = await call<{
           sketches: NoteSketch[];
           read_in_full: number;
           not_reached: number;
@@ -1627,13 +1605,9 @@ const createServer = async (
           if (s.sketch === null) {
             // Named as a gap. A page missing from a survey reads as a page
             // that is not there.
-            return `${head}\nNOT SKETCHED: ${s.error ?? "unknown error"} (${s.fell_back}). ` +
-              "Treat this page as unsurveyed, not as empty.";
+            return `${head}\nNOT SKETCHED — unsurveyed, not empty.`;
           }
-          const how =
-            s.source === "preview"
-              ? "opening of the page"
-              : `read in full because ${s.fell_back}`;
+          const how = s.source === "preview" ? "opening of the page" : "full page";
           // "Probably", because Graph does not say it truncated — a preview
           // that arrived at full length is the only evidence there is more.
           return `${head}\n[${how}${s.more ? "; the page probably continues past this" : ""}]\n${s.sketch}`;
@@ -1645,26 +1619,14 @@ const createServer = async (
             "is unsurveyed rather than absent — read the page with read_note " +
             "before concluding a field, a date or a decision is missing.",
         ];
-        if (read_in_full > 0) {
-          // Said plainly: these sketches are better evidence than the others,
-          // and a caller that cannot tell them apart will trust the weaker one
-          // exactly as much.
-          caveats.push(
-            `${read_in_full} of ${sketches.length} page${read_in_full === 1 ? "" : "s"} had no ` +
-              "usable preview and were read in full instead, so those sketches " +
-              "cover more of the page than the rest.",
-          );
-        }
         if (not_reached > 0) {
           // Said before the other truncations, because it is the one the
           // caller did not ask for: `limit` is their own cap and this is the
           // clock running out. A partial survey that does not say so is a
           // survey the caller will read as complete.
           caveats.push(
-            `Stopped after ${sketches.length} of ${sketches.length + not_reached} pages: the ` +
-              "survey ran out of time before the rest were reached. Those pages are " +
-              "UNSURVEYED, not empty — call map_notes again with a smaller `limit` to " +
-              "cover them, or read_note the ones you already know you need.",
+            `Stopped after ${sketches.length} of ${sketches.length + not_reached} pages; the ` +
+              "rest are UNSURVEYED, not empty.",
           );
         }
         if (pages.length < matched) {
@@ -1723,7 +1685,6 @@ const createServer = async (
           title,
           text,
           attachments,
-          chars_total,
           parts_total,
           part,
           next_from_part,
@@ -1753,13 +1714,11 @@ const createServer = async (
         // be, and nothing says why.
         const note =
           parts_total > 1
-            ? `\n\n(Part ${part} of ${parts_total} — this page is ${chars_total} ` +
-              "characters, more than fits in one answer, and is split by length " +
-              "alone, so a heading may fall across the join." +
+            ? `\n\n(Part ${part} of ${parts_total}` +
               (next_from_part === null
-                ? " This is the last part."
-                : ` Continue with from_part ${next_from_part}.`) +
-              " Do not treat this part as the whole page.)"
+                ? ", the last."
+                : `; continue with from_part ${next_from_part}. Not the whole page.`) +
+              ")"
             : "";
 
         // The manifest says what is on the page, not what it says. Nothing is
@@ -1810,11 +1769,8 @@ const createServer = async (
             "",
             "## Editable parts of this page",
             "",
-            "Element ids for edit_onenote_page, one line each, good until the " +
-              "next write to this page. Pass one to preview_onenote_edit — " +
-              "there is no need to call it first just to see this list. A " +
-              "table is replaced whole; a paragraph inside one cannot be " +
-              "changed on its own.",
+            "Element ids for preview_onenote_edit, valid until the next write. " +
+              "A table is replaced whole.",
             "",
             ...editableParts.map(
               (entry) =>
@@ -1845,7 +1801,7 @@ const createServer = async (
 
   server.tool(
     "list_emails",
-    "Only call this when the musician has asked for this specific look, and wait for their yes. A connected account is not standing permission; a gap, a contradiction, or two pages disagreeing is not a reason to search. Offer, name the search, and stop. " +
+    EVIDENCE_GATE +
       "Search the user's Gmail and list matching messages, newest first, with " +
       "subject, sender, date and snippet. Email is supporting evidence for a " +
       "OneNote working unit — it corroborates a page once the musician has " +
@@ -2178,15 +2134,10 @@ const createServer = async (
 
           const already =
             existing_in_range.length === 0
-              ? `Nothing else was on those dates in ${calendar_id}. That is one ` +
-                "calendar only — it does not show the dates were free elsewhere."
-              : `Already on those dates in ${calendar_id} before this was written:\n` +
+              ? ""
+              : `\nAlready on those dates in ${calendar_id}; a duplicate if one is the same event:\n` +
                 existing_in_range.map((e) => `- ${e.summary} — ${when(e)}`).join("\n") +
-                "\nIf one of these is the same event, say so plainly.";
-
-          const undo = isGranted(grants, "calendar-delete")
-            ? `If it is wrong, delete_calendar_event removes it: event_id ${created.id}, calendar_id ${calendar_id}.`
-            : "If it is wrong, the musician can delete it in Google Calendar.";
+                "\n";
 
           return {
             content: [
@@ -2195,9 +2146,8 @@ const createServer = async (
                 text:
                   `Created in ${calendar_id}:\n\n${written}\n` +
                   (link ? `\n${link}\n` : "") +
-                  `\n${already}\n\n${undo} ` +
-                  "Tell the musician what was created. The page in OneNote was " +
-                  "not changed.",
+                  already +
+                  `\nevent_id ${created.id}, calendar_id ${calendar_id}`,
               },
             ],
           };
@@ -2265,9 +2215,10 @@ const createServer = async (
 
           const already =
             existing_in_range.length === 0
-              ? `Nothing else was on the new dates in ${calendar_id}.`
+              ? ""
               : `Already on the new dates in ${calendar_id}:\n` +
-                existing_in_range.map((e) => `- ${e.summary} — ${when(e)}`).join("\n");
+                existing_in_range.map((e) => `- ${e.summary} — ${when(e)}`).join("\n") +
+                "\n\n";
 
           return {
             content: [
@@ -2277,11 +2228,9 @@ const createServer = async (
                   `Rescheduled in ${calendar_id}.\n\nRemoved:\n\n${removed}\n\n` +
                   `Created:\n\n${written}\n\n` +
                   (link ? `${link}\n\n` : "") +
-                  `${already}\n\n` +
-                  `The new event is event_id ${created.id}. The old one is in that ` +
-                  "calendar's bin for 30 days, and any reminder set on it did not " +
-                  "come across — tell the musician both. The page in OneNote was " +
-                  "not changed.",
+                  already +
+                  `event_id ${created.id}. Reminders on the old event did not carry over; ` +
+                  "it stays in the bin for 30 days.",
               },
             ],
           };
@@ -2301,7 +2250,7 @@ const createServer = async (
         "refused. It cannot change an event, only remove it, and there is no " +
         "bulk form. The result is the whole event as it was, read from Google " +
         "before removing it. Google keeps a deleted event in that calendar's bin " +
-        "for 30 days, so tell the musician they can restore it there.",
+        "for 30 days.",
       {
         event_id: z.string().describe("The id of the event, as returned when it was created"),
         calendar_id: z
@@ -2323,9 +2272,7 @@ const createServer = async (
                 type: "text",
                 text:
                   `Deleted from ${calendar_id}:\n\n${deleted}\n\n` +
-                  "Google keeps it in that calendar's bin for 30 days, so the " +
-                  "musician can restore it there if this was wrong. What it " +
-                  "said is recorded locally either way.",
+                  "In the calendar's bin for 30 days.",
               },
             ],
           };
@@ -2405,9 +2352,7 @@ const createServer = async (
                 text:
                   `Created the page "${title}" in ${section_name}:\n\n${written}\n` +
                   (web_url ? `\n${web_url}\n` : "") +
-                  "\nTell the musician the page is in their notebook, and that " +
-                  "this tool cannot change or remove it — if it is wrong, they " +
-                  "delete it in OneNote themselves. No existing page was touched.",
+                  "\nThis tool cannot change or remove it.",
               },
             ],
           };
@@ -2603,11 +2548,8 @@ const createServer = async (
                       ? TABLE_MARKUP
                       : ""
                   }\n\n` +
-                  "Show this to the musician and wait for their yes. If this is a " +
-                  "replace, say plainly what it overwrites: OneNote keeps no " +
-                  "version of a page, so the previous text will exist only in this " +
-                  "install's write log afterwards. If they agree, call " +
-                  "edit_onenote_page with the SAME values and:\n" +
+                  "Show this to the musician and wait for their yes. If they agree, " +
+                  "call edit_onenote_page with the SAME values and:\n" +
                   `  confirmation_token: ${confirmation_token}`,
               },
             ],
@@ -2753,7 +2695,7 @@ const createServer = async (
 
   server.tool(
     "list_events",
-    "Only call this when the musician has asked for this specific look, and wait for their yes. A connected account is not standing permission; a gap, a contradiction, or two pages disagreeing is not a reason to search. Offer, name the search, and stop. " +
+    EVIDENCE_GATE +
       "List Google Calendar events in a time window, earliest first. Calendar is " +
       "supporting evidence for a OneNote working unit — asked to, it can " +
       "corroborate or contradict what a page claims about a date, venue or " +

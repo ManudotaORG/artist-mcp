@@ -37,7 +37,8 @@ Widening has rings, and each needs more permission than the last.
 
 1. **The rest of the page.** Ordinary. Do it without asking.
 2. **Other pages in the chosen notebook.** Ordinary when the question is about
-   the notebook; say which pages were read.
+   the notebook. Say which pages were not read only where that leaves the
+   answer partial.
 3. **Another notebook.** Only when the musician asks. Scope was chosen for a
    reason.
 4. **Another source — Gmail, Calendar, an attachment.** Only when the musician
@@ -49,14 +50,13 @@ account looks like an invitation. It is not one.
 - **A connection is not a standing instruction to search it.** The musician
   signed in once; that is not permission to read their mail whenever an answer
   would be improved by it.
-- **Ask before the first read.** Where the page cannot answer something and a
-  source plausibly could, say what is missing and offer to look — name the
-  source and the search you intend. Then wait.
+- **Wait to be asked.** Where the page cannot answer something, say it is not
+  recorded. Read another source only when the musician asks for that look.
 - **One yes is one look, not a licence.** A later question starts over unless
   they said to keep using it.
 - **A tie is not an emergency.** Two pages disagreeing, a missing owner, an
   unconfirmed date: none of these justify reaching for a mailbox unasked. Report
-  the tie. Offer the look. Let them decide.
+  the tie.
 - **Evidence never becomes the working unit.** It corroborates a page; it never
   replaces one and never becomes what a playbook operates on.
 - **Never report a source as empty when it was not searched, and never search it

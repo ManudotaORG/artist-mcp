@@ -17,8 +17,6 @@ superseded and summarize the cleanup a human may choose to perform.
    not make two projects, so read before deciding either way.
 4. Include this notebook's own cleanup:
    - a plain `CL Aufgaben` page due for conversion to the template;
-   - a CL Aufgaben page whose `Template:` stamp is older than the current
-     template for its type in `Claude Vorlagen`;
    - a section with two CL Aufgaben pages;
    - a section marked obsolete on its own page, naming where the work went.
 5. Return a compact proposed cleanup list with source evidence.

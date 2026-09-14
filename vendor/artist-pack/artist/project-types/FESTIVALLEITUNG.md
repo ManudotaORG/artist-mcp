@@ -79,9 +79,8 @@ assuming.
 3. Identify the first commitment whose prerequisites appear met, preferring one
    that unblocks someone else — a list that another person is waiting on holds
    up more than his own preparation does.
-4. Recommend one next action.
-5. If outreach is useful, Registrar extracts the contact, Envoy drafts, and
-   Auditor verifies before the result is shown.
+4. When the musician asks for outreach, Registrar extracts the contact, Envoy
+   drafts, and Auditor verifies before the result is shown.
 
 ## Checks
 

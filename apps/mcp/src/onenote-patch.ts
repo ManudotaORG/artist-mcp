@@ -1439,9 +1439,7 @@ const showChange = (
         `Replace this:\n\n${renderTable(captured, marks.before)}\n\n` +
         `With this:\n\n${renderTable(carriedHtml, marks.after)}\n\n` +
         (touched === 0 && dropped === 0
-          ? 'Every row reads exactly as it does now. What differs is the markup — ' +
-            'borders, widths, or the way a cell is written. Say that plainly rather ' +
-            'than describing a change to the words, because there is none.'
+          ? 'Every row reads exactly as it does now; only the markup differs.'
           : `Marked rows are the ones that differ: ${dropped} going, ${touched} arriving. ` +
             'Every unmarked row is being rewritten too — a table is replaced whole — ' +
             'and is only safe because it is carried across unchanged.'),
@@ -1700,8 +1698,7 @@ export async function applyEdit(
         : `${draft.changes.length} changes were applied in one write. `) +
       (replaced === 0
         ? 'The page now carries this. Nothing was removed.'
-        : "What the page said before is in this install's write log and nowhere else " +
-          '— OneNote keeps no version of a page, so tell the musician that rather ' +
-          'than implying it can be undone in OneNote.'),
+        : "The previous text is only in this install's write log; OneNote cannot " +
+          'undo it.'),
   };
 }
