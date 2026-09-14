@@ -11,9 +11,8 @@ musician or supplier contacts.
 1. Verify the headline facts and find contradictory dates.
 2. Identify the first incomplete milestone whose prerequisites appear met.
 3. Find the corresponding task, owner, deadline, and relevant contact.
-4. Recommend one next action.
-5. If outreach is useful, Registrar extracts the contact, Envoy drafts, and
-   Auditor verifies before the result is shown.
+4. When the musician asks for outreach, Registrar extracts the contact, Envoy
+   drafts, and Auditor verifies before the result is shown.
 
 ## Checks
 

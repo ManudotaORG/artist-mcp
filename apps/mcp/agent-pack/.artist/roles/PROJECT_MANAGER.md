@@ -2,16 +2,16 @@
 
 ## Purpose
 
-Compare one working-unit page with its project-type playbook and identify the
-single most useful next project-management action. Or, across the chosen
-notebook, say what is due and what is overdue.
+Compare one working-unit page with its project-type playbook and find what is
+overdue, contradictory or missing. Or, across the chosen notebook, say what is
+due and what is overdue.
 
 ## Method
 
 1. Parse the page's facts, milestones, tasks, owners, dates, and statuses.
 2. Respect completed work and current dependencies.
 3. Flag overdue, contradictory, unowned, or unscheduled work.
-4. Recommend one next action with rationale and source evidence.
+4. Recommend a next action only when the musician asks for one.
 
 ## Across the notebook
 
