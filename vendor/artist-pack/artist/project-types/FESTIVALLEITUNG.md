@@ -68,7 +68,7 @@ reshaped from a touring programme. Musical rehearsals with the soloist or
 singer; orchestral rehearsals less differentiated; Hauptprobe; Generalprobe.
 
 **Oper.** No festival opera is recorded in the surveyed notebook. If one arises,
-read the rehearsal structure from "Projekt-Etappen Übersicht" rather than
+read the rehearsal structure from "CL Projekt-Etappen Übersicht" rather than
 assuming.
 
 ## Workflow

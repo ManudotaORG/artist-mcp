@@ -65,7 +65,7 @@ The Probenplan comes from the house and is often provisional. The Notenbibliothe
 supplies scores he does not have, receives his finished Strichfassung to
 distribute, and transfers the Dramaturgie's Strichfassung into the singers'
 Klavierauszüge. The Orchestermanagement owns Besetzung and Orchesterprobenpläne.
-"Projekt-Etappen Übersicht" holds the full list of house contacts and what each
+"CL Projekt-Etappen Übersicht" holds the full list of house contacts and what each
 one wants; read it there rather than guessing from a name.
 
 Announcing which work is rehearsed in which Probe is required wherever there are
@@ -80,7 +80,7 @@ Orchesterhauptprobe/HP2) → Generalprobe.
 
 For a Neuproduktion the Strichfassung is worked out with the director and goes
 to the Notenbibliothek. For a Wiederaufnahme it is requested from the house.
-"Projekt-Etappen Übersicht" records the lead time for requesting it and the date
+"CL Projekt-Etappen Übersicht" records the lead time for requesting it and the date
 it counts back from; read it there and say the derived date was worked out.
 
 At a konzertante Oper the Orchesteraufstellung on the stage is checked in time.

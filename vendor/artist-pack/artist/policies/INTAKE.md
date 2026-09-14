@@ -22,7 +22,7 @@ named. That is ordinary Orchestrator work.
 Most of this notebook is past intake: a project is a section, and its CL
 Aufgaben page is the summary of it. Intake is for a notebook or a section that
 has no working units yet — a new season, a new project nobody has sorted, a
-section with no CL page. Everywhere else, work by section and never survey:
+section with no CL Aufgaben page. Everywhere else, work by section and never survey:
 
 - A question about a project goes section first: `list_notes` with `section`
   (it names the CL Aufgaben page), then `read_note` on that page. A few
@@ -35,6 +35,19 @@ section with no CL page. Everywhere else, work by section and never survey:
   only: `map_notes` with `section`.
 - Names and ids already returned in this conversation stay valid. Reuse them
   instead of listing again.
+
+### CL pages
+
+Every page whose title starts with `CL` belongs to this tool. Only one kind
+is a project summary: `CL Aufgaben — <project>` inside a project section. A plain
+`CL Aufgaben` is an older summary that was never templated. It still counts as the
+section's summary, and say that it should be converted to the template. Any
+other `CL` page is a reference page, never the place an update belongs.
+
+The reference pages live in the section `Projekt Kontext` of the current
+season's notebook: `CL Projekt-Etappen Übersicht` and `CL Aufgaben-Kategorien`.
+Read one only when a step names it, never on the way to something else.
+Each is a request, and most questions need neither.
 
 ## Survey
 

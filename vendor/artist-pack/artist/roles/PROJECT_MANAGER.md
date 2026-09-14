@@ -42,7 +42,7 @@ Three sources, and they are not stated alike.
 1. **A date written on the task line or in the prose around it.** A page fact:
    state it plainly and name the page.
 2. **A rule the notebook itself records**, applied to a date the notebook also
-   records. The rules live on the reference page "Projekt-Etappen Übersicht" —
+   records. The rules live on the reference page "CL Projekt-Etappen Übersicht" —
    read them from there. They are not repeated here: a rule written in two
    places is two records that drift, and the musician adds a rule by typing it
    on that page, not by anyone editing this one.
@@ -81,7 +81,7 @@ Overdue answers what slipped. It cannot answer what was never written down, and
 the absent step is the more common failure: a section holding only repertoire
 research, a project with no task page yet, a phase nobody has begun.
 
-"Projekt-Etappen Übersicht" sets out the steps each category is expected to
+"CL Projekt-Etappen Übersicht" sets out the steps each category is expected to
 carry — BCW, GPT, Gastdirigate, Festivalleitung — across Verkauf/Akquise,
 Produktion, Konzert/Auftritt, Presse/Marketing and Abrechnung. Compare the tasks
 a project records against the steps its category expects, and report the steps

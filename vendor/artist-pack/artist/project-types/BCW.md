@@ -114,7 +114,7 @@ Generalprobe. Where the programme changes between the venues of one tour, each
 venue's version is its own fact.
 
 **Oper.** No BCW opera is recorded in the surveyed notebook. If one arises,
-read the rehearsal structure from "Projekt-Etappen Übersicht" rather than
+read the rehearsal structure from "CL Projekt-Etappen Übersicht" rather than
 assuming it works like a house production.
 
 ## Workflow

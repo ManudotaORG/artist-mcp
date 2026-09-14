@@ -54,6 +54,11 @@ Under `policy:patch`, and only on a page this tool may change.
 - **Only the two tags.** `to-do` and `to-do:completed`, on a paragraph or a list
   item — never on a header, a heading, or a cell that is not a task. Every other
   OneNote tag is a judgement about the line, and none has been agreed.
+- **No categories yet.** `CL Aufgaben-Kategorien` sets out a taxonomy
+  (Kategorie, Ausführung, Tätigkeitsart, Ansprechpartner), but that page leaves
+  open whether they become table columns or tags. Read it when the musician asks
+  about categories. Never write a category onto a task, and never report a task
+  as uncategorised, until the page says how they are recorded.
 - **Reopening is a decision like any other.** A task ticked in error goes back to
   `to-do` only when the musician says so, never because the prose looks
   unfinished.
