@@ -4,7 +4,7 @@ This playbook is retired. It describes a generic freelance engagement, and the
 notebook it is used against does not record work in that shape.
 
 Do not classify a project as `project-type:large-concert`. Use the category the
-notebook's own reference page "Projekt-Etappen Übersicht" names, and load the
+notebook's own reference page "CL Projekt-Etappen Übersicht" names, and load the
 playbook for it:
 
 - `project-type:bcw` — the Bach Consort Wien engaged by a promoter.
