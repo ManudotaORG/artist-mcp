@@ -414,22 +414,36 @@ export const renderSectionMiss = (
 /**
  * Which page in a resolved section an update belongs to (#193).
  *
- * Matched on the title's start, not the whole title: the live notebook names
- * them `CL Aufgaben — Montepulciano`, plain `CL Aufgaben`, and
- * `CL Aufgaben — Melk BCW (Barocktage 2027)`, and a whole-title convention
- * would miss two of three. Computed from every page in the section, before
- * `limit` or `since` trim the list, so a capped listing cannot hide it.
+ * The templated shape is `CL Aufgaben — <project>`, and the live notebook names
+ * them `CL Aufgaben — Montepulciano` and `CL Aufgaben — Melk BCW (Barocktage
+ * 2027)`, so only the prefix up to the dash is fixed. A bare prefix match was
+ * wrong: every `CL` page belongs to the tool, and `CL Aufgaben-Kategorien` in
+ * `Projekt Kontext` is a reference page, which the prefix alone offered as the
+ * place an update belongs. Plain `CL Aufgaben` still counts — it is an older,
+ * untemplated summary — but is named as due for conversion. Computed from every
+ * page in the section, before `limit` or `since` trim the list, so a capped
+ * listing cannot hide it.
  *
  * None and several are both said outright. None is a real finding — the update
  * has nowhere to go, and it must not land on a neighbouring page instead.
  */
+const LEGACY_UPDATE_TARGET = "cl aufgaben";
+const isUpdateTarget = (title: string): boolean => {
+  const key = sectionKey(title);
+  return key === LEGACY_UPDATE_TARGET || /^cl aufgaben [—–-] \S/.test(key);
+};
+
 export const renderUpdateTarget = (pages: readonly NoteSummary[]): string => {
-  const targets = pages.filter((p) => sectionKey(p.title).startsWith("cl aufgaben"));
+  const targets = pages.filter((p) => isUpdateTarget(p.title));
   if (targets.length === 1) {
     const [t] = targets;
     return (
       `CL Aufgaben page in this section: "${t.title}" (id: ${t.id}). ` +
-      "An update to this project belongs on this page."
+      "An update to this project belongs on this page." +
+      (sectionKey(t.title) === LEGACY_UPDATE_TARGET
+        ? " Its title has no project name, so it predates the template: say it is " +
+          "due to be converted into a templated `CL Aufgaben — <project>` page."
+        : "")
     );
   }
   if (targets.length === 0) {

@@ -22,7 +22,7 @@ named. That is ordinary Orchestrator work.
 Most of this notebook is past intake: a project is a section, and its CL
 Aufgaben page is the summary of it. Intake is for a notebook or a section that
 has no working units yet — a new season, a new project nobody has sorted, a
-section with no CL page. Everywhere else, work by section and never survey:
+section with no CL Aufgaben page. Everywhere else, work by section and never survey:
 
 - A question about a project goes section first: `list_notes` with `section`
   (it names the CL Aufgaben page), then `read_note` on that page. A few
@@ -31,10 +31,65 @@ section with no CL page. Everywhere else, work by section and never survey:
   request for every section and every page sketched, and OneNote allows this
   account 400 an hour across ChatGPT and Claude together; one map spends a
   noticeable share of it, and a repeated one runs the account out.
-- To check whether a CL page has seen its whole section, sketch that section
-  only: `map_notes` with `section`.
 - Names and ids already returned in this conversation stay valid. Reuse them
   instead of listing again.
+
+### CL pages
+
+Every page whose title starts with `CL` belongs to this tool. Only one kind
+is a project summary: `CL Aufgaben — <project>` inside a project section. A plain
+`CL Aufgaben` is an older summary that was never templated. It still counts as the
+section's summary, and say that it should be converted to the template. Any
+other `CL` page is a reference page, never the place an update belongs.
+
+The reference pages live in the section `Projekt Kontext`:
+`CL Projekt-Etappen Übersicht` and `CL Aufgaben-Kategorien`. Find them the same
+way as the templates below.
+Read one only when a step names it, never on the way to something else.
+Each is a request, and most questions need neither.
+
+Templates live in the section `Claude Vorlagen`, one per project type, stamped
+`Template: <type> v<n>`. Every season notebook should have both sections
+eventually. Use the one in the project's own notebook. Where that notebook has
+none yet, use the latest earlier season that does, and name the notebook it
+came from.
+
+### A summary is only as good as what it read
+
+A CL Aufgaben page was compiled from pages in its section, and it cannot show
+what it never read. Three cases need saying out loud.
+
+- **A section larger than its summary.** Some summaries were compiled from only
+  part of their section. Before an answer rests on the summary *not* recording
+  something — a gap, a missing task, "no date" — or when the musician asks
+  whether the page is complete, compare the pages the summary cites with the
+  section's page list from `list_notes` with `section` (one request). Name any
+  page it does not cite as unread by the summary. The fact may be there, so
+  never call it absent. Offer to read those pages, or to bring the summary up to
+  date under `policy:patch`.
+- **A section with no CL Aufgaben page.** It is a project nobody has summarised
+  yet, not a project with nothing in it. Say so, and answer from the section's
+  own pages, read within that section only. What intake owes it is this section's
+  intake and nothing wider: classify it, then offer a CL Aufgaben page from the
+  current template for its type. An update still has nowhere to go until that
+  page exists, and it is never written onto another page in the meantime.
+- **A value resting on a source nobody can open.** A summary cites where each
+  value came from, and the source is one of three kinds.
+  - **A page in the section** (`Michael`, `Vertrag`, `Sólo Francisco
+    (Mittersill)`). A phone call or a meeting counts here too, because it is
+    normally written up on a page of its own. Where the section holds no page by
+    that name, the value is **unbacked**. Report it with its value and say its
+    source cannot be found in the section.
+  - **An email or a calendar event**, read through the supporting-evidence
+    tools. That is a real source that simply is not a page, so the value is not
+    unbacked. Report it with that origin. Checking it again is
+    `policy:evidence`'s fourth ring: offer the look, and wait.
+  - **A chat update**, stamped `(Angabe von …, <date>)` under `policy:patch`.
+    Its origin is the stamp itself.
+
+  Do not drop an unbacked value, do not state it as a page fact, and do not
+  search other notebooks or sources for it unasked. A value that is unbacked is
+  not wrong. It is unchecked, and the musician may know where the source went.
 
 ## Survey
 

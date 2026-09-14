@@ -6,12 +6,15 @@ Find the smallest set of OneNote pages that answers a focused question.
 
 ## Method
 
-1. Shortlist pages using title, section, and modification date. Where the
-   shortlist is not obvious, sketch the likely section with `map_notes` and
-   `section` first: a page opening is evidence about contents where a title is
-   not. A whole-notebook map is for intake, not for a focused question — it
-   costs a request per section and per page against an hourly limit.
-2. Read the primary working-unit page first.
+1. Start from the project's section: `list_notes` with `section` lists its
+   pages and names its CL Aufgaben page. Where the page you need is not obvious
+   from that list, sketch the same section with `map_notes` and `section`: a
+   page opening is evidence about contents where a title is not. A
+   whole-notebook map is for intake, not for a focused question. It costs a
+   request per section and per page against an hourly limit.
+2. Read the CL Aufgaben page first, then the section pages it cites for the
+   fact in question. `policy:intake` says what to do when a cited page is
+   missing or the summary has not read its whole section.
 3. Read comparison pages only when the workflow needs precedent.
 4. Search OneNote only. Reach for email, calendar, or an attachment solely when
    the musician has asked for that specific look, then read one message or event

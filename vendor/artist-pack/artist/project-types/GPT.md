@@ -67,7 +67,7 @@ and is checked in time.
 
 For a Barockoper: Verzierungen are communicated to the singers, and
 Appoggiaturen in the Rezitative apply to Barock and Wiener Klassik alike.
-"Projekt-Etappen Übersicht" records the lead time for both; read it there.
+"CL Projekt-Etappen Übersicht" records the lead time for both; read it there.
 
 **Konzert.** Orchesterproben → Hauptprobe → Generalprobe. The house counts
 Dienste, and the number of Dienste is part of what a Probendispo settles.
