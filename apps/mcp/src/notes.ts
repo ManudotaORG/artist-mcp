@@ -10,7 +10,7 @@
 import { createHash } from 'node:crypto';
 import { MAX_TEXT_CHARS } from './attachments.js';
 import { GraphError } from './client.js';
-import { FANOUT_LIMIT, GRAPH_BATCH_SIZE, graphBatchGet, graphGet, mapWithConcurrency } from './api.js';
+import { FANOUT_LIMIT, GRAPH, GRAPH_BATCH_SIZE, graphBatchGet, graphGet, mapWithConcurrency } from './api.js';
 import { pageResources, type PageResource } from './page-attachments.js';
 import { editablePartsFrom, type EditablePart } from './onenote-patch.js';
 
@@ -173,13 +173,40 @@ export const htmlToText = (html: string): string =>
  * lastModifiedDateTime is what the creation-date detector reads, and it is the
  * field that actually tracks change — unlike the one on a page.
  */
+const SECTIONS_PATH = '/me/onenote/sections';
+/** Far above any real account; a guard against a nextLink that never ends. */
+const MAX_SECTION_PAGES = 50;
+
 const fetchSections = async (token: string): Promise<OneNoteSection[]> => {
-  const res = await graphGet(
-    '/me/onenote/sections?$select=id,displayName,lastModifiedDateTime' +
-      '&$expand=parentNotebook($select=displayName)&$top=100',
-    token,
-  );
-  return ((await res.json()) as { value?: OneNoteSection[] }).value ?? [];
+  // Every page of the listing, not the first. Graph returns at most 100
+  // sections a response and an @odata.nextLink for the rest; reading only the
+  // first made every section past the hundredth invisible to every tool on
+  // an account with more — a real section answered as "no section is named"
+  // with nothing to say the list was cut.
+  //
+  // The link is followed only back to the same Graph endpoint, so a response
+  // can never steer the token anywhere else.
+  const sections: OneNoteSection[] = [];
+  let path: string | null =
+    `${SECTIONS_PATH}?$select=id,displayName,lastModifiedDateTime` +
+    '&$expand=parentNotebook($select=displayName)&$top=100';
+  for (let page = 0; path !== null; page++) {
+    if (page === MAX_SECTION_PAGES) {
+      throw new GraphError(`Section listing did not end after ${MAX_SECTION_PAGES} pages.`, false);
+    }
+    const res = await graphGet(path, token);
+    const body = (await res.json()) as { value?: OneNoteSection[]; '@odata.nextLink'?: string };
+    sections.push(...(body.value ?? []));
+    const next = body['@odata.nextLink'];
+    if (typeof next !== 'string') {
+      path = null;
+    } else if (next.startsWith(`${GRAPH}${SECTIONS_PATH}?`)) {
+      path = next.slice(GRAPH.length);
+    } else {
+      throw new GraphError('Section listing returned a next page outside Microsoft Graph.', false);
+    }
+  }
+  return sections;
 };
 
 /**
