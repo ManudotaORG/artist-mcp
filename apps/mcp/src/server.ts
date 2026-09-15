@@ -2364,6 +2364,67 @@ const createServer = async (
   }
 
   /**
+   * Creating a section. The same provider boundary as creating a page:
+   * `Notes.Create` cannot rename or delete a section. The notebook must come
+   * from the live list with its notebook_key, so a guessed notebook is refused
+   * before anything is written. See docs/decisions/0011-creating-sections.md.
+   */
+  if (isGranted(grants, "onenote-create-section")) {
+    server.tool(
+      "create_onenote_section",
+      WRITE_CONSENT +
+        "Creates ONE new, empty section in a OneNote notebook. It CANNOT rename or " +
+        "delete any section, including the ones it creates: a section created by " +
+        "mistake stays until the musician removes it in OneNote. There is no bulk " +
+        "form. A name already used in that notebook is refused. The notebook must " +
+        "be named from list_notes, with its notebook_key.",
+      {
+        notebook: z
+          .string()
+          .describe("The notebook, exactly as list_notes returned it"),
+        notebook_key: z
+          .string()
+          .optional()
+          .describe("The notebook_key printed with the notebook list, exactly as given"),
+        name: z
+          .string()
+          .describe("The section name, as the musician gave it. At most 50 characters"),
+      },
+      async ({ notebook, notebook_key, name }) => {
+        try {
+          const chosen = await selectNotebook(
+            call,
+            notebook,
+            notebook_key,
+            "create_onenote_section",
+            undefined,
+            true,
+          );
+          if ("message" in chosen) {
+            return { content: [{ type: "text", text: chosen.message }] };
+          }
+          const created = await call<{ name: string; notebook: string; section_id: string | null }>(
+            "create_onenote_section",
+            { notebook, name },
+          );
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `Created the section "${created.name}" in ${created.notebook}.` +
+                  " This tool cannot rename or remove it.",
+              },
+            ],
+          };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+  }
+
+  /**
    * Editing a page this tool wrote.
    *
    * Everything the create tools lean on inverts here. There, the strongest
