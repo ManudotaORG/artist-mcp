@@ -126,8 +126,13 @@ test('a plain CL Aufgaben page counts, and is marked as predating the template',
   assert.doesNotMatch(templated.text, /predates the template/);
 });
 
-/** Found on a hosted account with more than 100 sections: a section past the first 100 was invisible. */
-test('a section on the second page of the section listing is still found', async () => {
+/**
+ * Found on a hosted account with more than 100 sections, and modelled on what
+ * Graph really does there (measured 2026-09-15): 100 sections, no nextLink,
+ * and the rest only through $skip. A stub with a nextLink passed while the
+ * real account stayed cut at 100.
+ */
+test('a section past the first 100 is fetched with $skip', async () => {
   const filler = Array.from({ length: 100 }, (_, i) => ({
     id: `s${i}`,
     displayName: `Projekt ${i}`,
@@ -135,31 +140,21 @@ test('a section on the second page of the section listing is still found', async
   }));
   const paged = {
     // Listed first: the stub matches the first key a URL contains.
-    'skiptoken=next': {
+    'skip=100': {
       value: [{ id: 'mp', displayName: 'Montepulciano', parentNotebook: { displayName: 'Season' } }],
     },
-    '/me/onenote/sections?': {
-      value: filler,
-      '@odata.nextLink': 'https://graph.microsoft.com/v1.0/me/onenote/sections?$skiptoken=next',
-    },
+    '/me/onenote/sections?': { value: filler },
     '/sections/mp/pages': pages(['CL Aufgaben — Montepulciano']),
   };
   const { text, seen } = await callList(paged, { section: 'Montepulciano' });
   assert.match(text, /CL Aufgaben — Montepulciano/);
   assert.doesNotMatch(text, /No section is named/);
-  assert.ok(seen.some((u) => u.includes('skiptoken=next')), 'the next page was not fetched');
+  assert.ok(seen.some((u) => u.includes('skip=100')), 'the second page was not fetched');
 });
 
-test('a next page outside Graph is refused, not followed', async () => {
-  const hostile = {
-    '/me/onenote/sections?': {
-      value: [{ id: 'melk', displayName: 'GPT Melk', parentNotebook: { displayName: 'Season' } }],
-      '@odata.nextLink': 'https://evil.example/me/onenote/sections?$skiptoken=x',
-    },
-  };
-  const { text, seen } = await callList(hostile, { section: 'GPT Melk' });
-  assert.match(text, /outside Microsoft Graph/);
-  assert.ok(!seen.some((u) => u.includes('evil.example')), 'the token was sent off Graph');
+test('a listing shorter than a page asks for no second page', async () => {
+  const { seen } = await callList(GRAPH, { section: 'GPT Melk' });
+  assert.ok(!seen.some((u) => u.includes('skip=')), 'a second page was fetched for a short list');
 });
 
 test('closest offers the best match, not every section sharing a word', async () => {
