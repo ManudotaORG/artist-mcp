@@ -642,6 +642,38 @@ export const onenotePageContent = async (
 };
 
 /**
+ * Create one section in a notebook.
+ *
+ * Narrow like `onenoteCreatePage`: one notebook id, one name, one POST, and no
+ * retry, because a 5xx does not say whether the section landed and a second
+ * attempt would make a second section. See docs/decisions/0011-creating-sections.md.
+ */
+export const onenoteCreateSection = async (
+  notebookId: string,
+  displayName: string,
+  token: string,
+): Promise<Response> => {
+  const url = `${GRAPH}/me/onenote/notebooks/${encodeURIComponent(notebookId)}/sections`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ displayName }),
+  });
+  if (res.ok) return res;
+
+  const detail = (await res.text().catch(() => '')).slice(0, 300);
+  if ((res.status === 401 || res.status === 403) && /40004|scope/i.test(detail)) {
+    throw new ScopeError(
+      'This Microsoft connection cannot create OneNote sections. Reconnect with ' +
+        '`artist-mcp connect microsoft`.',
+      'create OneNote sections',
+      false,
+    );
+  }
+  throw new GraphError(`OneNote refused to create the section (${res.status}). ${detail}`, false);
+};
+
+/**
  * Apply patch commands to one page.
  *
  * Narrow in the same way `onenoteCreatePage` is, and here the narrowness is

@@ -41,6 +41,13 @@ to become our code. Read
 [docs/decisions/0003-onenote-writes.md](docs/decisions/0003-onenote-writes.md)
 before touching that path.
 
+An install granted `onenote-create-section` may create a new, empty section
+in a notebook, under the same `Notes.Create` boundary: it cannot rename or
+delete one. Hosted users who already held `onenote-create` were given it by
+migration rather than asked again, which is a one-off for an invite-only
+deployment and not a precedent. See
+[docs/decisions/0011-creating-sections.md](docs/decisions/0011-creating-sections.md).
+
 **Editing is a separate grant, and it shipped.** `Notes.ReadWrite` would hand
 back edit and delete over every page and put the boundary in our code again —
 but it was not the only door. An install granted `onenote-edit` holds

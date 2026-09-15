@@ -26,7 +26,7 @@ import {
 import { listEmails, readEmail } from './mail.js';
 import { listNotebooks, listNotes, mapNotes, readNote, type OneNoteSection } from './notes.js';
 import { applyEdit, previewEdit } from './onenote-patch.js';
-import { createPage } from './onenote-write.js';
+import { createPage, createSection } from './onenote-write.js';
 import { accessTokenFor } from './oauth.js';
 import { type ProviderName, loadTokens } from './tokens.js';
 
@@ -78,6 +78,9 @@ export const OPERATIONS = {
   // `Notes.Create` cannot express an edit or a delete, so there is no sibling
   // row here to refuse. See docs/decisions/0003-onenote-writes.md.
   create_onenote_page: { provider: 'microsoft', effect: 'write' },
+  // Under `Notes.Create` too, which can create a section and cannot rename or
+  // delete one. See docs/decisions/0011-creating-sections.md.
+  create_onenote_section: { provider: 'microsoft', effect: 'write' },
   // Reads the page and shows the change against what is actually written there
   // now. A read, and necessarily so: it is what has to happen before a write is
   // allowed, and gating it would gate the safeguard rather than the danger.
@@ -205,6 +208,8 @@ export const dispatchWith =
         return (await rescheduleEvent(token, params, record)) as T;
       case 'create_onenote_page':
         return (await createPage(token, params, record)) as T;
+      case 'create_onenote_section':
+        return (await createSection(token, params, record)) as T;
       case 'preview_onenote_edit':
         return (await previewEdit(token, params)) as T;
       case 'edit_onenote_page':

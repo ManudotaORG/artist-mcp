@@ -57,6 +57,9 @@ const SANCTIONED = {
   // edit or a delete — so there is deliberately no update or delete row here
   // to refuse. See docs/decisions/0003-onenote-writes.md.
   create_onenote_page: 'write',
+  // Under Notes.Create as well, which cannot rename or delete a section.
+  // See docs/decisions/0011-creating-sections.md.
+  create_onenote_section: 'write',
   // Reads the page and shows the change against what is written there now. A
   // read, and it has to be: it is the safeguard a write is conditional on.
   preview_onenote_edit: 'read',
@@ -106,9 +109,9 @@ test('the HTTP layer sends exactly one non-GET, and it is the sanctioned one', a
   const api = await readFile(resolve(srcRoot, 'api.ts'), 'utf8');
   const methods = [...api.matchAll(/method\s*:\s*['"`](\w+)['"`]/g)].map((m) => m[1].toUpperCase());
   const nonGet = methods.filter((m) => m !== 'GET');
-  // Three POSTs, one DELETE and one PATCH: graphBatchGet's envelope,
-  // calendarInsertEvent, calendarDeleteEvent, onenoteCreatePage and
-  // onenotePatchPage. Not "no writes" any more, but still a counted set — each
+  // Four POSTs, one DELETE and one PATCH: graphBatchGet's envelope,
+  // calendarInsertEvent, calendarDeleteEvent, onenoteCreatePage,
+  // onenoteCreateSection (0011) and onenotePatchPage. Not "no writes" any more, but still a counted set — each
   // one had to be argued for here before it could ship, and the PATCH took a
   // decision record and a probe against a real notebook.
   //
@@ -117,7 +120,7 @@ test('the HTTP layer sends exactly one non-GET, and it is the sanctioned one', a
   // any method would be a way round everything else asserted here.
   assert.deepEqual(
     nonGet,
-    ['POST', 'POST', 'DELETE', 'POST', 'PATCH'],
+    ['POST', 'POST', 'DELETE', 'POST', 'POST', 'PATCH'],
     `api.ts sends ${nonGet.join(', ') || 'nothing but GET'}. Any change here is a boundary change.`,
   );
 });
@@ -281,6 +284,9 @@ test('no module outside the sanctioned list exports a write-shaped helper', asyn
     // "has a second create path appeared without anyone reading 0003".
     'api.ts:onenoteCreatePage',
     'onenote-write.ts:createPage',
+    // 0011: one section per call, under the same Notes.Create boundary.
+    'api.ts:onenoteCreateSection',
+    'onenote-write.ts:createSection',
     // Reads. Named here because the pattern cannot tell them apart: one renders
     // the page and resolves its section, the other shapes and escapes it.
     'onenote-write.ts:previewPage',

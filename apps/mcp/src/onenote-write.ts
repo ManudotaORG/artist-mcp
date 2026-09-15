@@ -14,7 +14,7 @@
  * Microsoft is. See docs/decisions/0003-onenote-writes.md.
  */
 
-import { graphGet, onenoteCreatePage } from './api.js';
+import { graphGet, onenoteCreatePage, onenoteCreateSection } from './api.js';
 import { type RecordWrite } from './audit.js';
 import { GraphError } from './client.js';
 
@@ -289,5 +289,79 @@ export async function createPage(
     note:
       'The page exists. This tool cannot edit or delete it — that is the permission ' +
       'it holds, not a policy it follows.',
+  };
+}
+
+/**
+ * Characters OneNote refuses in a section name, and its length limit. Checked
+ * here so a refusal names the problem instead of arriving as a bare 400.
+ */
+const SECTION_NAME_FORBIDDEN = /[?*\\/:<>|&#'%~"]/;
+const MAX_SECTION_NAME_CHARS = 50;
+
+/**
+ * Create one section in a named notebook.
+ *
+ * The notebook is resolved by name here, after the tool has already checked the
+ * name against the live list and its notebook_key. An existing section of the
+ * same name is refused rather than duplicated: two sections with one name are
+ * exactly what `list_notes` with `section` cannot tell apart.
+ * See docs/decisions/0011-creating-sections.md.
+ */
+export async function createSection(
+  token: string,
+  params: Record<string, unknown>,
+  record: RecordWrite,
+) {
+  const notebook = typeof params.notebook === 'string' ? params.notebook.trim() : '';
+  const name = typeof params.name === 'string' ? params.name.replace(/\s+/g, ' ').trim() : '';
+  if (notebook === '') throw failure('Name the notebook the section goes in.');
+  if (name === '') throw failure('Name the section.');
+  if (name.length > MAX_SECTION_NAME_CHARS) {
+    throw failure(`A section name is at most ${MAX_SECTION_NAME_CHARS} characters.`);
+  }
+  if (SECTION_NAME_FORBIDDEN.test(name)) {
+    throw failure('A section name cannot contain ? * / \\ : < > | & # \' % ~ or ".');
+  }
+  if (/^(unknown|tbc|tba)$/i.test(name)) {
+    throw failure('A section name the notebook has not settled is refused.');
+  }
+
+  const res = await graphGet(
+    '/me/onenote/notebooks?$select=id,displayName&$expand=sections($select=displayName)',
+    token,
+  );
+  const books = ((await res.json()) as {
+    value?: { id?: string; displayName?: string; sections?: { displayName?: string }[] }[];
+  }).value ?? [];
+  const key = (v: string) => v.replace(/\s+/g, ' ').trim().toLowerCase();
+  const matches = books.filter((b) => key(b.displayName ?? '') === key(notebook));
+  if (matches.length !== 1 || typeof matches[0].id !== 'string' || !ONENOTE_ID.test(matches[0].id)) {
+    throw failure(
+      matches.length === 0
+        ? `No notebook named "${notebook}".`
+        : `${matches.length} notebooks are named "${notebook}".`,
+    );
+  }
+  const [book] = matches;
+  if ((book.sections ?? []).some((s) => key(s.displayName ?? '') === key(name))) {
+    throw failure(`"${book.displayName}" already has a section named "${name}".`);
+  }
+
+  const created = (await (await onenoteCreateSection(book.id as string, name, token))
+    .json()
+    .catch(() => ({}))) as { id?: string; displayName?: string };
+
+  await record({
+    operation: 'create_onenote_section',
+    summary: `Created the section "${name}" in "${book.displayName ?? notebook}"`,
+    target: created.id ?? '(no section id returned)',
+  });
+
+  return {
+    created: true,
+    section_id: created.id ?? null,
+    name: created.displayName ?? name,
+    notebook: book.displayName ?? notebook,
   };
 }
