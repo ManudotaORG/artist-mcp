@@ -213,6 +213,9 @@ export const WRITE_SCOPES: Readonly<
   // Microsoft. Asking for `Notes.ReadWrite` instead would hand back exactly
   // the position 0001 was stuck in. See docs/decisions/0003-onenote-writes.md.
   'onenote-create': { provider: 'microsoft', scopes: ['Notes.Create'] },
+  // The same scope: creating a section is within `Notes.Create`, and renaming
+  // or deleting one is not. See docs/decisions/0011-creating-sections.md.
+  'onenote-create-section': { provider: 'microsoft', scopes: ['Notes.Create'] },
   // Named in the body of Microsoft's own 403 for PATCH and DELETE, and absent
   // from the documentation for the operations it enables — the permissions
   // table for page-delete lists only Notes.ReadWrite and Notes.ReadWrite.All,

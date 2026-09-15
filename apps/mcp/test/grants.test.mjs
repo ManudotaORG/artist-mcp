@@ -100,7 +100,8 @@ test('every capability has a description, since it is shown to the user', () => 
 // was added by docs/decisions/0004-onenote-page-maintenance.md, which reopens
 // what 0003 closed: editing a page this tool created, never one the musician
 // wrote, and never a delete.
-const SANCTIONED = ['calendar-create', 'calendar-delete', 'onenote-create', 'onenote-edit'];
+// `onenote-create-section` was added by docs/decisions/0011-creating-sections.md.
+const SANCTIONED = ['calendar-create', 'calendar-delete', 'onenote-create', 'onenote-create-section', 'onenote-edit'];
 
 test('the capability list is exactly what was sanctioned', () => {
   assert.deepEqual(

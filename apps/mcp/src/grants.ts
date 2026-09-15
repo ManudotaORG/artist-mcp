@@ -42,6 +42,14 @@ export const WRITE_CAPABILITIES = {
   'onenote-create':
     'add a new page to a OneNote section. ' +
     'It cannot change or delete any page, including the ones it made.',
+  // The same provider boundary as `onenote-create`: `Notes.Create` can create a
+  // section and cannot rename or delete one. A capability of its own rather
+  // than folded into page creation, so a grant to add pages does not quietly
+  // come to mean adding structure to a notebook.
+  // See docs/decisions/0011-creating-sections.md.
+  'onenote-create-section':
+    'add a new section to a OneNote notebook. ' +
+    'It cannot rename or delete any section, including the ones it made.',
   // Also not this file's boundary to keep, and for a stronger reason than
   // `onenote-create`: `Notes.ReadWrite.CreatedByApp` distinguishes *this* app
   // from every other, so a page the musician wrote is refused by Microsoft
