@@ -320,6 +320,8 @@ console.warn = (...args: unknown[]) => {
 
 type PdfImage = {
   page: number;
+  /** Which picture on the page, from 1, counted as extractPdfImage counts. */
+  index: number;
   width: number;
   height: number;
   media_type: "image/png";
@@ -539,6 +541,7 @@ export async function extractPdfContent(
     if (images.length < imageBudget) {
       searched = n;
       const ops = await page.getOperatorList();
+      let index = 0;
       for (let i = 0; i < ops.fnArray.length; i++) {
         if (ops.fnArray[i] !== OPS.paintImageXObject) continue;
         const id = ops.argsArray[i][0];
@@ -556,6 +559,9 @@ export async function extractPdfContent(
           continue;
         }
         if (!raw?.data || raw.width * raw.height < MIN_IMAGE_PIXELS) continue;
+        // Counted before the budget, so a picture that was skipped still has
+        // the number create_onenote_page will look it up by.
+        index++;
 
         if (images.length >= imageBudget) {
           if (!skipped.includes(n)) skipped.push(n);
@@ -568,6 +574,7 @@ export async function extractPdfContent(
         const small = downscale(rgb, raw.width, raw.height, factor);
         images.push({
           page: n,
+          index,
           width: small.width,
           height: small.height,
           media_type: "image/png",
@@ -1255,6 +1262,218 @@ export async function readAttachment(
     kind: scanned ? ("scan" as const) : ("text" as const),
     ...extracted,
     note: describeGaps(extracted),
+  };
+}
+
+// ------------------------------------------------------- images for a page
+
+/**
+ * Pictures that can go onto a OneNote page as they arrived. OneNote renders
+ * these three; WebP and HEIC are refused rather than sent to fail there.
+ */
+const PAGE_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif"]);
+
+/**
+ * The long edge of a PDF picture stored on a page. Larger than the 1200 sent
+ * to chat: the notebook is where someone reads the stage plot at full size.
+ */
+const PAGE_IMAGE_EDGE = 2000;
+
+/** A crop narrower or shorter than this is a slip, not a picture. */
+const MIN_CROP_PIXELS = 32;
+
+/** What a page is given: bytes and enough to say where they came from. */
+export type PageImage = {
+  media_type: string;
+  bytes: Uint8Array;
+  width: number | null;
+  height: number | null;
+  /** "rider.pdf, page 3", written under the picture on the page. */
+  source: string;
+};
+
+export type Crop = { left: number; top: number; right: number; bottom: number };
+
+const cropFrom = (value: unknown): Crop | null => {
+  if (value === undefined || value === null) return null;
+  const c = value as Record<string, unknown>;
+  const edges = ["left", "top", "right", "bottom"] as const;
+  if (
+    typeof value !== "object" ||
+    edges.some((e) => typeof c[e] !== "number" || !Number.isFinite(c[e]) ||
+      (c[e] as number) < 0 || (c[e] as number) > 1)
+  ) {
+    throw failure("crop takes left, top, right and bottom, each a fraction from 0 to 1.");
+  }
+  const crop = c as Crop;
+  if (crop.right <= crop.left || crop.bottom <= crop.top) {
+    throw failure("crop must have right greater than left and bottom greater than top.");
+  }
+  return crop;
+};
+
+const positive = (value: unknown, name: string): number | null => {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > 10_000) {
+    throw failure(`${name} must be a whole number, 1 or greater.`);
+  }
+  return value;
+};
+
+/**
+ * One picture from a PDF page, found exactly as extractPdfContent numbers it:
+ * letterhead and furniture skipped, pictures that do not decode not counted.
+ * Two rules here would let "image 2" mean one picture in chat and another on
+ * the page.
+ */
+export async function extractPdfImage(
+  bytes: Uint8Array,
+  pageNumber: number,
+  index: number,
+  crop: Crop | null,
+): Promise<{ png: Uint8Array; width: number; height: number }> {
+  const { getDocumentProxy } = await import("unpdf");
+  const { OPS } = await import("unpdf/pdfjs");
+  const pdf = await getDocumentProxy(new Uint8Array(bytes));
+  if (pageNumber > pdf.numPages) {
+    throw failure(`That PDF has ${pdf.numPages} pages, so there is no page ${pageNumber}.`);
+  }
+
+  const page = await pdf.getPage(pageNumber);
+  try {
+    const ops = await page.getOperatorList();
+    let seen = 0;
+    for (let i = 0; i < ops.fnArray.length; i++) {
+      if (ops.fnArray[i] !== OPS.paintImageXObject) continue;
+      const id = ops.argsArray[i][0];
+      if (typeof id !== "string" || SHARED_IMAGE_ID.test(id)) continue;
+
+      let raw: { width: number; height: number; kind: number; data: Uint8Array };
+      try {
+        raw = await resolveImage(page, id);
+      } catch {
+        continue;
+      }
+      if (!raw?.data || raw.width * raw.height < MIN_IMAGE_PIXELS) continue;
+      if (++seen !== index) continue;
+
+      let rgb = toRgb(raw.data, raw.width, raw.height, raw.kind);
+      if (!rgb) {
+        throw failure(`Image ${index} on page ${pageNumber} is in a pixel format this cannot encode.`);
+      }
+      let { width, height } = raw;
+
+      if (crop) {
+        const x0 = Math.floor(crop.left * width);
+        const y0 = Math.floor(crop.top * height);
+        const w = Math.ceil(crop.right * width) - x0;
+        const h = Math.ceil(crop.bottom * height) - y0;
+        if (w < MIN_CROP_PIXELS || h < MIN_CROP_PIXELS) {
+          throw failure(
+            `That crop is ${w}x${h} pixels of a ${width}x${height} picture, too small ` +
+              `to be worth a place on the page.`,
+          );
+        }
+        const out = new Uint8Array(w * h * 3);
+        for (let y = 0; y < h; y++) {
+          const from = ((y0 + y) * width + x0) * 3;
+          out.set(rgb.subarray(from, from + w * 3), y * w * 3);
+        }
+        rgb = out;
+        width = w;
+        height = h;
+      }
+
+      const small = downscale(rgb, width, height, Math.ceil(Math.max(width, height) / PAGE_IMAGE_EDGE));
+      return {
+        png: await encodePng(small.rgb, small.width, small.height),
+        width: small.width,
+        height: small.height,
+      };
+    }
+    throw failure(
+      seen === 0
+        ? `Page ${pageNumber} has no picture to take. Text and drawings are not pictures; ` +
+          `only images embedded in the PDF can be placed.`
+        : `Page ${pageNumber} has ${seen} picture${seen === 1 ? "" : "s"}, so there is no image ${index}.`,
+    );
+  } finally {
+    page.cleanup();
+  }
+}
+
+/**
+ * Fetch one picture for a new page: an image file as it arrived, or one picture
+ * out of a PDF. Read-only, like every other loader here; the page is written
+ * by a different operation, on a different token.
+ * See docs/decisions/0012-images-on-a-new-page.md.
+ */
+export async function loadPageImage(
+  load: AttachmentLoader,
+  params: Record<string, unknown>,
+): Promise<PageImage> {
+  const pageNumber = positive(params.page, "page");
+  const index = positive(params.index, "index");
+  const crop = cropFrom(params.crop);
+
+  const loaded = await load();
+  if (loaded.oversized) {
+    throw failure(tooLargeResult(loaded.meta).note);
+  }
+  const { meta, bytes } = loaded;
+  const mime = meta.mime_type.toLowerCase();
+
+  if (mime.startsWith("image/")) {
+    if (pageNumber !== null || index !== null) {
+      throw failure(`${meta.filename} is an image file; page and index are for a PDF.`);
+    }
+    if (crop) {
+      throw failure(
+        `${meta.filename} goes onto the page as it arrived. Cropping works on pictures ` +
+          `inside a PDF, which are already decoded; an image file is never decoded here.`,
+      );
+    }
+    if (!PAGE_IMAGE_TYPES.has(mime)) {
+      throw failure(`${meta.filename} is ${meta.mime_type}. JPEG, PNG and GIF can go on a page.`);
+    }
+    const size = imageSize(bytes);
+    return {
+      media_type: mime,
+      bytes,
+      width: size?.width ?? null,
+      height: size?.height ?? null,
+      source: meta.filename,
+    };
+  }
+
+  if (isDocx(meta.mime_type, meta.filename)) {
+    throw failure(
+      `Pictures inside a Word document cannot be placed yet: read_gmail_attachment ` +
+        `does not show them, so there is no way to choose one.`,
+    );
+  }
+
+  if (mime !== "application/pdf") {
+    throw failure(`${meta.filename} is ${meta.mime_type}. Only image files and PDFs can supply a picture.`);
+  }
+
+  if (pageNumber === null) {
+    throw failure(`${meta.filename} is a PDF: name the page the picture is on.`);
+  }
+  let picture;
+  try {
+    picture = await extractPdfImage(bytes, pageNumber, index ?? 1, crop);
+  } catch (err) {
+    if (err instanceof GraphError) throw err;
+    console.error("pdf image extraction failed", err);
+    throw failure(`${meta.filename} could not be parsed. It may be encrypted or damaged.`);
+  }
+  return {
+    media_type: "image/png",
+    bytes: picture.png,
+    width: picture.width,
+    height: picture.height,
+    source: `${meta.filename}, page ${pageNumber}`,
   };
 }
 

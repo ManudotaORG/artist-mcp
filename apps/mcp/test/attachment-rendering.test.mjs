@@ -90,16 +90,17 @@ test('a Word document is measured in parts, never in pages', () => {
   assert.doesNotMatch(text, /Pages:/);
 });
 
-test('a diagram is announced by page and returned as an image', () => {
+test('a diagram is announced by page and index and returned as an image', () => {
   const result = renderAttachment({
     ...base,
-    images: [{ page: 3, width: 800, height: 600, media_type: 'image/png', data: 'AAAA' }],
+    images: [{ page: 3, index: 2, width: 800, height: 600, media_type: 'image/png', data: 'AAAA' }],
   });
   const picture = result.content.find((c) => c.type === 'image');
   assert.ok(picture, 'the image must reach the model as an image');
   assert.equal(picture.mimeType, 'image/png');
   assert.equal(picture.data, 'AAAA');
-  assert.match(textOf(result), /### Page 3, as an image \(800x600\)/);
+  // The index is what create_onenote_page takes back to place this picture (0012).
+  assert.match(textOf(result), /### Page 3, image 2 \(800x600\)/);
 });
 
 test('an image attachment is not called page 1, because it has no pages', () => {

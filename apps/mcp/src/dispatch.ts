@@ -13,7 +13,7 @@
 
 import { GraphError } from './client.js';
 import { recordWrite, type RecordWrite } from './audit.js';
-import { gmailLoader, mapAttachment, readAttachment } from './attachments.js';
+import { gmailLoader, loadPageImage, mapAttachment, readAttachment } from './attachments.js';
 import { oneNoteLoader } from './page-attachments.js';
 import {
   createEvent,
@@ -56,6 +56,10 @@ export const OPERATIONS = {
   read_email: { provider: 'google', effect: 'read' },
   read_gmail_attachment: { provider: 'google', effect: 'read' },
   map_gmail_attachment: { provider: 'google', effect: 'read' },
+  // Not a tool. create_onenote_page's handler calls it once per image, then
+  // hands the bytes to the create, so the Gmail fetch spends a Google token and
+  // the page a Microsoft one. See docs/decisions/0012-images-on-a-new-page.md.
+  load_gmail_image: { provider: 'google', effect: 'read' },
   // Separate rows rather than a source parameter on the two above. The token is
   // resolved from this table before the call is made, so one operation cannot
   // span two providers without breaking the rule that a Gmail call never spends
@@ -178,6 +182,11 @@ export const dispatchWith =
           gmailLoader(token, params.email_id, params.attachment_id),
           params.from_page,
           params.page_count,
+        )) as T;
+      case 'load_gmail_image':
+        return (await loadPageImage(
+          gmailLoader(token, params.email_id, params.attachment_id),
+          params,
         )) as T;
       case 'map_page_attachment':
         return (await mapAttachment(
