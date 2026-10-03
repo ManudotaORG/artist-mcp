@@ -800,6 +800,13 @@ export function describeGaps(extracted: {
 const DOCX_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
+const XLSX_TYPE =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+/** Whether an attachment is an Excel workbook, by type or by name. */
+const isXlsx = (mimeType: string, filename: string) =>
+  mimeType.toLowerCase() === XLSX_TYPE || /\.xlsx$/i.test(filename);
+
 /** Whether an attachment is a Word document, by type or by name. */
 const isDocx = (mimeType: string, filename: string) =>
   mimeType.toLowerCase() === DOCX_TYPE || /\.docx$/i.test(filename);
@@ -964,6 +971,10 @@ export function unsupportedNote(mimeType: string, filename: string): string {
       `cannot read and is not planned to. Ask the sender for a PDF or a .docx, ` +
       `or open it yourself.`;
   }
+  if (mime === "application/vnd.ms-excel" || /\.xls$/i.test(filename)) {
+    return `${filename} is a legacy Excel workbook (.xls), a binary format this ` +
+      `cannot read. Ask the sender for an .xlsx or a PDF, or open it yourself.`;
+  }
   if (mime.startsWith("image/")) {
     return `${filename} is an image. Reading images is not built yet, so it ` +
       `has not been looked at.`;
@@ -1100,6 +1111,22 @@ export async function mapAttachment(
     size: meta.size ?? bytes.byteLength,
   };
 
+  if (isXlsx(meta.mime_type, meta.filename)) {
+    const book = await extractXlsxContent(bytes).catch(() => null);
+    return {
+      ...base,
+      kind: book ? ("text" as const) : ("unreadable" as const),
+      pages: [],
+      note: book
+        ? `${meta.filename} is an Excel workbook: ` +
+          book.sheets
+            .map((s) => `"${s.name}"${s.hidden ? " (hidden)" : ""}, ${s.rows} row${s.rows === 1 ? "" : "s"}`)
+            .join("; ") +
+          `. Read it with ${readTool}.`
+        : `${meta.filename} could not be opened as an Excel workbook.`,
+    };
+  }
+
   if (isDocx(meta.mime_type, meta.filename)) {
     const doc = await extractDocxContent(bytes).catch(() => null);
     return {
@@ -1187,6 +1214,47 @@ export async function readAttachment(
   };
 
   if (mime.startsWith("image/")) return imageResult(meta, bytes);
+
+  if (isXlsx(meta.mime_type, meta.filename)) {
+    let book;
+    try {
+      book = await extractXlsxContent(bytes, (fromPage as number) ?? 1);
+    } catch (err) {
+      if (err instanceof GraphError) throw err;
+      console.error("xlsx read failed", err);
+      book = null;
+    }
+    if (!book) {
+      return {
+        ...base,
+        kind: "unreadable" as const,
+        text: "",
+        note: `${meta.filename} could not be opened as an Excel workbook. It may ` +
+          `be damaged, password protected, or not really an .xlsx.`,
+      };
+    }
+    return {
+      ...base,
+      kind: "text" as const,
+      unit: "part" as const,
+      text: book.text,
+      chars_total: book.chars_total,
+      parts_total: book.parts_total,
+      first_page: book.part,
+      pages_read: book.part,
+      next_from_page: book.next_from_page,
+      truncated: book.next_from_page !== null,
+      images: [],
+      note: [
+        "Each sheet is under its name, one row per line, cells separated by \" | \". " +
+          "Formulas show their last saved value; charts and pictures are not read.",
+        book.parts_total > 1
+          ? `This is part ${book.part} of ${book.parts_total}, split by length — a ` +
+            `sheet may run across the join. Continue with from_page ${book.next_from_page}.`
+          : null,
+      ].filter(Boolean).join(" "),
+    };
+  }
 
   if (isDocx(meta.mime_type, meta.filename)) {
     let doc;
@@ -1491,6 +1559,8 @@ export async function loadPageImage(
 async function unzipEntry(
   bytes: Uint8Array,
   wanted: string,
+  /** Refuse to inflate past this, by the size the archive declares. */
+  maxBytes = Infinity,
 ): Promise<Uint8Array | null> {
   if (bytes.length < 22) return null;
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -1512,6 +1582,7 @@ async function unzipEntry(
     if (view.getUint32(at, true) !== 0x02014b50) return null;
     const method = view.getUint16(at + 10, true);
     const compressed = view.getUint32(at + 20, true);
+    const uncompressed = view.getUint32(at + 24, true);
     const nameLength = view.getUint16(at + 28, true);
     const extraLength = view.getUint16(at + 30, true);
     const commentLength = view.getUint16(at + 32, true);
@@ -1521,6 +1592,12 @@ async function unzipEntry(
     );
 
     if (name === wanted) {
+      if (uncompressed > maxBytes) {
+        throw failure(
+          `Part of this file unpacks to ${(uncompressed / (1024 * 1024)).toFixed(0)} MB, ` +
+            `more than can be read here. Ask for the sheet that matters as its own file.`,
+        );
+      }
       if (localOffset + 30 > bytes.length) return null;
       const localName = view.getUint16(localOffset + 26, true);
       const localExtra = view.getUint16(localOffset + 28, true);
@@ -1603,3 +1680,170 @@ export async function extractDocxContent(bytes: Uint8Array, fromPart = 1) {
   };
 }
 
+
+// ------------------------------------------------------------ excel workbooks
+
+/**
+ * One sheet's XML is refused past this. A 10 MB workbook can unpack to well
+ * over a hundred, and the whole string is held to be read.
+ */
+const MAX_SHEET_XML_BYTES = 30 * 1024 * 1024;
+
+/** Cells shown per row, so one runaway column cannot fill the answer. */
+const MAX_COLUMNS = 40;
+
+const unescapeXml = (value: string): string =>
+  value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    // &amp; last, so "&amp;lt;" does not become "<".
+    .replace(/&amp;/g, "&");
+
+/** Every <t> inside a fragment, joined: a rich-text string is several runs. */
+const textRuns = (xml: string): string =>
+  [...xml.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map((m) => unescapeXml(m[1])).join("");
+
+const attr = (tag: string, name: string): string | null =>
+  new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1] ?? null;
+
+/** "C" → 2. Column letters are base 26 with no zero. */
+const columnIndex = (ref: string): number => {
+  const letters = /^[A-Z]+/.exec(ref)?.[0] ?? "A";
+  return [...letters].reduce((n, c) => n * 26 + c.charCodeAt(0) - 64, 0) - 1;
+};
+
+/** Built-in number formats that are dates or times. */
+const DATE_FORMAT_IDS = new Set([14, 15, 16, 17, 18, 19, 20, 21, 22, 45, 46, 47]);
+
+/**
+ * Which cell styles show a date, by index. A date in Excel is a number with a
+ * date format, and reading it without the style turns 14 November into 46340
+ * — a schedule read as a column of meaningless numbers.
+ */
+function dateStyles(stylesXml: string | null): Set<number> {
+  if (!stylesXml) return new Set();
+  const custom = new Map<number, string>();
+  for (const m of stylesXml.matchAll(/<numFmt\s[^>]*>/g)) {
+    const id = Number(attr(m[0], "numFmtId"));
+    custom.set(id, unescapeXml(attr(m[0], "formatCode") ?? ""));
+  }
+  const isDate = (id: number) => {
+    if (DATE_FORMAT_IDS.has(id)) return true;
+    const code = custom.get(id);
+    if (!code) return false;
+    // Strip quoted text and colour or locale tags before looking for d/m/y/h.
+    const bare = code.replace(/"[^"]*"|\[[^\]]*\]/g, "");
+    return /[dmyh]/i.test(bare);
+  };
+  const cellXfs = /<cellXfs[^>]*>([\s\S]*?)<\/cellXfs>/.exec(stylesXml)?.[1] ?? "";
+  const dates = new Set<number>();
+  [...cellXfs.matchAll(/<xf\s[^>]*?\/?>/g)].forEach((m, i) => {
+    if (isDate(Number(attr(m[0], "numFmtId") ?? 0))) dates.add(i);
+  });
+  return dates;
+}
+
+/** An Excel serial date as ISO, keeping the time only when there is one. */
+function serialToIso(serial: number, date1904: boolean): string {
+  const epoch = date1904 ? Date.UTC(1904, 0, 1) : Date.UTC(1899, 11, 30);
+  const at = new Date(epoch + Math.round(serial * 86_400_000));
+  const iso = at.toISOString();
+  if (serial < 1) return iso.slice(11, 16); // a time of day with no date
+  return Number.isInteger(serial) ? iso.slice(0, 10) : iso.slice(0, 16).replace("T", " ");
+}
+
+type Sheet = { name: string; hidden: boolean; rows: string[][] };
+
+/** Read every sheet into rows of display strings. */
+async function readWorkbook(bytes: Uint8Array): Promise<Sheet[] | null> {
+  const workbook = await unzipEntry(bytes, "xl/workbook.xml");
+  if (!workbook) return null;
+  const decode = (b: Uint8Array | null) => (b ? new TextDecoder().decode(b) : null);
+  const workbookXml = decode(workbook) as string;
+  const relsXml = decode(await unzipEntry(bytes, "xl/_rels/workbook.xml.rels")) ?? "";
+  const sharedXml = decode(await unzipEntry(bytes, "xl/sharedStrings.xml", MAX_SHEET_XML_BYTES));
+  const styles = dateStyles(decode(await unzipEntry(bytes, "xl/styles.xml")));
+  const date1904 = /<workbookPr\s[^>]*date1904="(1|true)"/.test(workbookXml);
+
+  const shared = sharedXml
+    ? [...sharedXml.matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) => textRuns(m[1]))
+    : [];
+  const targets = new Map<string, string>();
+  for (const m of relsXml.matchAll(/<Relationship\s[^>]*>/g)) {
+    const id = attr(m[0], "Id");
+    const target = attr(m[0], "Target");
+    if (id && target) {
+      targets.set(id, target.startsWith("/") ? target.slice(1) : `xl/${target}`);
+    }
+  }
+
+  const sheets: Sheet[] = [];
+  for (const m of workbookXml.matchAll(/<sheet\s[^>]*>/g)) {
+    const name = unescapeXml(attr(m[0], "name") ?? "Sheet");
+    const path = targets.get(attr(m[0], "r:id") ?? "");
+    if (!path) continue;
+    const xml = decode(await unzipEntry(bytes, path, MAX_SHEET_XML_BYTES));
+    if (!xml) continue;
+
+    const rows: string[][] = [];
+    for (const row of xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)) {
+      const cells: string[] = [];
+      for (const c of row[1].matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+        const tag = c[1];
+        const body = c[2] ?? "";
+        const col = columnIndex(attr(` ${tag}`, "r") ?? "A");
+        if (col >= MAX_COLUMNS) continue;
+        const type = attr(` ${tag}`, "t");
+        const raw = /<v>([\s\S]*?)<\/v>/.exec(body)?.[1];
+        let value = "";
+        if (type === "s") value = shared[Number(raw)] ?? "";
+        else if (type === "inlineStr") value = textRuns(body);
+        else if (type === "b") value = raw === "1" ? "TRUE" : raw === "0" ? "FALSE" : "";
+        else if (raw !== undefined) {
+          value = unescapeXml(raw);
+          const style = Number(attr(` ${tag}`, "s") ?? 0);
+          if ((type === null || type === "n") && styles.has(style) && /^-?\d+(\.\d+)?$/.test(value)) {
+            value = serialToIso(Number(value), date1904);
+          }
+        }
+        while (cells.length < col) cells.push("");
+        cells[col] = value.replace(/\s+/g, " ").trim();
+      }
+      while (cells.length && cells[cells.length - 1] === "") cells.pop();
+      if (cells.length) rows.push(cells);
+    }
+    sheets.push({ name, hidden: /\sstate="(hidden|veryHidden)"/.test(m[0]), rows });
+  }
+  return sheets;
+}
+
+/**
+ * A workbook as text: each sheet under its name, one row per line, cells
+ * separated by " | ". Empty rows are dropped and a hidden sheet is marked, so
+ * a figure from a sheet nobody sees is not read as one everyone agreed.
+ */
+export async function extractXlsxContent(bytes: Uint8Array, fromPart = 1) {
+  const sheets = await readWorkbook(bytes);
+  if (!sheets) return null;
+
+  const text = sheets
+    .map((sheet) =>
+      `## Sheet: ${sheet.name}${sheet.hidden ? " (hidden)" : ""}\n` +
+      (sheet.rows.length ? sheet.rows.map((r) => r.join(" | ")).join("\n") : "(empty)"),
+    )
+    .join("\n\n");
+  const parts = Math.max(1, Math.ceil(text.length / MAX_TEXT_CHARS));
+  const part = Math.min(Math.max(1, Math.trunc(fromPart)), parts);
+
+  return {
+    text: text.slice((part - 1) * MAX_TEXT_CHARS, part * MAX_TEXT_CHARS),
+    chars_total: text.length,
+    parts_total: parts,
+    part,
+    next_from_page: part < parts ? part + 1 : null,
+    sheets: sheets.map((s) => ({ name: s.name, hidden: s.hidden, rows: s.rows.length })),
+  };
+}
