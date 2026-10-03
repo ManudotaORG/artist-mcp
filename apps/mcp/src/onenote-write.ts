@@ -43,6 +43,60 @@ export type PageDraft = {
 export type SectionRef = { id: string; name: string; notebook: string | null };
 
 /**
+ * A picture for the page, already fetched by the tool handler through its own
+ * Google operation. Never a model's input: the handler builds these from what
+ * `load_gmail_image` returned. See docs/decisions/0012-images-on-a-new-page.md.
+ */
+export type DraftImage = {
+  media_type: string;
+  bytes: Uint8Array;
+  width: number | null;
+  height: number | null;
+  /** Where it came from, written under it: "rider.pdf, page 3". */
+  source: string;
+  caption: string | null;
+};
+
+const MAX_IMAGES = 3;
+const MAX_CAPTION_CHARS = 300;
+const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif']);
+/** How wide a picture is shown. The stored image keeps its own resolution. */
+const DISPLAY_WIDTH = 800;
+
+/** Shape-check the handler's images, since this is still the write path. */
+export const imagesFrom = (value: unknown): DraftImage[] => {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw failure('images must be a list.');
+  if (value.length > MAX_IMAGES) {
+    throw failure(`A page takes at most ${MAX_IMAGES} images; ${value.length} were given.`);
+  }
+  return value.map((raw, i) => {
+    const image = raw as Partial<DraftImage>;
+    if (
+      !(image.bytes instanceof Uint8Array) ||
+      image.bytes.byteLength === 0 ||
+      typeof image.media_type !== 'string' ||
+      !IMAGE_TYPES.has(image.media_type) ||
+      typeof image.source !== 'string'
+    ) {
+      throw failure(`Image ${i + 1} is not a picture this tool can place.`);
+    }
+    const caption = typeof image.caption === 'string' ? image.caption.trim() : '';
+    if (caption.length > MAX_CAPTION_CHARS) {
+      throw failure(`The caption on image ${i + 1} is over ${MAX_CAPTION_CHARS} characters.`);
+    }
+    return {
+      media_type: image.media_type,
+      bytes: image.bytes,
+      width: typeof image.width === 'number' ? image.width : null,
+      height: typeof image.height === 'number' ? image.height : null,
+      source: image.source,
+      caption: caption === '' ? null : caption,
+    };
+  });
+};
+
+/**
  * The same placeholder rule the calendar enforces, and for a stronger reason.
  *
  * A page is the knowledge base. An unsettled value written into it does not
@@ -146,7 +200,7 @@ const escapeXml = (value: string): string =>
  * plain text by design and blank lines are the only structure it carries, so
  * there is no markup to preserve and nothing is lost by escaping all of it.
  */
-export const pageXhtml = (draft: PageDraft): string => {
+export const pageXhtml = (draft: PageDraft, images: DraftImage[] = []): string => {
   const paragraphs = draft.body
     .split(/\n\s*\n/)
     .map((block) => block.trim())
@@ -156,22 +210,47 @@ export const pageXhtml = (draft: PageDraft): string => {
     .map((block) => `<p>${escapeXml(block).replace(/\n/g, '<br/>')}</p>`)
     .join('');
 
+  // The only markup a picture brings is composed here. The caption and the
+  // source are escaped like the body; the part name is ours.
+  const pictures = images
+    .map((image, i) => {
+      const caption = image.caption === null ? '' : `<p>${escapeXml(image.caption)}</p>`;
+      const width =
+        image.width !== null && image.width > DISPLAY_WIDTH ? ` width="${DISPLAY_WIDTH}"` : '';
+      return (
+        caption +
+        `<img src="name:${imagePartName(i)}" alt="${escapeXml(image.caption ?? image.source)}"${width}/>` +
+        `<p style="font-size:9pt;color:#595959">From ${escapeXml(image.source)}</p>`
+      );
+    })
+    .join('');
+
   return (
     '<!DOCTYPE html><html><head>' +
     `<title>${escapeXml(draft.title)}</title>` +
     '</head><body>' +
     paragraphs +
+    pictures +
     '</body></html>'
   );
 };
 
+/** The multipart name an image travels under, and the `name:` it is cited by. */
+export const imagePartName = (i: number): string => `image${i + 1}`;
+
 /** What the musician is shown before the page exists. */
-const renderDraft = (draft: PageDraft, section: SectionRef): string =>
+const renderDraft = (draft: PageDraft, section: SectionRef, images: DraftImage[] = []): string =>
   [
     `Title:    ${draft.title}`,
     `Section:  ${section.name}${section.notebook === null ? '' : ` (in ${section.notebook})`}`,
     '',
     draft.body.trim(),
+    ...images.map(
+      (image) =>
+        `\n[Image: ${image.source}` +
+        (image.width !== null ? `, ${image.width}x${image.height}` : '') +
+        `]${image.caption === null ? '' : ` ${image.caption}`}`,
+    ),
   ].join('\n');
 
 /**
@@ -262,8 +341,18 @@ export async function createPage(
   const section = await sectionFor(token, params);
   const draft = draftFrom({ ...params, section_id: section.id });
   refuseUnsettled(draft);
+  const images = imagesFrom(params.image_parts);
 
-  const res = await onenoteCreatePage(draft.section_id, pageXhtml(draft), token);
+  const res = await onenoteCreatePage(
+    draft.section_id,
+    pageXhtml(draft, images),
+    token,
+    images.map((image, i) => ({
+      name: imagePartName(i),
+      media_type: image.media_type,
+      bytes: image.bytes,
+    })),
+  );
   const created = (await res.json().catch(() => ({}))) as {
     id?: string;
     title?: string;
@@ -273,7 +362,11 @@ export async function createPage(
 
   await record({
     operation: 'create_onenote_page',
-    summary: `Created the page "${draft.title}"`,
+    // In the summary rather than a field of its own, so the hosted audit table,
+    // which keeps fixed columns, records the images too.
+    summary:
+      `Created the page "${draft.title}"` +
+      (images.length > 0 ? ` with images from ${images.map((i) => i.source).join('; ')}` : ''),
     target: created.id ?? '(no page id returned)',
     source_page: draft.source_page,
     created_by_app_id: created.createdByAppId ?? null,
@@ -285,7 +378,7 @@ export async function createPage(
     title: created.title ?? draft.title,
     web_url: created.links?.oneNoteWebUrl?.href ?? null,
     section_name: section.name,
-    written: renderDraft(draft, section),
+    written: renderDraft(draft, section, images),
     note:
       'The page exists. This tool cannot edit or delete it — that is the permission ' +
       'it holds, not a policy it follows.',

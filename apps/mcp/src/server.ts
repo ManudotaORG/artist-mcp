@@ -112,6 +112,8 @@ type AttachmentBody = {
   images?: {
     /** Absent when the attachment is itself an image rather than a page of one. */
     page?: number;
+    /** Which picture on that page, the number create_onenote_page takes back. */
+    index?: number;
     width: number | null;
     height: number | null;
     media_type: string;
@@ -1072,7 +1074,7 @@ export const renderAttachment = (file: AttachmentBody) => {
           // whole file, and calling it "page 1" would invent a structure.
           text: img.page === undefined
             ? `\n### ${file.filename}${img.width ? ` (${img.width}x${img.height})` : ""}`
-            : `\n### Page ${img.page}, as an image (${img.width}x${img.height})`,
+            : `\n### Page ${img.page}, image ${img.index ?? 1} (${img.width}x${img.height})`,
         },
         {
           type: "image" as const,
@@ -2334,16 +2336,49 @@ const createServer = async (
             "Only when the musician named a different section. Otherwise omit it and " +
               "let source_page place the page",
           ),
+        // Optional, so a client holding the schema from before 0012 keeps working.
+        images: z
+          .array(
+            z.object({
+              email_id: z.string(),
+              attachment_id: z.string().describe("As read_gmail_attachment takes it"),
+              page: z.number().int().optional().describe("PDF only: the picture's page"),
+              index: z
+                .number()
+                .int()
+                .optional()
+                .describe("PDF only: the picture's number on that page, as announced. Default 1"),
+              crop: z
+                .object({ left: z.number(), top: z.number(), right: z.number(), bottom: z.number() })
+                .optional()
+                .describe("PDF only: the part to keep, fractions 0-1 from top-left"),
+              caption: z.string().optional(),
+            }),
+          )
+          .max(3)
+          .optional()
+          .describe(
+            "Up to 3 pictures from Gmail attachments, placed after the body: an image " +
+              "file, or a picture read_gmail_attachment showed from a PDF. Look first",
+          ),
       },
-      async (params) => {
+      async ({ images, ...params }) => {
         try {
+          // Fetched before anything is written, each on the Google token, so a
+          // picture that cannot be had means no page rather than half of one.
+          const image_parts = [];
+          for (const { caption, ...spec } of images ?? []) {
+            const image = await call<Record<string, unknown>>("load_gmail_image", spec);
+            image_parts.push({ ...image, caption: caption ?? null });
+          }
+
           const { title, web_url, section_name, written } = await call<{
             title: string;
             page_id: string | null;
             web_url: string | null;
             section_name: string;
             written: string;
-          }>("create_onenote_page", params);
+          }>("create_onenote_page", { ...params, image_parts });
 
           return {
             content: [

@@ -33,6 +33,11 @@ const SANCTIONED = {
   read_email: 'read',
   read_gmail_attachment: 'read',
   map_gmail_attachment: 'read',
+  // Not a tool: create_onenote_page's handler fetches each picture through it
+  // on the Google token before the page is created on the Microsoft one. A
+  // read; it returns bytes and writes nothing. See
+  // docs/decisions/0012-images-on-a-new-page.md.
+  load_gmail_image: 'read',
   // The same two reads against a OneNote page rather than a mail message.
   // Separate rows because the provider is resolved from this table before the
   // call runs, so a single row cannot serve both a Google and a Microsoft
