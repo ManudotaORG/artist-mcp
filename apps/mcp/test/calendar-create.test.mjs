@@ -406,31 +406,33 @@ const serving = (event) => async (url, init) => {
 };
 
 /**
- * The rule the whole capability rests on. Without it this is a tool that can
- * remove any event on the calendar, including the gigs the musician typed in
- * themselves and anything a venue shared with them.
+ * Since 0013 an event this tool did not create can be deleted, but never in one
+ * call: the first call shows it and returns a token, and deletes nothing.
  */
-test('an event this tool did not create cannot be deleted', async () => {
-  for (const id of ['abc123', 'ARTISTabc', 'someoneelse_1', '']) {
-    await assert.rejects(
-      () => withFetch(serving(ARTIST_EVENT), () => deleteEvent('t', { event_id: id })),
-      /not created by artist-mcp|malformed/,
-      `${id || '(empty)'} was not refused`,
-    );
-  }
+test('an event this tool did not create is shown first, not deleted', async () => {
+  let deletes = 0;
+  const result = await withFetch(
+    async (url, init) => {
+      if (init?.method === 'DELETE') deletes += 1;
+      return serving({ ...ARTIST_EVENT, id: 'musician1', etag: '"1"' })(url, init);
+    },
+    () => deleteEvent('t', { event_id: 'musician1' }),
+  );
+  assert.equal(deletes, 0);
+  assert.equal(result.deleted, null);
+  assert.match(result.preview, /Quartet at St Mary/);
+  assert.match(result.confirmation_token, /^[0-9a-f]{16}$/);
 });
 
-test('the refusal happens before the event is even fetched', async () => {
+test('a malformed id is refused before anything is fetched', async () => {
   let fetched = 0;
   await withFetch(
     async (...args) => {
       fetched += 1;
       return serving(ARTIST_EVENT)(...args);
     },
-    () => deleteEvent('t', { event_id: 'notours123' }).then(() => null, () => null),
+    () => assert.rejects(() => deleteEvent('t', { event_id: '' }), /malformed/),
   );
-  // A refusal that depended on reading the event would fail differently for an
-  // event that cannot be read, which is not a distinction worth having here.
   assert.equal(fetched, 0);
 });
 
@@ -451,7 +453,7 @@ test('a delete removes it in one call, and records what it said', async () => {
       () => deleteEvent('t', { event_id: ARTIST_EVENT.id }),
     );
 
-    assert.match(deleted, /\/events\/artistabc123$/);
+    assert.match(deleted, /\/events\/artistabc123\?sendUpdates=none$/);
 
     // The whole event, not a reference to it: nobody notices an absence, so the
     // record has to be enough to put it back by hand.

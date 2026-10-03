@@ -16,9 +16,11 @@ exist, each granted by name at install time with
 and waiting for your yes before it goes through:
 
 - `calendar-create` — add a single Google Calendar event.
-- `calendar-delete` — remove an event **it created itself**, never one you made
-  or one shared onto your calendar. Holding both calendar capabilities also
-  allows rescheduling such an event.
+- `calendar-delete` — remove an event. One it created goes at once; one you
+  made is shown to you first and removed only after you confirm. Holding both
+  calendar capabilities also allows editing any event in place, after you
+  confirm the change, and rescheduling an event it created. Invitations from
+  others and whole recurring series are refused, and nobody is emailed.
 - `onenote-create` — add a new page to a section.
 - `onenote-edit` — change a page **it created itself**. Microsoft enforces that
   one: the scope cannot reach a page you wrote.

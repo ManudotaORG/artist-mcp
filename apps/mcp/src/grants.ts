@@ -30,9 +30,14 @@
  */
 export const WRITE_CAPABILITIES = {
   'calendar-create': 'add a single event to a Google Calendar',
+  // Widened by 0013 without asking again, by the owner's decision: an event
+  // you made can now be removed too, after you confirm it. Holding this and
+  // calendar-create together also allows editing any event the same way.
   'calendar-delete':
-    'remove an event that artist-mcp itself created. ' +
-    'It cannot touch an event you made or one someone shared with you.',
+    'remove a calendar event, after showing it to you first unless artist-mcp ' +
+    'created it. With calendar-create it can also change an event, after ' +
+    'showing you the change. Invitations from others and whole recurring ' +
+    'series are refused, and nobody is emailed.',
   // The only capability here whose boundary is not this file's to keep.
   // `Notes.Create` permits creating pages and nothing else, so a token holding
   // it cannot edit or delete any page — verified, not assumed: a 403 on both

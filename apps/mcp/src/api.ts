@@ -521,9 +521,10 @@ export const calendarDeleteEvent = async (
   eventId: string,
   token: string,
 ): Promise<void> => {
+  // sendUpdates=none: nobody is emailed. Sending messages stays out (0013).
   const url =
     `${CALENDAR}/calendars/${encodeURIComponent(calendarId)}` +
-    `/events/${encodeURIComponent(eventId)}`;
+    `/events/${encodeURIComponent(eventId)}?sendUpdates=none`;
   const res = await fetch(url, {
     method: 'DELETE',
     headers: { authorization: `Bearer ${token}` },
@@ -553,6 +554,54 @@ export const calendarDeleteEvent = async (
   }
 
   throw new GraphError(`Google Calendar refused to delete the event (${res.status}). ${detail}`, false);
+};
+
+/**
+ * Change one event in place. The only PATCH to Google, added by 0013.
+ *
+ * `If-Match` carries the etag the confirmation was made against, so an event
+ * that changed after the preview is refused by Google (412) rather than
+ * overwritten. Not retried, like every write here. sendUpdates=none: nobody is
+ * emailed. See docs/decisions/0013-editing-any-calendar-event.md.
+ */
+export const calendarPatchEvent = async (
+  calendarId: string,
+  eventId: string,
+  body: Record<string, unknown>,
+  etag: string,
+  token: string,
+): Promise<Response> => {
+  const url =
+    `${CALENDAR}/calendars/${encodeURIComponent(calendarId)}` +
+    `/events/${encodeURIComponent(eventId)}?sendUpdates=none`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+      'if-match': etag,
+    },
+    body: JSON.stringify(body),
+  });
+  if (res.ok) return res;
+
+  const detail = (await res.text().catch(() => '')).slice(0, 300);
+  if (res.status === 403 && /insufficient|ACCESS_TOKEN_SCOPE/i.test(detail)) {
+    throw new ScopeError(
+      'This Google connection cannot change calendar events. Reconnect with ' +
+        '`artist-mcp connect google` to grant it.',
+      'change calendar events',
+      false,
+    );
+  }
+  if (res.status === 412) {
+    throw new GraphError(
+      'The event changed after it was shown to you, so nothing was written. Ask ' +
+        'for the change again to see it as it is now.',
+      false,
+    );
+  }
+  throw new GraphError(`Google Calendar refused to change the event (${res.status}). ${detail}`, false);
 };
 
 export const CALENDAR_LIST_NEED: ScopeNeed = {

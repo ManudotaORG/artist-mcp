@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { WRITE_CAPABILITIES, isGranted, type WriteCapability } from "./grants.js";
 import { listAgentWorkflows, loadAgentWorkflow, type ResolvedEntry } from "./agents.js";
+import { COLOR_NAMES } from "./calendar.js";
 import { GraphError } from "./client.js";
 import { call as localCall, type Operation } from "./dispatch.js";
 import {
@@ -150,6 +151,7 @@ type EventSummary = {
   all_day: boolean;
   time_zone: string | null;
   recurring: boolean;
+  color: string;
 };
 
 type EventBody = EventSummary & {
@@ -2118,6 +2120,7 @@ const createServer = async (
           .describe("IANA name such as Europe/Madrid. Required for a timed event."),
         location: z.string().optional().describe("Where, as the source words it"),
         description: z.string().optional().describe("Notes to carry onto the event"),
+        color: z.enum(COLOR_NAMES).optional().describe("Only when the musician asked for one"),
         calendar_id: z
           .string()
           .optional()
@@ -2202,6 +2205,7 @@ const createServer = async (
         time_zone: z.string().optional(),
         location: z.string().optional(),
         description: z.string().optional(),
+        color: z.enum(COLOR_NAMES).optional().describe("Omit to keep the current one"),
         source_page: z.string().optional().describe(SOURCE_PAGE),
       },
       async (params) => {
@@ -2243,41 +2247,100 @@ const createServer = async (
     );
   }
 
+  // Since 0013 any event you organise, behind a confirmation unless artist-mcp
+  // created it. The confirmation is a second call to this same tool, not a
+  // preview tool beside it: the tool list is paid on every request.
   if (isGranted(grants, "calendar-delete")) {
     server.tool(
       "delete_calendar_event",
-      WRITE_CONSENT +
-        "Deletes ONE event that artist-mcp itself created. It cannot delete an " +
-        "event the musician made, or one shared onto their calendar — those are " +
-        "refused. It cannot change an event, only remove it, and there is no " +
-        "bulk form. The result is the whole event as it was, read from Google " +
-        "before removing it. Google keeps a deleted event in that calendar's bin " +
-        "for 30 days.",
+      "Deletes ONE event. An event artist-mcp created goes at once. Any other " +
+        "event returns a preview and a confirmation_token and deletes nothing: " +
+        "show the musician the preview, and only after their yes call again with " +
+        "the token. Invitations from others and whole recurring series are " +
+        "refused. Nobody is emailed. Google keeps a deleted event in that " +
+        "calendar's bin for 30 days. There is no bulk form.",
       {
-        event_id: z.string().describe("The id of the event, as returned when it was created"),
+        event_id: z.string().describe("The id of the event, from list_events"),
         calendar_id: z
           .string()
           .optional()
           .describe("Which calendar it is on. Defaults to the primary one."),
+        confirmation_token: z
+          .string()
+          .optional()
+          .describe("From the preview, once the musician said yes. Never invent one"),
         source_page: z.string().optional().describe(SOURCE_PAGE),
       },
       async (params) => {
         try {
-          const { deleted, calendar_id } = await call<{
-            deleted: string;
+          const r = await call<{
+            deleted: string | null;
+            preview?: string;
+            attendees?: string | null;
+            confirmation_token?: string;
             calendar_id: string;
           }>("delete_calendar_event", params);
 
-          return {
-            content: [
-              {
-                type: "text",
-                text:
-                  `Deleted from ${calendar_id}:\n\n${deleted}\n\n` +
-                  "In the calendar's bin for 30 days.",
-              },
-            ],
-          };
+          const text =
+            r.deleted === null
+              ? `Not deleted yet. This event is the musician's own:\n\n${r.preview}\n\n` +
+                (r.attendees ? `${r.attendees}\n\n` : "") +
+                `Show them this. Only after their yes, call again with confirmation_token ${r.confirmation_token}.`
+              : `Deleted from ${r.calendar_id}:\n\n${r.deleted}\n\nIn the calendar's bin for 30 days.`;
+          return { content: [{ type: "text", text }] };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+  }
+
+  // 0013: one event changed in place, behind a confirmation bound to its etag.
+  // Gated like reschedule on both calendar grants, so no one is asked again.
+  if (isGranted(grants, "calendar-create") && isGranted(grants, "calendar-delete")) {
+    server.tool(
+      "edit_calendar_event",
+      "Changes ONE event in place, including one the musician made: title, " +
+        "times, location, notes or colour. Pass only what changes. The first call " +
+        "writes nothing and returns the change and a confirmation_token: show the " +
+        "musician, and only after their yes call again with the same values and " +
+        "the token. Invitations from others and whole recurring series are " +
+        "refused, and nobody is emailed. A value the notebook has not settled is " +
+        "refused.",
+      {
+        event_id: z.string().describe("The id of the event, from list_events"),
+        calendar_id: z.string().optional().describe("Which calendar it is on. Defaults to the primary one."),
+        summary: z.string().optional(),
+        start: z.string().optional().describe("With end. As create_calendar_event takes it"),
+        end: z.string().optional(),
+        time_zone: z.string().optional(),
+        location: z.string().optional(),
+        description: z.string().optional().describe("Replaces the notes whole"),
+        color: z.enum([...COLOR_NAMES, "default"] as [string, ...string[]]).optional(),
+        confirmation_token: z
+          .string()
+          .optional()
+          .describe("From the first call, once the musician said yes. Never invent one"),
+        source_page: z.string().optional().describe(SOURCE_PAGE),
+      },
+      async (params) => {
+        try {
+          const r = await call<{
+            changed: string | null;
+            before?: string;
+            changes: string;
+            attendees?: string | null;
+            confirmation_token?: string;
+            calendar_id: string;
+          }>("edit_calendar_event", params);
+
+          const text =
+            r.changed === null
+              ? `Not changed yet. The event now:\n\n${r.before}\n\nThe change:\n\n${r.changes}\n\n` +
+                (r.attendees ? `${r.attendees}\n\n` : "") +
+                `Show them this. Only after their yes, call again with the same values and confirmation_token ${r.confirmation_token}.`
+              : `Changed in ${r.calendar_id}:\n\n${r.changes}\n\nThe event now:\n\n${r.changed}`;
+          return { content: [{ type: "text", text }] };
         } catch (err) {
           return errorResult(err);
         }
@@ -2870,7 +2933,10 @@ const createServer = async (
         const lines = events.map((e) => {
           const where = e.location ? ` — ${e.location}` : "";
           const repeats = e.recurring ? " (recurring)" : "";
-          return `- ${e.summary} — ${when(e)}${where}${repeats}\n  id: ${e.id}`;
+          // Named only when the event has its own; "calendar default" on every
+          // line would be paid for on every list.
+          const colour = e.color && e.color !== "calendar default" ? ` [${e.color}]` : "";
+          return `- ${e.summary} — ${when(e)}${where}${repeats}${colour}\n  id: ${e.id}`;
         });
 
         // Said plainly, because "nothing else is booked" and "the rest was one
@@ -2909,6 +2975,7 @@ const createServer = async (
           `Where: ${e.location ?? "unknown"}`,
           ...(e.status && e.status !== "confirmed" ? [`Status: ${e.status}`] : []),
           ...(e.recurring ? ["Part of a recurring series"] : []),
+          `Colour: ${e.color}`,
           `Organizer: ${e.organizer ?? "unknown"}`,
           ...(e.attendees.length > 0
             ? [

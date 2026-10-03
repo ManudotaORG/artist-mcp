@@ -115,12 +115,14 @@ npx @manudota/artist-mcp init --allow-writes onenote-create,calendar-create
 | Capability | What it allows |
 | --- | --- |
 | `calendar-create` | Add a single event to a Google Calendar |
-| `calendar-delete` | Remove an event this tool itself created; it cannot touch one you made |
+| `calendar-delete` | Remove an event. One you made is shown first and removed only after you confirm |
 | `onenote-create` | Add a new page to a section |
 | `onenote-edit` | Change a page this tool itself created — append, or replace part of one. Microsoft enforces this: the scope cannot reach a page you wrote |
 
-Granting `calendar-create` and `calendar-delete` together also allows
-rescheduling an event this tool created.
+Granting `calendar-create` and `calendar-delete` together also allows editing
+any event in place (title, times, location, notes, colour) after you confirm the
+change, and rescheduling an event this tool created. Invitations from others and
+whole recurring series are refused, and nobody is emailed.
 
 Three things hold for all of them. A capability you did not grant registers no
 tool at all, so it cannot be invoked, argued for, or reached by mistake. Every

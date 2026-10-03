@@ -57,6 +57,9 @@ const SANCTIONED = {
   // calendar-create and calendar-delete, so it can reach nothing those two
   // could not reach separately.
   reschedule_calendar_event: 'write',
+  // 0013: one event changed in place, the musician's own included, behind a
+  // confirmation bound to its etag. Gated on both calendar grants.
+  edit_calendar_event: 'write',
   // The first write to OneNote, and the first whose boundary is not ours. It
   // is gated on onenote-create, whose scope `Notes.Create` cannot express an
   // edit or a delete — so there is deliberately no update or delete row here
@@ -125,7 +128,8 @@ test('the HTTP layer sends exactly one non-GET, and it is the sanctioned one', a
   // any method would be a way round everything else asserted here.
   assert.deepEqual(
     nonGet,
-    ['POST', 'POST', 'DELETE', 'POST', 'POST', 'PATCH'],
+    // 0013 added the second PATCH, calendarPatchEvent.
+    ['POST', 'POST', 'DELETE', 'PATCH', 'POST', 'POST', 'PATCH'],
     `api.ts sends ${nonGet.join(', ') || 'nothing but GET'}. Any change here is a boundary change.`,
   );
 });
@@ -205,36 +209,32 @@ test('a OneNote page can be edited but never deleted', async () => {
   );
 });
 
-test('nothing can update an event', async () => {
+/**
+ * 0013 reversed "nothing can update an event": the musician's events can now be
+ * changed. What this guards instead is the shape of that one path. There is
+ * exactly one calendar PATCH; it carries the etag the confirmation was made
+ * against and never emails anyone; and no PUT exists, since a PUT replaces the
+ * whole event and would drop every field the caller did not restate.
+ */
+test('the one calendar update is guarded, silent, and never a PUT', async () => {
   const api = await readFile(resolve(srcRoot, 'api.ts'), 'utf8');
+  assert.doesNotMatch(api, /method\s*:\s*['"`]PUT/i, 'api.ts can send PUT');
 
-  // api.ts now contains exactly one PATCH, and it belongs to OneNote. Cutting
-  // that helper out and asserting over the remainder keeps this rule absolute
-  // for Calendar rather than weakening it to "no PATCH except somewhere":
-  // rescheduling still creates and deletes, precisely so that an event id can
-  // go on being a hash of the event's own contents.
-  const at = api.indexOf('export const onenotePatchPage');
-  assert.notEqual(at, -1, 'the sanctioned OneNote PATCH helper was renamed or removed');
-  const beforeOnenotePatch = api.slice(0, at);
-
-  for (const method of ['PATCH', 'PUT']) {
-    assert.doesNotMatch(
-      beforeOnenotePatch,
-      new RegExp(`method\\s*:\\s*['"\`]${method}`, 'i'),
-      `api.ts can send ${method} outside the OneNote patch helper. calendar.events ` +
-        'grants it; only this repository refuses it.',
-    );
-  }
+  const at = api.indexOf('export const calendarPatchEvent');
+  assert.notEqual(at, -1, 'the calendar PATCH helper was renamed or removed');
+  const helper = api.slice(at, api.indexOf('\n};', at));
+  assert.match(helper, /'if-match': etag/, 'the calendar PATCH lost its If-Match');
+  assert.match(helper, /sendUpdates=none/, 'the calendar PATCH can email attendees');
+  assert.match(api, /events\/\$\{encodeURIComponent\(eventId\)\}\?sendUpdates=none`;\n  const res = await fetch\(url, \{\n    method: 'DELETE'/,
+    'the calendar DELETE can email attendees');
 });
 
-test('only an event this tool created can be deleted', async () => {
+test('an event this tool did not create is changed only with a confirmation', async () => {
   const calendar = await readFile(resolve(srcRoot, 'calendar.ts'), 'utf8');
-  assert.match(
-    calendar,
-    /startsWith\(ARTIST_ID_PREFIX\)/,
-    'The prefix check is what makes deleting safe to offer. Without it this is ' +
-      'a tool that can remove any event on the calendar.',
-  );
+  // Deleting one of the musician's events, and every edit, goes through the
+  // token check before the write helper is reached.
+  assert.match(calendar, /if \(!eventId\.startsWith\(ARTIST_ID_PREFIX\)\) \{\n    const expected = await confirmationFor\('delete'/);
+  assert.match(calendar, /const expected = await confirmationFor\('edit'/);
 });
 
 /**
@@ -253,7 +253,7 @@ test('no module outside the sanctioned list exports a write-shaped helper', asyn
   // and CRUD words. A write can be named for what it accomplishes rather than
   // for how, and this guard has now missed that twice.
   const suspicious =
-    /export\s+(?:const|function|async function)\s+(\w*(?:post|put|patch|delete|insert|create|send|write|reschedule|move|replace)\w*)/gi;
+    /export\s+(?:const|function|async function)\s+(\w*(?:post|put|patch|delete|insert|create|send|write|reschedule|move|replace|edit)\w*)/gi;
   // Every module that can reach the network, not merely the ones that write
   // today. A new file is the third way this guard can go blind — after the
   // capital-D pattern and the verb-shaped names — because a module absent from
@@ -272,6 +272,9 @@ test('no module outside the sanctioned list exports a write-shaped helper', asyn
   const SANCTIONED = [
     'api.ts:calendarInsertEvent',
     'api.ts:calendarDeleteEvent',
+    // 0013: the calendar PATCH and the edit that reaches it.
+    'api.ts:calendarPatchEvent',
+    'calendar.ts:editEvent',
     'calendar.ts:createEvent',
     'calendar.ts:deleteEvent',
     // A read: it fetches the event so a deletion is confirmed against what is
@@ -314,6 +317,15 @@ test('no module outside the sanctioned list exports a write-shaped helper', asyn
     // matches the shape, not the effect.
     'onenote-patch.ts:insertCommand',
     'onenote-patch.ts:preImage',
+    // The 0004 edit path. Never scanned until 0013 added `edit` to the pattern:
+    // the guard was blind to the whole of it, a fourth way it went blind. The
+    // write is applyEdit; the rest shape, read or bind the change.
+    'onenote-patch.ts:editFrom',
+    'onenote-patch.ts:editToken',
+    'onenote-patch.ts:readEditableParts',
+    'onenote-patch.ts:editablePartsFrom',
+    'onenote-patch.ts:previewEdit',
+    'onenote-patch.ts:applyEdit',
   ];
   const found = [];
   for (const file of files) {

@@ -382,8 +382,8 @@ const PROVIDER_LABEL: Record<string, string> = {
  * user is entitled to be told rather than left to discover.
  *
  * Every limit named here is a real one and none of them is this page's to keep.
- * A calendar event this tool did not create is unreachable because of the id
- * prefix; a OneNote page cannot be edited or deleted by anything, including the
+ * Since 0013 a calendar event you made can be changed or removed, only after the
+ * change is shown and confirmed; a OneNote page cannot be edited or deleted by anything, including the
  * tool that made it, because the permission cannot express it.
  */
 const Writes = ({ granted, connected }: { granted: boolean; connected: Set<string> }) => (
@@ -393,7 +393,7 @@ const Writes = ({ granted, connected }: { granted: boolean; connected: Set<strin
     </Typography>
     <Typography variant="small" className="mt-2">
       {granted
-        ? 'ALLOWED — IT CAN ADD A CALENDAR EVENT AND REMOVE ONE IT ADDED ITSELF, AND IT CAN ADD A NEW ONENOTE PAGE. EVERY WRITE IS SHOWN TO YOU FIRST AND WAITS FOR YOUR YES. IT CANNOT TOUCH AN EVENT YOU MADE, CANNOT CHANGE AN EVENT, AND CANNOT CHANGE OR DELETE ANY ONENOTE PAGE — INCLUDING THE ONES IT CREATES.'
+        ? 'ALLOWED — IT CAN ADD, CHANGE AND REMOVE CALENDAR EVENTS, INCLUDING ONES YOU MADE, AND ADD ONENOTE PAGES AND SECTIONS. A CHANGE OR REMOVAL OF YOUR OWN EVENT IS SHOWN TO YOU FIRST AND WAITS FOR YOUR YES, AND NOBODY IS EMAILED. IT CANNOT TOUCH AN INVITATION FROM SOMEONE ELSE OR A WHOLE RECURRING SERIES, AND CANNOT DELETE ANY ONENOTE PAGE.'
         : 'NOT ALLOWED — READ ONLY. NOTHING CAN CHANGE YOUR CALENDAR OR YOUR NOTES.'}
     </Typography>
 
