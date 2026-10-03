@@ -90,6 +90,8 @@ type Attachment = {
 type AttachmentBody = {
   filename: string;
   mime_type: string;
+  /** The sender's generic label, when the file's own bytes said otherwise. */
+  sent_as?: string;
   /** Null when it was never knowable -- a page resource refused at the cap. */
   size: number | null;
   /** What we managed to make of it, which the note explains in words. */
@@ -126,6 +128,8 @@ type AttachmentBody = {
 type AttachmentMap = {
   filename: string;
   mime_type: string;
+  /** The sender's generic label, when the file's own bytes said otherwise. */
+  sent_as?: string;
   /** Null when it was never knowable -- a page resource refused at the cap. */
   size: number | null;
   kind: "text" | "scan" | "image" | "unsupported" | "unreadable" | "too_large";
@@ -1000,7 +1004,7 @@ export const renderAttachmentMap = (map: AttachmentMap) => {
       const head = [
         `# ${map.filename}`,
         "",
-        `Type: ${map.mime_type}`,
+        `Type: ${map.mime_type}${map.sent_as ? ` (sent as ${map.sent_as}, read by its contents)` : ""}`,
         // Omitted rather than zeroed: see tooLargeResult.
         ...(map.size === null ? [] : [`Size: ${describeSize(map.size)}`]),
       ].join("\n");
@@ -1027,7 +1031,7 @@ export const renderAttachment = (file: AttachmentBody) => {
       const head = [
         `# ${file.filename}`,
         "",
-        `Type: ${file.mime_type}`,
+        `Type: ${file.mime_type}${file.sent_as ? ` (sent as ${file.sent_as}, read by its contents)` : ""}`,
         ...(file.size === null ? [] : [`Size: ${describeSize(file.size)}`]),
         ...(file.unit === "part"
           ? [
