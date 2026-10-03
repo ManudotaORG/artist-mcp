@@ -1,5 +1,68 @@
 # Changelog
 
+## [3.0.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v2.4.0...artist-mcp-v3.0.0) (2026-10-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* **mcp:** preview_calendar_event, preview_calendar_reschedule, preview_calendar_delete and preview_onenote_page no longer exist, and the four committing tools no longer take confirmation_token. Clients holding a cached tool list must refresh it.
+
+### Features
+
+* **mcp:** commit reversible writes in one call ([2ae611f](https://github.com/ManudotaORG/artist-mcp/commit/2ae611f357483b12f05ed82c95b270b7b16c2634))
+* **mcp:** create a OneNote section ([f08aa27](https://github.com/ManudotaORG/artist-mcp/commit/f08aa277ff33c2e191999d6e93c4e944c4bda8c0))
+* **mcp:** create a OneNote section ([a5b8983](https://github.com/ManudotaORG/artist-mcp/commit/a5b898303ae26aeaaf19dde063d952b69628bea5))
+* **mcp:** create a OneNote section ([e7107c6](https://github.com/ManudotaORG/artist-mcp/commit/e7107c6dd812f97ebfc13066e503ff7ac70e4014))
+* **mcp:** discover an organised notebook by section, keep the map for intake ([f7bda50](https://github.com/ManudotaORG/artist-mcp/commit/f7bda505cba601b8bd02b5a52df534654f5c38ba))
+* **mcp:** discover an organised notebook by section, keep the map for intake ([cc1e254](https://github.com/ManudotaORG/artist-mcp/commit/cc1e254f0f2e58f2b1ed79f45ebf11a61c1e4c76))
+* **mcp:** discover an organised notebook by section, keep the map for intake ([8d38b4c](https://github.com/ManudotaORG/artist-mcp/commit/8d38b4c61624bd681d279c1f91975ff0b6429d50))
+* **mcp:** discover an organised notebook by section, keep the map for intake ([c4ed61f](https://github.com/ManudotaORG/artist-mcp/commit/c4ed61fa1cc030eba6ef93cc3e0a0d55b8d20b96))
+* **mcp:** edit and delete any calendar event, and event colours ([7437c04](https://github.com/ManudotaORG/artist-mcp/commit/7437c04fd9a7b0200917e1977d1f7a6b6ab39d03))
+* **mcp:** edit and delete any calendar event, and event colours ([e9d6e47](https://github.com/ManudotaORG/artist-mcp/commit/e9d6e474be3722825fbbdef194024eef482a60d3))
+* **mcp:** edit and delete any calendar event, and event colours ([bd6dc70](https://github.com/ManudotaORG/artist-mcp/commit/bd6dc70636cbf1896b6283b3e53c87980b0f5071))
+* **mcp:** place Gmail attachment pictures on a new OneNote page ([43d1fa9](https://github.com/ManudotaORG/artist-mcp/commit/43d1fa9f0d3898e3f15da7cd364672be98a4c891))
+* **mcp:** place Gmail attachment pictures on a new OneNote page ([c5a0c88](https://github.com/ManudotaORG/artist-mcp/commit/c5a0c880a4fdc7bb61a3a32ed6a3773272d45750))
+* **mcp:** place Gmail attachment pictures on a new OneNote page ([a93d7a3](https://github.com/ManudotaORG/artist-mcp/commit/a93d7a3555f84ef97ef5253802ed57092cbee645))
+* **mcp:** read Excel .xlsx attachments ([e1818f6](https://github.com/ManudotaORG/artist-mcp/commit/e1818f66cd576b59725db6eaf4e0206c074bb430))
+* **mcp:** read Excel .xlsx attachments ([30abbee](https://github.com/ManudotaORG/artist-mcp/commit/30abbee72fdd7d403f6ee38d6ea32ef9cf7c0f36))
+* **mcp:** read Excel .xlsx attachments ([f4a4403](https://github.com/ManudotaORG/artist-mcp/commit/f4a440344c7aaae4474f3503ad2bc3f8fa39753e))
+
+
+### Bug Fixes
+
+* **mcp:** ask for the notebook to be named only where it could be wrong ([7e089ac](https://github.com/ManudotaORG/artist-mcp/commit/7e089ac4c3b801ef13aff013d2d8a1f52b79ee79)), closes [#229](https://github.com/ManudotaORG/artist-mcp/issues/229)
+* **mcp:** batch the notebook walk so map_notes fits the hosted limit ([0d6ea54](https://github.com/ManudotaORG/artist-mcp/commit/0d6ea548796f7a4b6bbb1735b42a953c5a03519a))
+* **mcp:** batch the notebook walk so map_notes fits the hosted limit ([e010068](https://github.com/ManudotaORG/artist-mcp/commit/e0100686fcbba0169de0887d8a9658f48bcab6a8))
+* **mcp:** batch the notebook walk so map_notes fits the hosted limit ([2260b2b](https://github.com/ManudotaORG/artist-mcp/commit/2260b2b73e68f29bc99b949727cb03fd7dad64fb))
+* **mcp:** batch the notebook walk so map_notes fits the hosted limit ([829590a](https://github.com/ManudotaORG/artist-mcp/commit/829590a83e426c0d90a9439e4800d96f4fe70e43))
+* **mcp:** make task tags part of writing a task table ([5afe994](https://github.com/ManudotaORG/artist-mcp/commit/5afe994a61c0548d33d6d51f82bd84e1fe3f0dd4)), closes [#193](https://github.com/ManudotaORG/artist-mcp/issues/193)
+* **mcp:** offer only a project's CL Aufgaben page as the update target ([d193ac2](https://github.com/ManudotaORG/artist-mcp/commit/d193ac2ec4870b925508f2578ff07f6af5841033))
+* **mcp:** offer only a project's CL Aufgaben page as the update target ([8a8b292](https://github.com/ManudotaORG/artist-mcp/commit/8a8b2925e12d48c309ce0674f9ad818c135efb53))
+* **mcp:** offer only a project's CL Aufgaben page as the update target ([630bce7](https://github.com/ManudotaORG/artist-mcp/commit/630bce703360c2e077d0f496a54c6cc4399e1f64)), closes [#225](https://github.com/ManudotaORG/artist-mcp/issues/225)
+* **mcp:** page the section listing with $skip, not nextLink ([b1aa56c](https://github.com/ManudotaORG/artist-mcp/commit/b1aa56c80a688a2f2f64cb1c709a9c3d4a7db6df))
+* **mcp:** page the section listing with $skip, not nextLink ([755ce4a](https://github.com/ManudotaORG/artist-mcp/commit/755ce4a5a937210beda18157236bb1c3d0ed79a2))
+* **mcp:** page the section listing with $skip, not nextLink ([252079b](https://github.com/ManudotaORG/artist-mcp/commit/252079b3ded565cce0fa79ef47c5417bd44f5b3b))
+* **mcp:** read attachments by their contents when the label is generic ([69991d1](https://github.com/ManudotaORG/artist-mcp/commit/69991d1111b40211115b7b64292bebef6ae69d3c))
+* **mcp:** read attachments by their contents when the label is generic ([05658d9](https://github.com/ManudotaORG/artist-mcp/commit/05658d9bf9eab3a6a94d82ab1bdf3de21d079726))
+* **mcp:** read attachments by their contents when the label is generic ([0fcbda7](https://github.com/ManudotaORG/artist-mcp/commit/0fcbda73ba37c3c26d08deffd89b6c89e6c813ed))
+* **mcp:** read every page of the section listing ([a00df98](https://github.com/ManudotaORG/artist-mcp/commit/a00df98e9ad3ec4a3812f75fc0b21551e51a7f95))
+* **mcp:** read every page of the section listing ([d0dd633](https://github.com/ManudotaORG/artist-mcp/commit/d0dd63344273ea7e5479d8d5d011f443b0e8517d))
+* **mcp:** read Google client config from production on staging builds ([25330d7](https://github.com/ManudotaORG/artist-mcp/commit/25330d7595286699984bb1eaad3bb94d540841fe))
+* **mcp:** read Google client config from production on staging builds ([a561e73](https://github.com/ManudotaORG/artist-mcp/commit/a561e7332b47340d5b253cec562e55fc284539ac))
+* **mcp:** read Google client config from production on staging builds ([772d936](https://github.com/ManudotaORG/artist-mcp/commit/772d93625ce344ac6c86fcd62d9b53d5892ab4bf))
+* **mcp:** read Google client config from production on staging builds ([322b863](https://github.com/ManudotaORG/artist-mcp/commit/322b863a2062e4655a3f0ed420c0856def0db46d)), closes [#194](https://github.com/ManudotaORG/artist-mcp/issues/194)
+* **mcp:** report facts, failures and contradictions, and nothing else unasked ([48869e2](https://github.com/ManudotaORG/artist-mcp/commit/48869e235002062fd169ccead64f5b9dead0e9cd))
+* **mcp:** report facts, failures and contradictions, and nothing else unasked ([5a9409f](https://github.com/ManudotaORG/artist-mcp/commit/5a9409f6aea84aac859e78868a2db10a8ee7bb83))
+* **mcp:** spend less of OneNote's hourly request budget ([9d710d0](https://github.com/ManudotaORG/artist-mcp/commit/9d710d00c238a1ce85023bbc34e5d47ff1098e24))
+* **mcp:** spend less of OneNote's hourly request budget ([a16f43b](https://github.com/ManudotaORG/artist-mcp/commit/a16f43bc3bcb7f9fb5b0cc2c42c74e0155460cad))
+* **mcp:** spend less of OneNote's hourly request budget ([82c41bd](https://github.com/ManudotaORG/artist-mcp/commit/82c41bd3ec6a196c41d4181cc4924070a49b2db4))
+* **mcp:** spend less of OneNote's hourly request budget ([2d63e9c](https://github.com/ManudotaORG/artist-mcp/commit/2d63e9caa6a14414aeee3c30706726d326847e40))
+* **mcp:** stop write and evidence tools narrating their results ([2ad618f](https://github.com/ManudotaORG/artist-mcp/commit/2ad618f2bcc4c4ff1e7a83bc39f4c04bf1de3e8f)), closes [#229](https://github.com/ManudotaORG/artist-mcp/issues/229)
+* **mcp:** task tags are the record, and written with every task ([06debf8](https://github.com/ManudotaORG/artist-mcp/commit/06debf892d83a0b5e1d918cb3b33ec4bae83d8ec))
+* **mcp:** task tags are the record, and written with every task ([dbcd344](https://github.com/ManudotaORG/artist-mcp/commit/dbcd34462224a255c7932707703ce8a2f973a538))
+* **mcp:** task tags are the record, and written with every task ([ce42fdb](https://github.com/ManudotaORG/artist-mcp/commit/ce42fdb9291f640e36c44b0764d4d8cc2c084f01))
+* **mcp:** trim what tool output tells the model to say ([4e3c2e8](https://github.com/ManudotaORG/artist-mcp/commit/4e3c2e84e20b56a2aea16160a3dc9c02382eb166)), closes [#229](https://github.com/ManudotaORG/artist-mcp/issues/229)
+
 ## [2.4.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v2.3.1...artist-mcp-v2.4.0) (2026-09-13)
 
 
