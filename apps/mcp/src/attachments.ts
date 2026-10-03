@@ -903,12 +903,13 @@ export function imageSize(bytes: Uint8Array): { width: number; height: number } 
  * pixels that have to be encoded before they can travel.
  */
 export function imageResult(
-  meta: { filename: string; mime_type: string; size: number | null },
+  meta: { filename: string; mime_type: string; size: number | null; sent_as?: string },
   bytes: Uint8Array,
 ) {
   const base = {
     filename: meta.filename,
     mime_type: meta.mime_type,
+    ...(meta.sent_as ? { sent_as: meta.sent_as } : {}),
     size: meta.size ?? bytes.byteLength,
     text: "",
   };
@@ -1058,13 +1059,83 @@ export type AttachmentMeta = {
   filename: string;
   mime_type: string;
   size: number | null;
+  /** The type the sender gave, when it was generic and the file said otherwise. */
+  sent_as?: string;
 };
+
+/**
+ * Labels that say nothing about what a file is. Outlook for Android, among
+ * others, sends every attachment as application/octet-stream, and a reader
+ * that trusts the label turns away a perfectly good PDF.
+ */
+const GENERIC_TYPES = new Set([
+  "",
+  "application/octet-stream",
+  "binary/octet-stream",
+  "application/binary",
+  "application/unknown",
+  "application/x-download",
+  "application/force-download",
+]);
+
+const BY_EXTENSION: Record<string, string> = {
+  pdf: "application/pdf",
+  docx: DOCX_TYPE,
+  xlsx: XLSX_TYPE,
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  webp: "image/webp",
+};
+
+/**
+ * What a file is, from its own bytes. The first bytes of a PDF and of each
+ * image format are fixed, and an Office file is a ZIP whose central directory
+ * names its main part in plain text. Null when nothing matches.
+ */
+export function sniffType(bytes: Uint8Array): string | null {
+  const head = String.fromCharCode(...bytes.subarray(0, 12));
+  if (head.startsWith("%PDF-")) return "application/pdf";
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  if (head.startsWith("\x89PNG")) return "image/png";
+  if (head.startsWith("GIF8")) return "image/gif";
+  if (head.startsWith("RIFF") && head.slice(8, 12) === "WEBP") return "image/webp";
+  if (head.startsWith("PK\x03\x04")) {
+    // The central directory sits at the end; its names are stored as text.
+    const tail = new TextDecoder("latin1").decode(bytes.subarray(Math.max(0, bytes.length - 256 * 1024)));
+    if (tail.includes("word/document.xml")) return DOCX_TYPE;
+    if (tail.includes("xl/workbook.xml")) return XLSX_TYPE;
+  }
+  return null;
+}
+
+/**
+ * Replace a generic label with what the file really is: by its bytes first,
+ * then by its extension. A specific label is left alone. The label the sender
+ * gave is kept in `sent_as`, so the answer can say it was overridden.
+ */
+export function realType<T extends AttachmentMeta>(meta: T, bytes: Uint8Array | null): T {
+  if (!GENERIC_TYPES.has(meta.mime_type.trim().toLowerCase())) return meta;
+  const extension = /\.([a-z0-9]+)$/i.exec(meta.filename)?.[1]?.toLowerCase() ?? "";
+  const detected = (bytes ? sniffType(bytes) : null) ?? BY_EXTENSION[extension] ?? null;
+  return detected ? { ...meta, mime_type: detected, sent_as: meta.mime_type || "(no type)" } : meta;
+}
+
+/** The loader's result with its label corrected, for every reader below. */
+async function loadTyped(load: AttachmentLoader) {
+  const loaded = await load();
+  return loaded.oversized
+    ? { ...loaded, meta: realType(loaded.meta, null) }
+    : { ...loaded, meta: realType(loaded.meta, loaded.bytes) };
+}
 
 /** The refusal, worded once so reading and mapping cannot drift apart. */
 function tooLargeResult(meta: AttachmentMeta) {
   return {
     filename: meta.filename,
     mime_type: meta.mime_type,
+    ...(meta.sent_as ? { sent_as: meta.sent_as } : {}),
     // Null, not 0. A size nobody measured must not arrive as a number: the
     // renderer shows no size line at all rather than "0 B" beside a note
     // saying the file is at least the limit. See issue #70.
@@ -1101,13 +1172,14 @@ export async function mapAttachment(
    */
   readTool: string,
 ) {
-  const loaded = await load();
+  const loaded = await loadTyped(load);
   if (loaded.oversized) return tooLargeResult(loaded.meta);
   const { meta, bytes } = loaded;
 
   const base = {
     filename: meta.filename,
     mime_type: meta.mime_type,
+    ...(meta.sent_as ? { sent_as: meta.sent_as } : {}),
     size: meta.size ?? bytes.byteLength,
   };
 
@@ -1202,7 +1274,7 @@ export async function readAttachment(
   ) {
     throw failure("page_count must be a number of pages, 1 or greater.");
   }
-  const loaded = await load();
+  const loaded = await loadTyped(load);
   if (loaded.oversized) return tooLargeResult(loaded.meta);
   const { meta, bytes } = loaded;
 
@@ -1210,6 +1282,7 @@ export async function readAttachment(
   const base = {
     filename: meta.filename,
     mime_type: meta.mime_type,
+    ...(meta.sent_as ? { sent_as: meta.sent_as } : {}),
     size: meta.size ?? bytes.byteLength,
   };
 
@@ -1484,7 +1557,7 @@ export async function loadPageImage(
   const index = positive(params.index, "index");
   const crop = cropFrom(params.crop);
 
-  const loaded = await load();
+  const loaded = await loadTyped(load);
   if (loaded.oversized) {
     throw failure(tooLargeResult(loaded.meta).note);
   }
