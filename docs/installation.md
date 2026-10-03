@@ -212,10 +212,13 @@ cmd.exe rewrites the comma, so both forms are accepted rather than one being
 insisted on.
 
 `--allow-writes calendar-create,calendar-delete` also lets it remove an event
-it created itself, identified by the `artist` prefix on the event id, through
-`delete_calendar_event`. Holding both also adds `reschedule_calendar_event`. An event
-you made, or one shared onto your calendar, is refused — this is an undo for its
-own mistakes, not calendar management. Google keeps a deleted event in that
+through `delete_calendar_event`. An event it created (the `artist` prefix on the
+id) goes at once. An event you made is shown to you first, and removed only when
+the assistant calls again with the confirmation token. Holding both also adds
+`edit_calendar_event`, which changes an event in place (title, times, location,
+notes, colour) behind the same kind of confirmation, and
+`reschedule_calendar_event` for events it created. See
+[0013](decisions/0013-editing-any-calendar-event.md). Google keeps a deleted event in that
 calendar's bin for 30 days. Delete needs no extra consent beyond create, because
 Google has one scope for both.
 
@@ -229,12 +232,11 @@ editing a page still has a preview.
 
 What it deliberately cannot do:
 
-- Respond to an event, or edit one in place. Google grants both with the same
-  scope as creating one; the tools to do them do not exist here. An install
-  holding *both* calendar capabilities can reschedule an event this tool
-  created, which is a create and a delete in one step, never a
-  `PATCH` — an event you made stays untouchable.
-- Delete an event it did not create, even with `calendar-delete` granted.
+- Respond to an event. Declining or accepting is a message, and sending stays out.
+- Edit or delete an invitation someone else organises, or a whole recurring
+  series. One occurrence of a series can be changed.
+- Email anyone. Every change is sent with `sendUpdates=none`; attendees' copies
+  of an event you organise change silently, and the confirmation says so.
 - Add more than one event per call. There is no "add all the gigs".
 - Write a value the notebook has not settled. `UNKNOWN`, `TBC` and a disputed
   date are refused, with a message saying which field and why.

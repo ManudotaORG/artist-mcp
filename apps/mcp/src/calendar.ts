@@ -13,6 +13,7 @@ import {
   calendarDeleteEvent,
   calendarGet,
   calendarInsertEvent,
+  calendarPatchEvent,
 } from './api.js';
 import { recordWrite, type RecordWrite } from './audit.js';
 
@@ -31,8 +32,54 @@ type CalendarEvent = {
   start?: CalendarTime;
   end?: CalendarTime;
   recurringEventId?: string;
-  attendees?: { email?: string; displayName?: string; responseStatus?: string }[];
-  organizer?: { email?: string; displayName?: string };
+  attendees?: { email?: string; displayName?: string; responseStatus?: string; self?: boolean }[];
+  organizer?: { email?: string; displayName?: string; self?: boolean };
+  colorId?: string;
+  etag?: string;
+  /** Present on the master of a recurring series, never on one occurrence. */
+  recurrence?: string[];
+  eventType?: string;
+};
+
+/**
+ * Google's event palette, by the names its Calendar UI shows. The ids are
+ * fixed; the `/colors` endpoint returns only hex, so the names live here.
+ * See docs/decisions/0013-editing-any-calendar-event.md.
+ */
+export const EVENT_COLORS = {
+  '1': 'Lavender',
+  '2': 'Sage',
+  '3': 'Grape',
+  '4': 'Flamingo',
+  '5': 'Banana',
+  '6': 'Tangerine',
+  '7': 'Peacock',
+  '8': 'Graphite',
+  '9': 'Blueberry',
+  '10': 'Basil',
+  '11': 'Tomato',
+} as const;
+
+export const COLOR_NAMES = Object.values(EVENT_COLORS) as [string, ...string[]];
+
+/**
+ * An event without its own colour shows its calendar's, from a different
+ * palette of 24. Said as such rather than matched to the nearest event colour.
+ */
+export const colorName = (colorId: string | undefined | null): string =>
+  colorId ? (EVENT_COLORS as Record<string, string>)[colorId] ?? `colour ${colorId}` : 'calendar default';
+
+/** A colour name to Google's id, or null for `default`. Refuses anything else. */
+export const colorIdFor = (name: unknown): string | null => {
+  if (typeof name !== 'string') throw failure('color must be one of the event colours, by name.');
+  if (name.trim().toLowerCase() === 'default') return null;
+  const found = Object.entries(EVENT_COLORS).find(
+    ([, n]) => n.toLowerCase() === name.trim().toLowerCase(),
+  );
+  if (!found) {
+    throw failure(`"${name}" is not a Google Calendar event colour. The colours are ${COLOR_NAMES.join(', ')}.`);
+  }
+  return found[0];
 };
 
 /**
@@ -82,6 +129,7 @@ export function shapeEvent(e: CalendarEvent) {
     // Present only on an instance of a recurring series, which is worth saying:
     // "every Tuesday" and "this Tuesday" are different claims about a page.
     recurring: Boolean(e.recurringEventId),
+    color: colorName(e.colorId),
   };
 }
 
@@ -309,6 +357,11 @@ export type EventDraft = {
   time_zone: string | null;
   location: string | null;
   description: string | null;
+  /**
+   * Google's colour id, or null for the calendar's own. Deliberately absent
+   * from `canonical`: adding it would change every existing id.
+   */
+  color_id?: string | null;
 };
 
 const canonical = (d: EventDraft): string =>
@@ -493,6 +546,9 @@ const draftFrom = (params: Record<string, unknown>): EventDraft => {
     time_zone: allDay ? null : timeZone,
     location: text(params.location, 'location', false),
     description: text(params.description, 'description', false),
+    color_id: params.color === undefined || params.color === null || params.color === ''
+      ? null
+      : colorIdFor(params.color),
   };
 };
 
@@ -507,6 +563,7 @@ const renderDraft = (draft: EventDraft): string => {
   ];
   if (draft.location) lines.push(`Where:    ${draft.location}`);
   if (draft.description) lines.push(`Notes:    ${draft.description}`);
+  if (draft.color_id) lines.push(`Colour:   ${colorName(draft.color_id)}`);
   lines.push(`Calendar: ${draft.calendar_id}`);
   return lines.join('\n');
 };
@@ -584,6 +641,7 @@ const eventBody = async (draft: EventDraft) => {
     end: allDay ? { date: draft.end } : { dateTime: draft.end, timeZone: draft.time_zone },
     ...(draft.location ? { location: draft.location } : {}),
     ...(draft.description ? { description: draft.description } : {}),
+    ...(draft.color_id ? { colorId: draft.color_id } : {}),
   };
 };
 
@@ -722,31 +780,128 @@ const renderExisting = (e: CalendarEvent, calendarId: string): string => {
   ];
   if (e.location) lines.push(`Where:    ${e.location}`);
   if (e.description) lines.push(`Notes:    ${e.description}`);
+  if (e.colorId) lines.push(`Colour:   ${colorName(e.colorId)}`);
   lines.push(`Calendar: ${calendarId}`);
   return lines.join('\n');
 };
 
+// ------------------------------------------- changing any event (0013)
+
 /**
- * Remove an event this tool created.
+ * Fetch any event for a change, and refuse the kinds no change should reach.
  *
- * The audit records the whole event rather than a reference to it. A wrong
- * create leaves something visible; a wrong delete leaves a gap, and nobody
- * notices absence — so what is written down has to be enough to put it back by
- * hand once Google's 30-day bin has expired.
+ * The `artist` prefix no longer gates this: since 0013 an event the musician
+ * made can be edited or deleted, behind a confirmation. What is still refused
+ * is refused here, before anything is shown as possible.
+ */
+const fetchForChange = async (
+  token: string,
+  calendarId: string,
+  eventId: string,
+  verb: string,
+): Promise<CalendarEvent> => {
+  if (!EVENT_ID.test(eventId)) throw failure('event_id is malformed.');
+  if (!CALENDAR_ID.test(calendarId)) throw failure('calendar_id is malformed.');
+
+  const res = await calendarGet(
+    `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    token,
+  );
+  const event = (await res.json()) as CalendarEvent;
+
+  // Your copy of someone else's invitation. Editing it changes nothing for
+  // them, and deleting it is declining, which is a message to the organiser.
+  if (event.organizer?.self === false && (event.attendees ?? []).some((a) => a.self)) {
+    throw failure(
+      `That event is an invitation from ${event.organizer.displayName ?? event.organizer.email ?? 'someone else'}, ` +
+        `so it cannot be ${verb} here. Respond to it in Google Calendar.`,
+    );
+  }
+  if (event.recurrence) {
+    throw failure(
+      `That is a whole recurring series, which cannot be ${verb} here: a mistake ` +
+        'would rewrite every occurrence at once. Name one occurrence instead; ' +
+        'list_events returns them separately.',
+    );
+  }
+  if (event.eventType && event.eventType !== 'default') {
+    throw failure(`That is a ${event.eventType} entry, not an ordinary event, so it cannot be ${verb} here.`);
+  }
+  return event;
+};
+
+/**
+ * The confirmation for a change: binds the event as it is now (its etag) and
+ * exactly what would happen to it. A token from a preview of anything else, or
+ * of this event before it changed, does not match.
+ */
+const confirmationFor = async (
+  kind: string,
+  calendarId: string,
+  eventId: string,
+  etag: string | undefined,
+  change: unknown,
+): Promise<string> => {
+  const data = new TextEncoder().encode(
+    JSON.stringify([kind, calendarId, eventId, etag ?? '', change]),
+  );
+  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
+  return [...hash.slice(0, 8)].map((b) => b.toString(16).padStart(2, '0')).join('');
+};
+
+const attendeeNote = (e: CalendarEvent): string | null => {
+  const others = (e.attendees ?? []).filter((a) => !a.self).length;
+  return others > 0
+    ? `This event has ${others} other attendee${others === 1 ? '' : 's'}. Their copies change ` +
+        'too, and none of them is emailed about it.'
+    : null;
+};
+
+const calendarIdFrom = (params: Record<string, unknown>): string =>
+  typeof params.calendar_id === 'string' && params.calendar_id.trim()
+    ? params.calendar_id.trim()
+    : 'primary';
+
+/**
+ * Remove one event.
+ *
+ * An event artist-mcp created goes in one call, as since 0009. Any other event
+ * is the musician's own: the first call returns it with a confirmation token
+ * and deletes nothing, and only a second call carrying that token deletes it.
+ *
+ * The audit records the whole event as its pre-image. A wrong create leaves
+ * something visible; a wrong delete leaves a gap, and nobody notices absence.
  */
 export async function deleteEvent(
   token: string,
   params: Record<string, unknown>,
   record: RecordWrite = recordWrite,
 ) {
-  const calendarId =
-    typeof params.calendar_id === 'string' && params.calendar_id.trim()
-      ? params.calendar_id.trim()
-      : 'primary';
+  const calendarId = calendarIdFrom(params);
   const eventId = typeof params.event_id === 'string' ? params.event_id.trim() : '';
-  const event = await fetchForDeletion(token, calendarId, eventId);
-
+  const event = await fetchForChange(token, calendarId, eventId, 'deleted');
   const written = renderExisting(event, calendarId);
+
+  if (!eventId.startsWith(ARTIST_ID_PREFIX)) {
+    const expected = await confirmationFor('delete', calendarId, eventId, event.etag, null);
+    if (params.confirmation_token !== expected) {
+      if (params.confirmation_token !== undefined && params.confirmation_token !== null) {
+        throw failure(
+          'That confirmation does not match the event as it is now, so nothing was ' +
+            'deleted. It may have changed since it was shown. Ask again to see it.',
+        );
+      }
+      return {
+        deleted: null,
+        preview: written,
+        attendees: attendeeNote(event),
+        confirmation_token: expected,
+        calendar_id: calendarId,
+        event_id: eventId,
+      };
+    }
+  }
+
   await calendarDeleteEvent(calendarId, eventId, token);
 
   await record({
@@ -754,9 +909,130 @@ export async function deleteEvent(
     summary: written,
     target: `${calendarId}/${eventId}`,
     source_page: typeof params.source_page === 'string' ? params.source_page : null,
+    pre_image: JSON.stringify(event),
   });
 
   return { deleted: written, calendar_id: calendarId, event_id: eventId };
+}
+
+/** The fields an edit may change, as a caller names them. */
+const EDITABLE = ['summary', 'start', 'end', 'time_zone', 'location', 'description', 'color'] as const;
+
+/**
+ * Change one event in place: title, times, location, notes or colour.
+ *
+ * Always two calls. The first, without a token, writes nothing and returns the
+ * event as it is, what would change, and a token binding both. The second, with
+ * that token, sends one PATCH guarded by the etag. The whole event as it was is
+ * the pre-image in the audit. See docs/decisions/0013-editing-any-calendar-event.md.
+ */
+export async function editEvent(
+  token: string,
+  params: Record<string, unknown>,
+  record: RecordWrite = recordWrite,
+) {
+  const calendarId = calendarIdFrom(params);
+  const eventId = typeof params.event_id === 'string' ? params.event_id.trim() : '';
+
+  const given = EDITABLE.filter((f) => params[f] !== undefined && params[f] !== null);
+  if (given.length === 0) {
+    throw failure(`Name what to change: ${EDITABLE.join(', ')}.`);
+  }
+  if (given.includes('start') !== given.includes('end')) {
+    throw failure('Give start and end together, so the event cannot end before it starts.');
+  }
+
+  const event = await fetchForChange(token, calendarId, eventId, 'changed');
+  const current = eventTime(event.start);
+  const currentEnd = eventTime(event.end);
+
+  // Validated as a whole event, so every rule a create keeps holds for the
+  // result: same kind of start and end, a zone for a timed event, a real span.
+  const merged = draftFrom({
+    calendar_id: calendarId,
+    summary: params.summary ?? event.summary ?? '(no title)',
+    start: params.start ?? current.value,
+    end: params.end ?? currentEnd.value,
+    time_zone: params.time_zone ?? current.time_zone ?? currentEnd.time_zone,
+    location: params.location ?? event.location,
+    description: params.description ?? event.description,
+  });
+
+  // Unsettled values are refused only where they are being written: an edit is
+  // not blocked by something the musician already had on the event.
+  refuseUnsettled({
+    calendar_id: calendarId,
+    summary: given.includes('summary') ? merged.summary : '',
+    start: given.includes('start') ? merged.start : '',
+    end: given.includes('end') ? merged.end : '',
+    time_zone: null,
+    location: given.includes('location') ? merged.location : null,
+    description: given.includes('description') ? merged.description : null,
+  });
+
+  const allDay = merged.time_zone === null;
+  const body: Record<string, unknown> = {};
+  const changes: string[] = [];
+  if (given.includes('summary')) {
+    body.summary = merged.summary;
+    changes.push(`Title:    ${event.summary ?? '(no title)'} → ${merged.summary}`);
+  }
+  if (given.includes('start') || given.includes('time_zone')) {
+    body.start = allDay ? { date: merged.start } : { dateTime: merged.start, timeZone: merged.time_zone };
+    body.end = allDay ? { date: merged.end } : { dateTime: merged.end, timeZone: merged.time_zone };
+    changes.push(
+      `When:     → ${merged.start} to ${merged.end} ${allDay ? '(all day)' : `(${merged.time_zone})`}`,
+    );
+  }
+  if (given.includes('location')) {
+    body.location = merged.location ?? '';
+    changes.push(`Where:    ${event.location ?? '(none)'} → ${merged.location ?? '(none)'}`);
+  }
+  if (given.includes('description')) {
+    body.description = merged.description ?? '';
+    changes.push('Notes:    replaced');
+  }
+  if (given.includes('color')) {
+    const colorId = colorIdFor(params.color);
+    body.colorId = colorId;
+    changes.push(`Colour:   ${colorName(event.colorId)} → ${colorName(colorId)}`);
+  }
+
+  const expected = await confirmationFor('edit', calendarId, eventId, event.etag, body);
+  if (params.confirmation_token !== expected) {
+    if (params.confirmation_token !== undefined && params.confirmation_token !== null) {
+      throw failure(
+        'That confirmation does not match this change to the event as it is now, ' +
+          'so nothing was written. Ask again to see it.',
+      );
+    }
+    return {
+      changed: null,
+      before: renderExisting(event, calendarId),
+      changes: changes.join('\n'),
+      attendees: attendeeNote(event),
+      confirmation_token: expected,
+      calendar_id: calendarId,
+      event_id: eventId,
+    };
+  }
+  if (!event.etag) {
+    throw failure('Google returned no version for that event, so it cannot be changed safely.');
+  }
+
+  const res = await calendarPatchEvent(calendarId, eventId, body, event.etag, token);
+  const after = (await res.json()) as CalendarEvent;
+  const written = renderExisting(after, calendarId);
+
+  await record({
+    operation: 'edit_calendar_event',
+    summary: `${changes.join('; ')}\n${written}`,
+    target: `${calendarId}/${eventId}`,
+    source_page: typeof params.source_page === 'string' ? params.source_page : null,
+    pre_image: JSON.stringify(event),
+  });
+
+  return { changed: written, changes: changes.join('\n'), calendar_id: calendarId, event_id: eventId };
 }
 
 
@@ -834,6 +1110,8 @@ export async function rescheduleEvent(
 
   refuseUnsettled(draft);
   await refuseUnchanged(eventId, draft);
+  // A move is not a recolour: without a colour named, the old one comes along.
+  if (params.color === undefined || params.color === null) draft.color_id = existing.colorId ?? null;
 
   // The destination stretch, as a create lists it: an event already sitting
   // there is what a move most often collides with.

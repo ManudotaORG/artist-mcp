@@ -8,6 +8,11 @@ Calendar and only for Google Calendar. Raised by issue #85.
 in one call, and their preview tools are gone. Read that record before the
 section below.
 
+The delete boundary is **amended by [0013](0013-editing-any-calendar-event.md)**:
+the `artist` prefix no longer limits deleting. An event the musician made can
+be deleted or edited in place, behind a confirmation bound to its etag. Where
+this record says such an event is unreachable, 0013 is what holds now.
+
 ## What the old rule said
 
 `CLAUDE.md` said: "If you find yourself adding writes, sends, or

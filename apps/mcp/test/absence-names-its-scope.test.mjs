@@ -132,7 +132,7 @@ test('every tool taking source_page describes it, and describes it the same way'
     described.push([name, field._def?.description ?? '']);
   }
 
-  assert.equal(described.length, 6, 'six tools take source_page');
+  assert.equal(described.length, 7, 'seven tools take source_page');
   for (const [name, description] of described) {
     assert.ok(description.length > 0, `${name} leaves source_page undocumented`);
     assert.match(description, /traced back/, `${name} has drifted from the shared wording`);

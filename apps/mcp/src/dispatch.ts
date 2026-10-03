@@ -18,6 +18,7 @@ import { oneNoteLoader } from './page-attachments.js';
 import {
   createEvent,
   deleteEvent,
+  editEvent,
   listCalendars,
   listEvents,
   readEvent,
@@ -77,6 +78,10 @@ export const OPERATIONS = {
   // and a separate grant would mean asking every hosted user to consent again
   // for permission they have already given.
   reschedule_calendar_event: { provider: 'google', effect: 'write' },
+  // Changes any event in place, including the musician's own, behind a
+  // confirmation bound to the event's etag. Gated, like reschedule, on holding
+  // both calendar grants. See docs/decisions/0013-editing-any-calendar-event.md.
+  edit_calendar_event: { provider: 'google', effect: 'write' },
   // The first write to the knowledge base rather than to supporting evidence,
   // and the only write row whose narrowness is not this table's doing:
   // `Notes.Create` cannot express an edit or a delete, so there is no sibling
@@ -213,6 +218,8 @@ export const dispatchWith =
         return (await createEvent(token, params, record)) as T;
       case 'delete_calendar_event':
         return (await deleteEvent(token, params, record)) as T;
+      case 'edit_calendar_event':
+        return (await editEvent(token, params, record)) as T;
       case 'reschedule_calendar_event':
         return (await rescheduleEvent(token, params, record)) as T;
       case 'create_onenote_page':

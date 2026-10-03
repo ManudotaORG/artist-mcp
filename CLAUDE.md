@@ -17,18 +17,21 @@ project types are loaded at runtime, and every result stays in chat.
 rule stands, with four exceptions, and none of them is a precedent.
 
 An install granted `--allow-writes calendar-create` may create a single Google
-Calendar event, and one granted `calendar-delete` may
-remove an event **that this tool itself created**, identified by the `artist`
-prefix on its id. An install holding *both* may also reschedule one, which is
-those two writes in one step — a create then a delete, never a
-`PATCH`, because the event id is a hash of the event's own contents. An event
-the musician made is unreachable, and that prefix check is the only thing
-making delete safe to offer. Read
-[docs/decisions/0001-opt-in-calendar-writes.md](docs/decisions/0001-opt-in-calendar-writes.md)
-before touching that path — it says what was decided, what it cost, and what
-would reverse it. **Confirmation follows what a write can destroy**: every write
-this tool can undo commits in one call, and only `edit_onenote_page` keeps a
-preview and a token, because a replace overwrites the musician's text. See
+Calendar event, and one granted `calendar-delete` may remove an event. An event
+this tool created (the `artist` prefix on its id) goes in one call; **any other
+event is shown first and removed only with a confirmation token**. An install
+holding *both* may reschedule an event this tool created (a create then a
+delete), and may **edit any event in place** with `edit_calendar_event`, always
+behind a confirmation bound to the event's etag, with its pre-image recorded and
+nobody emailed. Invitations from others and whole recurring series are refused.
+Until [0013](docs/decisions/0013-editing-any-calendar-event.md) the prefix kept
+the musician's events unreachable; now the confirmation is what protects them,
+and it is still only our code — Google's scope allows all of it. Read
+[0001](docs/decisions/0001-opt-in-calendar-writes.md) and 0013 before touching
+that path. **Confirmation follows what a write can destroy**: every write
+this tool can undo commits in one call, and a write that overwrites or removes
+the musician's own content keeps a preview and a token — `edit_onenote_page`,
+`edit_calendar_event`, and deleting an event this tool did not create. See
 [0009](docs/decisions/0009-confirm-by-reversibility.md) before adding a preview
 back or taking the last one away.
 
