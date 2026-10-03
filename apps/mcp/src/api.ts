@@ -576,18 +576,32 @@ export const onenoteCreatePage = async (
   sectionId: string,
   xhtml: string,
   token: string,
+  /**
+   * Images the page refers to as `name:<name>`. With any, the page goes as
+   * multipart: the document is the part named `Presentation`, and each image
+   * is a part of its own. See docs/decisions/0012-images-on-a-new-page.md.
+   */
+  parts: { name: string; media_type: string; bytes: Uint8Array }[] = [],
 ): Promise<Response> => {
   const url = `${GRAPH}/me/onenote/sections/${encodeURIComponent(sectionId)}/pages`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${token}`,
-      // Not application/json. OneNote takes the page as an XHTML document, and
-      // sending JSON is answered with a 400 that names neither problem.
-      'content-type': 'application/xhtml+xml',
-    },
-    body: xhtml,
-  });
+  let body: string | FormData = xhtml;
+  // Not application/json. OneNote takes the page as an XHTML document, and
+  // sending JSON is answered with a 400 that names neither problem.
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${token}`,
+    'content-type': 'application/xhtml+xml',
+  };
+  if (parts.length > 0) {
+    const form = new FormData();
+    form.append('Presentation', new Blob([xhtml], { type: 'text/html' }));
+    for (const part of parts) {
+      form.append(part.name, new Blob([new Uint8Array(part.bytes)], { type: part.media_type }));
+    }
+    body = form;
+    // fetch writes the multipart content-type itself, with the boundary in it.
+    delete headers['content-type'];
+  }
+  const res = await fetch(url, { method: 'POST', headers, body });
 
   // Not retried, exactly as the calendar insert is not: a repeated create makes
   // a second page, and a 5xx does not say whether the first one landed. OneNote
