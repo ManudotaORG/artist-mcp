@@ -927,8 +927,8 @@ const TABLE_MARKUP =
  * be read as conditional. See issue #70.
  */
 const ATTACHMENT_READING =
-  "Images are shown as pictures; PDFs and Word .docx files are read. A Word " +
-  "document has no pages, so from_page selects parts of its text and the " +
+  "Images are shown as pictures; PDFs, Word .docx and Excel .xlsx files are " +
+  "read. A Word or Excel file has no pages, so from_page selects parts of its text and the " +
   "answer says so. Read one to answer a question, not to see everything in " +
   "it: a long scan is pictures, and paging through all of it is neither " +
   "possible nor useful. PDFs are text-extracted, and diagrams — a stage plan, " +
