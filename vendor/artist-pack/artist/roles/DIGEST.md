@@ -95,7 +95,8 @@ existing changed.
 ### 5. Create a missing CL Aufgaben page — only where the prompt says so
 
 Only when the prompt that started this run says creating is on. Then at most
-three per run, for sections `policy:intake` classifies as a project, from the
+three per run — a cap for a run nobody watches, which a prompt may lift only in
+a conversation where each page is shown and waits for a yes — for sections `policy:intake` classifies as a project, from the
 current template in `Claude Vorlagen`, titled `CL Aufgaben — <project>`, every
 value citing the page it came from. Where the classification is unsure, or no
 template exists for the type, report the section and create nothing. Tasks
