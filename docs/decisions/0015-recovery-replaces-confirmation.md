@@ -150,7 +150,8 @@ already allows it, and the token `edit_onenote_page` asks for on an append today
 is friction rather than protection. Replaces and inserts keep the token until
 steps 1–3 are done.
 
-**Built on 2026-11-21.** `edit_onenote_page` takes `confirmation_token` only
+**Built on 2026-11-21, and verified on hosted after #261** (through ChatGPT, on
+a scratch page in `Claude Test`). `edit_onenote_page` takes `confirmation_token` only
 when a change is a replace or an insert; a change made only of appends commits
 in one call, and a batch mixing an append with either still needs the token as
 a whole. An append also no longer reads the page first: the read captured a

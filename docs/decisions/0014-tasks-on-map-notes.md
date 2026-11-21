@@ -1,7 +1,7 @@
 # 0014 — The CL Aufgaben page is the task record, and the tool keeps it current
 
-Status: **reading half built and verified locally on 2026-11-21** (see "Built"
-below); maintenance waits for the digest playbook. Written for review before any
+Status: **reading half built and verified on 2026-11-21**, locally and on
+hosted (see "Built" below); maintenance waits for the digest playbook. Written for review before any
 code. Builds on
 [0008](0008-tasks-are-onenote-tags.md) (a task is a to-do tag),
 [0010](0010-two-discovery-paths.md) (where the requests go) and
@@ -257,8 +257,12 @@ playbook's question.
 
 The 2026-27 answer is about 50,000 characters (~12.6k tokens) for every task
 page in the notebook. The first draft's sample, 24 changed pages read whole, was
-143,730. Not yet run on hosted,
-where the listing's share of the 45 s budget decides whether 2026-27 fits.
+143,730.
+
+**On hosted after #261**, through ChatGPT, the same counts: 2026-27 listed its
+30 sections in 14.3 s and read all 24 pages in 13.4 s of the 27.0 s left;
+2027-28 took 4.6 s and 2.0 s; 2028-29 listed in 4.3 s and had nothing to read.
+Nothing was cut off.
 
 ## What the first draft measured, and why it changed direction
 
