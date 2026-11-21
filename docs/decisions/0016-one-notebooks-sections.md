@@ -1,6 +1,6 @@
 # 0016 — A named notebook lists only its own sections
 
-Status: **accepted and built; verified locally, not yet on hosted.** Amends the
+Status: **accepted and built; the first deploy regressed on hosted and was fixed — fix verified locally, not yet on hosted.** Amends the
 request table in [0010](0010-two-discovery-paths.md), whose first row, "every
 section on the account: 1 request", is true only below a hundred sections.
 
@@ -133,6 +133,30 @@ Verified on 2026-11-21:
   made no account-wide section listing and was given 29.3 s of its 45. On this
   small account the narrow listing is about a second slower (5.6 s against
   4.5 s), as expected above.
+
+## The first deploy made hosted slower
+
+Run on hosted after #259, the same `map_notes` returned, but the map was handed
+**7.0 s** of its 45, against 11.9 s before the change. The log showed three
+token lookups before the listing instead of two: `list_notebooks` had run twice.
+The narrow path ran, failed its own `notebook_key`, and fell back to the full
+listing, so the call paid the old 23 s plus the narrow requests.
+
+The key was the cause. The question issued it from the notebooks the *section*
+listing shows; the narrow path checked it against the *notebook* listing's names.
+The two differ wherever the account has a notebook the other listing does not
+show — most plausibly one with no sections. The fallback built for exactly that
+case turned it from a refusal into a slowdown on every call, which is why the
+tests stayed green: they checked that the fallback answered, not what it cost.
+
+Fixed by giving the key one source on both paths: the notebook listing's names
+(`keyFor`). The question now fetches those names alongside the full section
+listing, in parallel, so it costs a request and no time. It shows every notebook
+either listing knows, so an empty notebook appears with 0 sections rather than
+not at all. A key issued before the fix no longer proves, and is asked for again
+once. Tests now cover an account with an empty notebook end to end: the issued
+key proves the narrow path with no account-wide listing, and they fail with the
+old key source restored. Still to be measured on hosted.
 
 ## Open questions
 

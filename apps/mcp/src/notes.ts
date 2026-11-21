@@ -273,12 +273,11 @@ const fetchNotebooks = async (token: string): Promise<{ id: string; name: string
  * names a notebook. So a named notebook costs its names and its own sections
  * instead — two requests whatever the account's size (0016).
  *
- * `scoped` says which happened. Names from the notebook listing can include a
- * notebook with no sections, which the section listing never shows, so a
- * notebook_key derived from them may not match one issued by the full path; a
- * caller that cannot prove its key against these names asks again without a
- * name. A name matching no notebook, or more than one, takes the full path
- * here, so it is answered exactly as before.
+ * `scoped` says which happened. Both paths return the same `notebook_key`, from
+ * the notebook listing's names (see `keyFor`). A caller that cannot prove its
+ * key, such as one issued before that was so, asks again without a name. A name
+ * matching no notebook, or more than one, takes the full path here, so it is
+ * answered exactly as before.
  */
 export const listNotebooks = async (
   token: string,
@@ -286,6 +285,7 @@ export const listNotebooks = async (
 ): Promise<{
   notebooks: { name: string; sections: number | null }[];
   section_list: OneNoteSection[];
+  notebook_key: string;
   scoped?: true;
 }> => {
   if (notebook !== undefined) {
@@ -299,16 +299,17 @@ export const listNotebooks = async (
       return {
         notebooks: all.map((n) => ({ name: n.name, sections: n.id === chosen.id ? own : null })),
         section_list: sections,
+        notebook_key: keyFor(all),
         scoped: true,
       };
     }
   }
 
-  // The same request listNotes needs, with the same fields, so a caller that
-  // asks for notebooks and then for pages can hand this back instead of paying
-  // for it twice. OneNote allows 400 requests an hour per app per user; one
-  // saved on every call is worth a parameter.
-  const sections = await fetchSections(token);
+  // The sections are the same request listNotes needs, with the same fields,
+  // so a caller that asks for notebooks and then for pages can hand this back
+  // instead of paying for it twice. The names come alongside, in parallel, so
+  // the key is derived from the same list on both paths.
+  const [named, sections] = await Promise.all([fetchNotebooks(token), fetchSections(token)]);
 
   const counts = new Map<string, number>();
   for (const section of sections) {
@@ -317,11 +318,29 @@ export const listNotebooks = async (
     counts.set(name, (counts.get(name) ?? 0) + 1);
   }
 
+  // Every notebook either listing knows, so nothing is hidden: an empty one
+  // shows with no sections, and one only the section listing shows is still
+  // shown. The key comes from the notebook listing alone, whatever is shown.
+  const names = [...new Set([...named.map((n) => n.name), ...counts.keys()])];
   return {
-    notebooks: [...counts].map(([name, sectionCount]) => ({ name, sections: sectionCount })),
+    notebooks: names.map((name) => ({ name, sections: counts.get(name) ?? 0 })),
     section_list: sections,
+    notebook_key: keyFor(named),
   };
 };
+
+/**
+ * The notebook_key, from the notebook listing's names and nothing else.
+ *
+ * It was derived from the notebooks the section listing shows, and the narrow
+ * path (0016) derived it from the notebook listing. The two differ wherever a
+ * notebook has no sections, so on hosted, on 2026-11-21, every narrow call failed
+ * its own key and fell back to the full listing. That cost the old 23 s plus the
+ * narrow requests on top: the map was left 7 s instead of 12. One source for
+ * both paths makes them agree by construction.
+ */
+const keyFor = (named: readonly { name: string }[]): string =>
+  notebookKeyFor([...new Set(named.map((n) => n.name))]);
 
 /**
  * `/me/onenote/pages` looks like the obvious call and works right up until the

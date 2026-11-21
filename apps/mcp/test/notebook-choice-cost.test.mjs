@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { createServer } from '../dist/server.js';
 import { listNotebooks, listNotes, mapNotes, notebookKeyFor } from '../dist/notes.js';
-import { withGraphBatch } from './support/graph-batch.mjs';
+import { DERIVED, withGraphBatch } from './support/graph-batch.mjs';
 
 /**
  * Asking which notebook must not cost every page in every notebook.
@@ -72,7 +72,10 @@ test('asking which notebook fetches no pages at all', async () => {
 
   const pageRequests = paths.filter((p) => p.includes('/pages'));
   assert.deepEqual(pageRequests, [], `asking which notebook fetched pages: ${pageRequests}`);
-  assert.equal(paths.length, 1, `took ${paths.length} requests to list notebooks: ${paths}`);
+  // The names and the sections, the two requests a notebook question takes
+  // since the key comes from the notebook listing (0016) — not a hundred.
+  const made = paths.filter((p) => !p.includes(DERIVED));
+  assert.equal(made.length, 2, `took ${made.length} requests to list notebooks: ${made}`);
 });
 
 test('a misspelled notebook is refused without fetching pages', async () => {
