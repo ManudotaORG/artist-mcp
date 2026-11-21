@@ -24,7 +24,7 @@ import {
   readEvent,
   rescheduleEvent,
 } from './calendar.js';
-import { listEmails, readEmail } from './mail.js';
+import { listEmails, readEmail, readThread } from './mail.js';
 import { listNotebooks, listNotes, mapNotes, readNote, type OneNoteSection } from './notes.js';
 import { applyEdit, previewEdit } from './onenote-patch.js';
 import { createPage, createSection } from './onenote-write.js';
@@ -55,6 +55,9 @@ export const OPERATIONS = {
   read_note: { provider: 'microsoft', effect: 'read' },
   list_emails: { provider: 'google', effect: 'read' },
   read_email: { provider: 'google', effect: 'read' },
+  // A whole conversation in one read, on the same gmail.readonly scope. See
+  // docs/scope.md, known gap 6.
+  read_thread: { provider: 'google', effect: 'read' },
   read_gmail_attachment: { provider: 'google', effect: 'read' },
   map_gmail_attachment: { provider: 'google', effect: 'read' },
   // Not a tool. create_onenote_page's handler calls it once per image, then
@@ -177,6 +180,8 @@ export const dispatchWith =
         return (await listEmails(token, params.query)) as T;
       case 'read_email':
         return (await readEmail(token, params.email_id)) as T;
+      case 'read_thread':
+        return (await readThread(token, params.thread_id, params.from_message)) as T;
       case 'map_gmail_attachment':
         return (await mapAttachment(
           gmailLoader(token, params.email_id, params.attachment_id),

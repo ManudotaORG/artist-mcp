@@ -146,7 +146,7 @@ This line originally read "No writes to any source — not OneNote, Gmail, or Ca
 
 This line originally also read "No calendar. No Google. No web app deployment." All three have since shipped, so it is corrected here rather than quietly left standing:
 
-- **Google is connected**, and Gmail and Calendar are read as **supporting evidence only** — they corroborate or fill gaps in a OneNote page and are never themselves a working unit. Reads only: `list_emails`, `read_email`, `list_events`, `read_event`, and the attachment pair. That asymmetry is what kept the one-page-one-unit rule intact when the sources grew; see [CLAUDE.md](../CLAUDE.md).
+- **Google is connected**, and Gmail and Calendar are read as **supporting evidence only** — they corroborate or fill gaps in a OneNote page and are never themselves a working unit. Reads only: `list_emails`, `read_email`, `read_thread`, `list_events`, `read_event`, and the attachment pair. That asymmetry is what kept the one-page-one-unit rule intact when the sources grew; see [CLAUDE.md](../CLAUDE.md).
 - **The web app deploys** to one Vercel project, production, connected to the repository through the Vercel GitHub App. A staging project existed until 2026-09-13 and was retired with its Supabase project ([#194](https://github.com/ManudotaORG/artist-mcp/issues/194)); the `staging` branch and npm channel remain. See [operations.md](operations.md).
 
 Each new source means re-deciding the rule, not repeating it. Google Tasks was considered and deliberately left out: a task list is a rival system of record for the work itself, not evidence about it.
@@ -209,19 +209,43 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
    verification review for `gmail.readonly`; revisit only if a hosted
    non-production environment returns.
 
-6. **Email is read one message at a time, never as a thread.** `list_emails`
-   returns a `thread_id` and nothing consumes it, so a negotiation has to be
-   reassembled from separate reads and only if the model thinks to look.
+6. **Email is read one message at a time, never as a thread.** Built, not yet
+   verified live. `read_thread` reads a whole conversation on the same
+   `gmail.readonly` scope, oldest first. The question this entry left open —
+   how to summarise a thread without pouring quoted history into chat — was
+   answered by cutting each reply to what its sender added, not by
+   summarising: English and German attributions and Outlook's header block are
+   cut points, forwards are kept because what they carry is usually new, and
+   the first message is left whole because what it quotes comes from outside
+   the thread. Drafts are marked as never sent. A thread over about 24,000
+   characters comes back in parts, and the partial answer says the unread rest
+   may revise anything above it.
 
-   The failure is quiet and in the wrong direction: a fee, date, or lineup
-   agreed in the first message and revised three replies later reads as settled,
-   because the message carrying it looks complete on its own. Intake's rule is
-   to surface contradictions with both sources named — a half-read thread hides
-   the contradiction instead, which is worse than not reading the mail at all.
+   `list_emails` now marks a reply with its thread id, and `read_email` on a
+   reply points at `read_thread` — said in the output of the read that needs
+   it rather than in a description every request pays for. The tool itself
+   adds about 845 characters to the tool list.
 
-   Deferred rather than dismissed. A `read_thread` operation is a small addition
-   on the same connection and scope; what needs deciding first is how a thread
-   is summarised without pouring quoted history into chat.
+   - [ ] Verified live in a client. Run live on 2026-11-21 against the real
+     account by driving the rebuilt `createServer` from a shell, not yet
+     through Claude Desktop or hosted ChatGPT. An eight-message hotel quote
+     thread (English Gmail replies, a German Gmail reply, a forward inside the
+     thread) and a four-message one with Outlook-sent replies came back with
+     only each sender's new text. That run found three defects the stubs had
+     not: German Gmail's name-first attribution ("… schrieb am Di., 27. Okt.
+     2026, 22:19:", wrapped), an English one wrapped after "<", and a forward
+     that brought its whole quoted reply chain along because scanning stopped
+     at the forward marker. All three are fixed and pinned by tests; the long
+     thread went from two reads and 29 KB to one read and 23 KB. Still open:
+     signatures without a `-- ` delimiter stay in, and inline signature logos
+     are listed on every reply.
+
+   The failure it addresses, kept because it is why the tool exists: a fee,
+   date, or lineup agreed in the first message and revised three replies later
+   reads as settled, because the message carrying it looks complete on its own.
+   Intake's rule is to surface contradictions with both sources named — a
+   half-read thread hides the contradiction instead, which is worse than not
+   reading the mail at all.
 
 7. **`apps/mcp/dist/` is no longer tracked.** Resolved. It had drifted from
    `src/`: release-please rewrites the `x-release-please-version` line in `src/`
