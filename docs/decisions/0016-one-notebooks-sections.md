@@ -1,6 +1,6 @@
 # 0016 — A named notebook lists only its own sections
 
-Status: **accepted and built; the first deploy regressed on hosted and was fixed — fix verified locally, not yet on hosted.** Amends the
+Status: **accepted, built, and verified on hosted** (after a first deploy that regressed; see below). Amends the
 request table in [0010](0010-two-discovery-paths.md), whose first row, "every
 section on the account: 1 request", is true only below a hundred sections.
 
@@ -156,7 +156,14 @@ either listing knows, so an empty notebook appears with 0 sections rather than
 not at all. A key issued before the fix no longer proves, and is asked for again
 once. Tests now cover an account with an empty notebook end to end: the issued
 key proves the narrow path with no account-wide listing, and they fail with the
-old key source restored. Still to be measured on hosted.
+old key source restored.
+
+Measured on hosted after #260, the same day, with the same `map_notes` on
+2026-27: one notebook listing, two token lookups before the page listing, and
+the map handed **27.7 s** of its 45 — against 11.9 s before 0016 and 7.0 s on
+the broken deploy. About 17 s went before the map: 9 s listing the notebook's
+pages and about 8 s for the names and the filtered sections, which the full
+listing had taken about 23 s to do. All 20 pages were sketched, none unreached.
 
 ## Open questions
 

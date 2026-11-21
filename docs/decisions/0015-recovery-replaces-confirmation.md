@@ -150,6 +150,23 @@ already allows it, and the token `edit_onenote_page` asks for on an append today
 is friction rather than protection. Replaces and inserts keep the token until
 steps 1–3 are done.
 
+**Built on 2026-11-21.** `edit_onenote_page` takes `confirmation_token` only
+when a change is a replace or an insert; a change made only of appends commits
+in one call, and a batch mixing an append with either still needs the token as
+a whole. An append also no longer reads the page first: the read captured a
+pre-image and an ETag, and an append has neither to protect, so it cost one of
+the musician's OneNote requests for nothing. The cost of that, accepted by the
+owner until it is seen to happen: a caller retrying after a timeout in which the
+write landed appends the line twice, and nothing in the tool notices. The result
+carries what was added and that it is removed by hand in OneNote, as 0009 asks of
+every one-call write. Existing `onenote-edit` grants were kept rather than
+cleared, by the owner's decision — the same exception 0009 made, for the same
+reason, and not a precedent. The custom pack's `policy:patch`, which shadows the
+bundled one on hosted, says the same, and goes one step further for 0014: in an
+automation the musician set up, the CL Aufgaben page `list_notes` names is the
+only page written to, and only by appending, each line with its source. Anything
+that would change an existing line goes into the result to be confirmed.
+
 ## What has to change, and what does not
 
 - **The hosted table.** `write_audit` is insert-only, exposes nothing, and has

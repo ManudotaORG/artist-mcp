@@ -30,8 +30,10 @@ and it is still only our code — Google's scope allows all of it. Read
 [0001](docs/decisions/0001-opt-in-calendar-writes.md) and 0013 before touching
 that path. **Confirmation follows what a write can destroy**: every write
 this tool can undo commits in one call, and a write that overwrites or removes
-the musician's own content keeps a preview and a token — `edit_onenote_page`,
-`edit_calendar_event`, and deleting an event this tool did not create. See
+the musician's own content keeps a preview and a token — a replace or insert
+through `edit_onenote_page`, `edit_calendar_event`, and deleting an event this
+tool did not create. An append to a page commits in one call, the first step of
+[0015](docs/decisions/0015-recovery-replaces-confirmation.md). See
 [0009](docs/decisions/0009-confirm-by-reversibility.md) before adding a preview
 back or taking the last one away.
 

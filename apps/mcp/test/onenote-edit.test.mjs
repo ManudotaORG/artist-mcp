@@ -242,21 +242,123 @@ test('an append records no pre-image, because it destroyed nothing', async () =>
   ]);
 });
 
-test('an edit with no token, or a stale one, writes nothing', async () => {
+test('a replace or insert with no token, or a stale one, writes nothing', async () => {
   const s = server();
   const { lines, record } = audit();
 
   await withFetch(s.fetchImpl, async () => {
-    for (const token of [undefined, 'not-the-token']) {
+    for (const change of [
+      { action: 'replace', element_id: para, text: 'x' },
+      { action: 'insert', element_id: para, position: 'after', html: '<p>x</p>' },
+    ]) {
       await assert.rejects(
-        applyEdit(
-          't',
-          { page_id: 'p1', action: 'append', text: 'x', confirmation_token: token },
-          record,
-        ),
-        /confirmation token does not match/,
+        applyEdit('t', { page_id: 'p1', ...change }, record),
+        /needs a confirmation_token/,
+      );
+      await assert.rejects(
+        applyEdit('t', { page_id: 'p1', ...change, confirmation_token: 'not-the-token' }, record),
+        /not what was previewed/,
       );
     }
+  });
+
+  assert.deepEqual(s.sent, []);
+  assert.deepEqual(lines, []);
+});
+
+test('an append commits in one call: no token, no read, one PATCH', async () => {
+  // 0015's first step. An append destroys nothing, so 0009's rule lets it
+  // commit directly — and with nothing to capture, the page read is skipped
+  // too, since it would spend a OneNote request protecting nothing.
+  const requests = [];
+  const fetchImpl = async (url, init = {}) => {
+    requests.push({ method: init.method ?? 'GET', url: String(url), headers: init.headers, body: init.body });
+    if ((init.method ?? 'GET') === 'GET') throw new Error('an append must not read the page');
+    return new Response(null, { status: 204 });
+  };
+
+  const { lines, record } = audit();
+  const result = await withFetch(fetchImpl, () =>
+    applyEdit('t', { page_id: 'p1', action: 'append', text: 'Curfew 23:00' }, record),
+  );
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].method, 'PATCH');
+  assert.equal(requests[0].headers['if-match'], undefined, 'nothing is overwritten, so nothing to guard');
+  assert.deepEqual(JSON.parse(requests[0].body), [
+    { target: 'body', action: 'append', content: '<p>Curfew 23:00</p>' },
+  ]);
+
+  // The result carries what a preview would have shown, and the way back.
+  assert.match(result.note, /Curfew 23:00/);
+  assert.match(result.note, /Nothing on the page was changed or removed/);
+  assert.match(result.note, /delete what was added in OneNote/);
+
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].operation, 'append_onenote_page');
+  assert.equal(lines[0].pre_image, null);
+});
+
+test('an append ignores a token, so the old two-step flow still works', async () => {
+  const s = server();
+  const { record } = audit();
+  await withFetch(s.fetchImpl, () =>
+    applyEdit(
+      't',
+      { page_id: 'p1', action: 'append', text: 'x', confirmation_token: 'from-an-old-preview' },
+      record,
+    ),
+  );
+  assert.equal(s.sent.length, 1);
+});
+
+test('a batch of appends commits together in one PATCH', async () => {
+  const s = server();
+  const { lines, record } = audit();
+  const result = await withFetch(s.fetchImpl, () =>
+    applyEdit(
+      't',
+      {
+        page_id: 'p1',
+        changes: [
+          { action: 'append', text: 'Neu, automatisch ergänzt' },
+          { action: 'append', text: '[ ] Probenplan schicken' },
+        ],
+      },
+      record,
+    ),
+  );
+
+  assert.equal(s.sent.length, 1);
+  assert.deepEqual(
+    s.sent[0].body.map((c) => c.content),
+    ['<p>Neu, automatisch ergänzt</p>', '<p>[ ] Probenplan schicken</p>'],
+  );
+  assert.equal(lines.length, 2);
+  assert.match(result.note, /in one write/);
+});
+
+test('a batch mixing an append with a replace still needs the token, and writes nothing without it', async () => {
+  // The append must not ride through on its own: a batch is one thing, and the
+  // replace in it is what the token exists for.
+  const s = server();
+  const { lines, record } = audit();
+
+  await withFetch(s.fetchImpl, async () => {
+    await assert.rejects(
+      applyEdit(
+        't',
+        {
+          page_id: 'p1',
+          changes: [
+            { action: 'append', text: 'Curfew 23:00' },
+            { action: 'replace', element_id: para, text: 'Fee: 1400' },
+          ],
+        },
+        record,
+      ),
+      /Change 2 \(replace\) needs a confirmation_token/,
+    );
   });
 
   assert.deepEqual(s.sent, []);

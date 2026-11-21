@@ -26,6 +26,7 @@ import {
 } from './calendar.js';
 import { listEmails, readEmail, readThread } from './mail.js';
 import { listNotebooks, listNotes, mapNotes, readNote, type OneNoteSection } from './notes.js';
+import { mapTasks } from './tasks.js';
 import { applyEdit, previewEdit } from './onenote-patch.js';
 import { createPage, createSection } from './onenote-write.js';
 import { accessTokenFor } from './oauth.js';
@@ -239,7 +240,14 @@ const dispatchOne =
           })) as T;
         case 'map_notes':
           // The pages are chosen by the caller, which is where the notebook scope
-          // is settled; nothing here maps a notebook it was not given.
+          // is settled; nothing here maps a notebook it was not given. In tasks
+          // mode they are the CL Aufgaben pages only (0014), and each is read
+          // rather than previewed, because its tasks are not in its opening.
+          if (params.tasks === true) {
+            return (await mapTasks(token, params.pages as Parameters<typeof mapTasks>[1], {
+              ...(typeof params.deadline_ms === 'number' ? { deadlineMs: params.deadline_ms } : {}),
+            })) as T;
+          }
           return (await mapNotes(token, params.pages as Parameters<typeof mapNotes>[1], {
             // What is left of the route's budget once the listing has spent its
             // share. Set by the tool handler, never by a model.

@@ -151,3 +151,13 @@ neither — as it never did.
   that an event this tool made; it does not make it one nobody needed.
 - MCP gaining a way to put a question in front of a person rather than a model.
   Then a gate could be real, and it should be.
+
+## Amended on 2026-11-21: an append commits in one call
+
+The first step of [0015](0015-recovery-replaces-confirmation.md). An append to a
+page this tool created removes nothing, so this record's own rule puts it on the
+one-call side; the token it carried checked only that the values matched a
+preview. Replaces and inserts keep the pair. `onenote-edit` now describes itself
+as adding to a page without asking first, which widens what the grant meant.
+As above, existing grants were kept rather than cleared, by the owner's decision
+— a second exception of the same kind, and still not a precedent.

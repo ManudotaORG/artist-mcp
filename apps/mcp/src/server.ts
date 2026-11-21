@@ -7,6 +7,7 @@ import { listAgentWorkflows, loadAgentWorkflow, type ResolvedEntry } from "./age
 import { COLOR_NAMES } from "./calendar.js";
 import { GraphError } from "./client.js";
 import { call as localCall, type Operation } from "./dispatch.js";
+import type { PageTask, PageTasks } from "./tasks.js";
 import {
   MAP_DEADLINE_MS,
   PAGE_LISTING_CAP,
@@ -458,6 +459,119 @@ export const renderSectionMiss = (
     "Do not read this as the project having no page." +
     keyLine
   );
+};
+
+/**
+ * `map_notes` in tasks mode (0014): one CL Aufgaben page per section, its tasks.
+ *
+ * The pages are picked by the same title rule `list_notes` uses to name an
+ * update target, from every page the listing returned, so a section's page is
+ * found however many other pages it has. A section with none, or with several,
+ * reads nothing and says so, exactly as the update-target rule does: picking one
+ * of two would report one project's tasks as the whole of them.
+ *
+ * Every way this answer is less than the notebook's tasks is said in it — the
+ * sections with no page, the pages not reached, the sections `since` skipped —
+ * because a digest built from it will otherwise read each gap as nothing open.
+ */
+const taskDigest = async (
+  call: Dispatch,
+  chosen: {
+    pages: NoteSummary[];
+    sections: SectionSummary[];
+    scope: string | null;
+    sectionsUnchanged?: number;
+  },
+  { since, includeDone, deadlineMs }: { since?: string; includeDone: boolean; deadlineMs: number },
+): Promise<string> => {
+  const inSection = (page: NoteSummary, sec: SectionSummary) =>
+    page.section === sec.name && (page.notebook ?? null) === (sec.notebook ?? null);
+  const where = (sec: { name?: string | null; section?: string | null; notebook?: string | null }) =>
+    [sec.notebook, sec.name ?? sec.section].filter(Boolean).join(" / ");
+
+  const toRead: NoteSummary[] = [];
+  const without: SectionSummary[] = [];
+  const several: { sec: SectionSummary; pages: NoteSummary[] }[] = [];
+  for (const sec of chosen.sections) {
+    const targets = chosen.pages.filter((p) => inSection(p, sec) && isUpdateTarget(p.title));
+    if (targets.length === 1) toRead.push(targets[0]);
+    else if (targets.length === 0) without.push(sec);
+    else several.push({ sec, pages: targets });
+  }
+
+  const { read, not_reached } =
+    toRead.length === 0
+      ? { read: [], not_reached: [] as NoteSummary[] }
+      : await call<{
+          read: { page: NoteSummary; tasks: PageTasks | null; error: string | null }[];
+          not_reached: NoteSummary[];
+        }>("map_notes", { pages: toRead, tasks: true, deadline_ms: deadlineMs });
+
+  const line = (t: PageTask) =>
+    `${t.done ? "[x]" : "[ ]"} ${t.text}${t.details === null ? "" : `\n    ${t.details}`}`;
+
+  const blocks = read.map(({ page, tasks, error }) => {
+    const head = `## ${page.title} (${where(page)}) — dated ${page.last_modified ?? "unknown"}\nid: ${page.id}`;
+    if (tasks === null) {
+      return `${head}\nCOULD NOT BE READ (${error}) — its tasks are unknown, not absent.`;
+    }
+    const open = tasks.tasks.filter((t) => !t.done);
+    const done = tasks.tasks.filter((t) => t.done);
+    return [
+      head,
+      ...(tasks.lead === ""
+        ? []
+        : [`Lead: ${tasks.lead}${tasks.lead_cut ? " [cut; read_note for the rest]" : ""}`]),
+      ...open.map(line),
+      ...(includeDone ? done.map(line) : []),
+      `${open.length} open, ${done.length} done.`,
+      ...tasks.problems.map((problem) => `NOTE: ${problem}`),
+    ].join("\n");
+  });
+
+  const caveats: string[] = [];
+  if (chosen.scope) caveats.push(chosen.scope);
+  if (not_reached.length > 0) {
+    caveats.push(
+      "Not reached before the time ran out, so UNREAD rather than empty: " +
+        not_reached.map((p) => `"${p.title}" (${where(p)})`).join(", ") +
+        ". Ask again with `section` for each.",
+    );
+  }
+  if (without.length > 0) {
+    caveats.push(
+      "No CL Aufgaben page, so nothing in these sections was read: " +
+        without
+          .map(
+            (sec) =>
+              `${where(sec)}${sec.pages >= PAGE_LISTING_CAP ? " (listing capped; the page may be beyond it)" : ""}`,
+          )
+          .join(", ") +
+        ". Their tasks are unknown, not absent.",
+    );
+  }
+  for (const { sec, pages } of several) {
+    caveats.push(
+      `${where(sec)} has ${pages.length} CL Aufgaben pages, so none was read: ` +
+        pages.map((p) => `"${p.title}" (id: ${p.id})`).join(", ") +
+        ". Ask which one holds its tasks.",
+    );
+  }
+  const unchanged = chosen.sectionsUnchanged ?? 0;
+  if (since !== undefined && unchanged > 0) {
+    caveats.push(
+      `${unchanged} section${unchanged === 1 ? "" : "s"} unchanged since ${since} ` +
+        `${unchanged === 1 ? "was" : "were"} not read. Their tasks are not in this answer, ` +
+        "including any coming due.",
+    );
+  }
+  caveats.push(
+    "Only each section's CL Aufgaben page was read, and only its tasks and opening: " +
+      "prose elsewhere on it and every other page in the section were not. Do not call " +
+      "a task done, stale or unsettled on prose grounds without read_note.",
+  );
+
+  return `${blocks.length === 0 ? "No CL Aufgaben page was read." : blocks.join("\n\n")}\n\n${caveats.join("\n\n")}`;
 };
 
 /**
@@ -1547,7 +1661,7 @@ const createServer = async (
       "for surveying an unfamiliar or unsorted notebook, once. In an organised " +
       "notebook, where a project is a section, use list_notes with `section` " +
       "and read the project's page instead, and pass `section` here to sketch " +
-      "just one section.",
+      "just one section. For open tasks use `tasks: true` instead.",
     {
       notebook: z
         .string()
@@ -1591,8 +1705,19 @@ const createServer = async (
           "Exact name of one section, to sketch only its pages. Costs one request " +
             "for the section plus one per page, instead of one per section in the notebook.",
         ),
+      tasks: z
+        .boolean()
+        .optional()
+        .describe(
+          "Instead of sketches, read only each section's CL Aufgaben page and return its " +
+            "tasks: one request per section plus one per page. `since` then means sections changed",
+        ),
+      include_done: z
+        .boolean()
+        .optional()
+        .describe("With `tasks`: list finished tasks too, not only count them"),
     },
-    async ({ notebook, notebook_key, since, limit, section }) => {
+    async ({ notebook, notebook_key, since, limit, section, tasks, include_done }) => {
       // The route has one budget, and the listing spends from it before a single
       // page is sketched. The map's own deadline used to start after the
       // listing, so the two together could never fit.
@@ -1613,6 +1738,24 @@ const createServer = async (
             (chosen as { allSections?: { name: string; notebook: string | null }[] }).allSections ?? [],
           );
           if (miss !== null) return { content: [{ type: "text", text: miss.replace(/call list_notes again/g, "call map_notes again") }] };
+        }
+
+        // Before the `since` refusal below, which is about page dates: in tasks
+        // mode `since` narrows sections, by the section dates that track every
+        // change on any account, and no page is filtered by its own date.
+        if (tasks === true) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: await taskDigest(call, chosen, {
+                  since,
+                  includeDone: include_done === true,
+                  deadlineMs: Math.max(MAP_MIN_DEADLINE_MS, MAP_DEADLINE_MS - (Date.now() - startedAt)),
+                }),
+              },
+            ],
+          };
         }
 
         // `since` cannot be honoured here when page dates are creation dates,
@@ -2702,7 +2845,7 @@ const createServer = async (
   if (isGranted(grants, "onenote-edit")) {
     server.tool(
       "preview_onenote_edit",
-      "Call this before edit_onenote_page — it is the only way to obtain the confirmation_token that one requires, and it is what puts the exact change in front of the musician. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. " +
+      "Call this before edit_onenote_page for a replace or an insert — it is the only way to obtain the confirmation_token those require, and it is what puts the exact change in front of the musician. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. An append needs no preview. " +
         "Reads the page as it stands right now and shows what the change would " +
         "do to it. Changes nothing. For a replace it quotes what would be " +
         "overwritten — a table as its rows — which is the part the musician has " +
@@ -2883,7 +3026,7 @@ const createServer = async (
 
     server.tool(
       "edit_onenote_page",
-      "Only call this after preview_onenote_edit AND after the musician has said yes to what the preview showed. Never call it to find out whether it would work. " +
+      "A replace or an insert: only after preview_onenote_edit AND after the musician has said yes to what the preview showed. Never call it to find out whether it would work. An append commits in one call with no token: in a conversation, show the musician the addition and wait for their yes first; in an automation they set up, call it directly. " +
         "Changes ONE page that artist-mcp itself created. It CANNOT touch a page " +
         "the musician wrote or one another app created — Microsoft refuses those, " +
         "not this tool — and it cannot delete anything. 'append' adds to the end " +
@@ -2894,7 +3037,7 @@ const createServer = async (
         "as undoable in OneNote. Replacing a TABLE overwrites every row of it at " +
         "once, because OneNote supports no change to a single row or cell — so " +
         "the html must carry the cells that are staying exactly as they read now, " +
-        "and a cell left out is a value destroyed. Requires the confirmation_token from a preview " +
+        "and a cell left out is a value destroyed. A replace or insert requires the confirmation_token from a preview " +
         "of these exact values; if the page changed since that preview the token " +
         "stops matching and nothing is written, which means preview again and " +
         "show the musician the new version. Never write a value the musician " +
@@ -2933,7 +3076,10 @@ const createServer = async (
           .describe(SOURCE_PAGE),
         confirmation_token: z
           .string()
-          .describe("The token preview_onenote_edit returned for these exact values"),
+          .optional()
+          .describe(
+            "For a replace or insert: the token preview_onenote_edit returned for these exact values. Not needed when every change is an append",
+          ),
       },
       async (params) => {
         try {
