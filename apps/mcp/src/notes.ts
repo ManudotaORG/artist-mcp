@@ -666,6 +666,10 @@ export const mapNotes = async (
 ): Promise<MapNotesResult> => {
   const mapStartedAt = now();
   const stopAt = mapStartedAt + deadlineMs;
+  // The closing line below is written even on failure, so its absence used to
+  // be the only evidence a map had hung — and absence cannot say whether the
+  // map started. This one can.
+  console.warn(`[artist-mcp] map_notes start pages=${pages.length} deadline=${deadlineMs}ms`);
 
   // Held outside the try so the `finally` can report them whatever happens.
   let sketched = 0;

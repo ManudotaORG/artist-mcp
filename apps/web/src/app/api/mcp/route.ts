@@ -77,6 +77,7 @@ process.env.ARTIST_MCP_PACK_MODE ??= 'replace';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
+const READ_BUDGET_MS = 52_000;
 
 /**
  * Stateless, one transport per request.
@@ -111,7 +112,13 @@ const handle = async (request: Request): Promise<Response> => {
   // it rather than reading process state.
   const server = await createServer(
     // paceKey: OneNote's request limit is per user, and this process serves many.
-    dispatchWith(hostedTokens(userId), hostedAudit(userId), { paceKey: userId }),
+    // budgetMs: reads still running near maxDuration are reported as out of
+    // time rather than left for Vercel to end with a bare 504. Under sixty by
+    // enough to send the answer; map_notes' own deadline normally ends first.
+    dispatchWith(hostedTokens(userId), hostedAudit(userId), {
+      paceKey: userId,
+      budgetMs: READ_BUDGET_MS,
+    }),
     await writeGrantsFor(userId),
   );
 
