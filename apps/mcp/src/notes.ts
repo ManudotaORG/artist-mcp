@@ -265,7 +265,8 @@ export const listNotes = async (
     section,
     notebook,
     sections: known,
-  }: { section?: string; notebook?: string; sections?: OneNoteSection[] } = {},
+    since,
+  }: { section?: string; notebook?: string; sections?: OneNoteSection[]; since?: string } = {},
 ): Promise<{
   notes: NoteSummary[];
   sections: SectionSummary[];
@@ -277,9 +278,12 @@ export const listNotes = async (
    * name that matched nothing still needs something to be compared against.
    */
   all_sections?: { name: string; notebook: string | null }[];
+  /** Sections `since` left unlisted, because nothing in them changed after it. */
+  sections_unchanged?: number;
 }> => {
   const startedAt = Date.now();
   let sectionCount = 0;
+  let unchanged = 0;
   let failure: string | null = null;
 
   try {
@@ -301,11 +305,33 @@ export const listNotes = async (
   // fetched. Filtering afterwards is what made a map of one 28-section
   // notebook pay for all 56 sections on the account.
   const inNotebook = notebook?.trim().toLowerCase();
-  const usable = valid.filter(
+  const inScope = valid.filter(
     (s) =>
       (wanted === undefined || sectionKey(s.displayName ?? '') === wanted) &&
       (inNotebook === undefined || (s.parentNotebook?.displayName ?? '').trim().toLowerCase() === inNotebook),
   );
+
+  // `since` narrows the walk too, by the section's own timestamp. A section's
+  // timestamp moves when any page inside it is edited, added, moved or removed
+  // — the control is recorded on `narrowSections` — so a section dated before
+  // the cutoff holds no page that changed after it, and listing its pages buys
+  // nothing a `since` answer can use. On the season notebooks that is most of
+  // the cost: 46 section listings and then whatever is read from them, against
+  // OneNote's 400 requests an hour.
+  //
+  // Two things are deliberately left alone. A section with no usable date is
+  // listed, because nothing shows it unchanged. And a named `section` is never
+  // filtered: it is one listing either way, and an unchanged section returned
+  // as empty would read as a section that does not exist.
+  const cutoff = since === undefined || wanted !== undefined ? undefined : parseSince(since);
+  const usable =
+    cutoff === undefined
+      ? inScope
+      : inScope.filter((s) => {
+          const at = Date.parse(s.lastModifiedDateTime ?? '');
+          return Number.isNaN(at) || at >= cutoff;
+        });
+  unchanged = inScope.length - usable.length;
   sectionCount = usable.length;
 
   // Batched: one round trip per twenty sections instead of one per section.
@@ -358,13 +384,15 @@ export const listNotes = async (
     (b.last_modified ?? '').localeCompare(a.last_modified ?? ''),
   );
 
+  const skipped = cutoff === undefined ? {} : { sections_unchanged: unchanged };
   if (wanted === undefined && inNotebook === undefined) {
-    return { notes, sections: sectionList, page_dates_are_creation_dates: creationDates };
+    return { notes, sections: sectionList, page_dates_are_creation_dates: creationDates, ...skipped };
   }
   return {
     notes,
     sections: sectionList,
     page_dates_are_creation_dates: creationDates,
+    ...skipped,
     all_sections: valid.map((s) => ({
       name: s.displayName ?? '(unnamed section)',
       notebook: s.parentNotebook?.displayName ?? null,
@@ -383,6 +411,7 @@ export const listNotes = async (
     // measures the wrong runs.
     console.warn(
       `[artist-mcp] list_notes sections=${sectionCount} ` +
+        (unchanged > 0 ? `unchanged_skipped=${unchanged} ` : '') +
         `elapsed=${Date.now() - startedAt}ms` +
         (failure === null ? '' : ` failed=${failure}`),
     );
@@ -425,11 +454,13 @@ export const narrowSections = <T extends { last_modified: string | null }>(
 };
 
 /**
- * Narrowing happens here rather than at Graph, because the section walk above
- * has to fetch every page regardless — the saving is in what the model is asked
- * to read, not in the calls made. That is still the saving worth having: "what
- * moved this week" is the question every session opens with, and paying for the
- * whole notebook in context in order to ignore most of it is the cost.
+ * Narrowing pages by their own dates happens here, after the walk. The walk
+ * itself is narrowed by section dates first (see `listNotes`), so the pages
+ * that reach this are only those of sections that changed in the window; this
+ * then trims them to the pages that did, where the account reports page dates
+ * honestly. "What moved this week" is the question every session opens with,
+ * and it now costs requests in proportion to what moved rather than to the size
+ * of the notebook.
  *
  * Kept separate from `listNotes` so it is testable without a Graph stub, and so
  * the fetch keeps doing exactly one thing.

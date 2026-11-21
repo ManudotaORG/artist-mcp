@@ -158,6 +158,7 @@ export const dispatchWith =
         return (await listNotes(token, {
           section: typeof params.section === 'string' ? params.section : undefined,
           notebook: typeof params.notebook === 'string' ? params.notebook : undefined,
+          since: typeof params.since === 'string' ? params.since : undefined,
           // Handed on from list_notebooks by the tool handler, never by a model,
           // so the sections request is made once per call rather than twice.
           sections: Array.isArray(params.sections)

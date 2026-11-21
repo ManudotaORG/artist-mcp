@@ -218,12 +218,16 @@ const selectNotebook = async (
   section?: string,
   /** Return the chosen notebook's sections without walking their pages. */
   sectionsOnly = false,
+  /** Skip sections unchanged since this date before walking their pages. */
+  since?: string,
 ): Promise<
   | {
       pages: NoteSummary[];
       sections: SectionSummary[];
       creationDates: boolean;
       scope: string | null;
+      /** Sections `since` skipped for being unchanged; 0 when none were. */
+      sectionsUnchanged?: number;
       allSections?: { name: string; notebook: string | null }[];
       /** Set only when sectionsOnly was asked for: the sections, and no pages were fetched. */
       sectionList?: { name: string; notebook: string | null; last_modified: string | null }[];
@@ -323,17 +327,23 @@ const selectNotebook = async (
     sections = [],
     page_dates_are_creation_dates = false,
     all_sections,
+    sections_unchanged = 0,
   } = await call<{
     notes: NoteSummary[];
     sections?: SectionSummary[];
     page_dates_are_creation_dates?: boolean;
     all_sections?: { name: string; notebook: string | null }[];
+    sections_unchanged?: number;
   }>("list_notes", {
     ...(section === undefined ? {} : { section }),
     // The walk is narrowed to the chosen notebook before it starts: a map of one
     // season should not pay for every section on the account.
     ...(wanted === undefined ? {} : { notebook: wanted }),
     ...(section_list === undefined ? {} : { sections: section_list }),
+    // Only sections that changed in the window have their pages listed. Every
+    // `since` answer below reads pages or sections from inside that window, so
+    // the answer is the same and the walk is the size of what moved.
+    ...(since === undefined ? {} : { since }),
   });
 
   const pages = wanted
@@ -367,6 +377,7 @@ const selectNotebook = async (
     sections: inScope,
     creationDates: page_dates_are_creation_dates,
     scope,
+    sectionsUnchanged: sections_unchanged,
     allSections: wanted
       ? all_sections?.filter((sec) => (sec.notebook ?? "").trim().toLowerCase() === wanted)
       : all_sections,
@@ -574,13 +585,17 @@ const renderChangedSections = (
   chosen: { sections: SectionSummary[]; scope: string | null },
   notebook: string | undefined,
   since: string,
+  /** False when this is answered from sections only because none changed. */
+  pageDatesUnreliable = true,
 ): string => {
   const { sections: changed, undated } = narrowSections(chosen.sections, since);
   const where = notebook ? `"${notebook}"` : "this account";
 
-  const preamble =
-    "OneNote is not reporting page modification times on this account, so " +
-    "this answers with sections.";
+  const preamble = pageDatesUnreliable
+    ? "OneNote is not reporting page modification times on this account, so " +
+      "this answers with sections."
+    : "Answered from section dates, which move when any page inside a section " +
+      "is edited, added, moved or removed.";
 
   if (changed.length === 0) {
     return (
@@ -1351,6 +1366,7 @@ const createServer = async (
             "list_notes",
             section,
             section === undefined && since === undefined,
+            since,
           ));
         if ("message" in chosen) {
           return { content: [{ type: "text", text: chosen.message }] };
@@ -1394,10 +1410,23 @@ const createServer = async (
         // Nothing is lost from the answer itself. A section's timestamp moves
         // for any single page edit inside it, tested with a control, so no
         // change escapes this. What is surrendered is which page. See #122.
-        if (since !== undefined && chosen.creationDates) {
+        // Also when nothing changed at all. The walk skipped every section for
+        // being dated before `since`, so there are no pages to judge the
+        // account's page dates by — but there does not need to be: section
+        // dates move with any edit, so "no section changed" is the whole
+        // answer, on either kind of account, and a stronger one than the
+        // page-level "this is not evidence that nothing changed".
+        const nothingMoved =
+          since !== undefined &&
+          chosen.sections.length === 0 &&
+          ((chosen as { sectionsUnchanged?: number }).sectionsUnchanged ?? 0) > 0;
+        if (since !== undefined && (chosen.creationDates || nothingMoved)) {
           return {
             content: [
-              { type: "text", text: renderChangedSections(chosen, notebook, since) },
+              {
+                type: "text",
+                text: renderChangedSections(chosen, notebook, since, chosen.creationDates),
+              },
             ],
           };
         }
@@ -1558,7 +1587,7 @@ const createServer = async (
           (section !== undefined && notebook === undefined
             ? await findSectionAcrossNotebooks(call, section)
             : null) ??
-          (await selectNotebook(call, notebook, notebook_key, "map_notes", section));
+          (await selectNotebook(call, notebook, notebook_key, "map_notes", section, false, since));
         if ("message" in chosen) {
           return { content: [{ type: "text", text: chosen.message }] };
         }
