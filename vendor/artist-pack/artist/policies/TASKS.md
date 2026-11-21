@@ -26,6 +26,18 @@ they are read and not ignored.
   worst answer available.
 - **Weigh a list by how much of it is tracked.** Two tags and four pages of
   prose have not been surveyed by reading the tags.
+- **A delegated task is done, and its handover is the record.** A task Ruben
+  has handed on counts as done, with who has it. It is recorded one of two
+  ways: a ticked task whose line names the person ("→ übergeben an Katharina
+  Würgau, 12.10.2026"), or a filled row of a delegation table — one with an
+  "Übergeben an" column, as the Festivalleitung template has. `map_notes` with
+  `tasks` returns both under "Delegiert". Report them apart from open and done,
+  each with who has it. A handover with no reply recorded is still done: say
+  that nothing has come back, once, and never move it into the open list. An
+  open task whose prose says it was handed on is unsettled under the first rule
+  here, not delegated. And "Verantwortlich" naming someone else is not a
+  handover: that column says who should do the work, not that it was passed on
+  and taken.
 - **A ticked box carries no date.** *What* is finished can be answered; *when*
   cannot. Never date a completed task, never report what was finished "this
   week", and never read a tick as done on time. A date written beside the task
@@ -44,6 +56,13 @@ Under `policy:patch`, and only on a page this tool may change.
   `data-tag="to-do:completed"` on that task's line and leaves its wording alone.
   The line stays: nothing is deleted, and nothing is rewritten into the past
   tense. A removed task and a task that never existed are the same page.
+- **Handing a task on ticks it and names who got it.** "Georgija kümmert sich
+  um die Übernachtungen" sets `to-do:completed` and adds to the end of that
+  line "→ übergeben an Georgija, <Datum>" — the date of the handover where it
+  is stated, and otherwise the date it was said, stamped the way the page
+  stamps chat values. That addition is the one change to a task's wording this
+  policy allows. On a page with a delegation table, the handover may go in as a
+  row there instead, never both: two records of one handover drift.
 - **The status cell follows the tag, in the same change.** Ticking a task sets
   its status cell to the page's word for done — `ERLEDIGT` where the page uses
   it — in the same `changes` call. Never change a status cell without the tag,

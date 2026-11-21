@@ -7,7 +7,7 @@ import { listAgentWorkflows, loadAgentWorkflow, type ResolvedEntry } from "./age
 import { COLOR_NAMES } from "./calendar.js";
 import { GraphError } from "./client.js";
 import { call as localCall, type Operation } from "./dispatch.js";
-import type { PageTask, PageTasks } from "./tasks.js";
+import type { DelegatedTask, PageTask, PageTasks } from "./tasks.js";
 import {
   MAP_DEADLINE_MS,
   PAGE_LISTING_CAP,
@@ -507,6 +507,14 @@ const taskDigest = async (
           not_reached: NoteSummary[];
         }>("map_notes", { pages: toRead, tasks: true, deadline_ms: deadlineMs });
 
+  // A handover is said with who and when, and what came back — or that nothing
+  // is recorded as having come back, since a handover that went quiet is the one
+  // a "done" count would otherwise hide.
+  const handed = (d: DelegatedTask) =>
+    `→ ${d.text}${d.from === "table" ? ` — an ${d.to}` : ""}` +
+    `${d.from === "table" && d.on !== null ? `, ${d.on}` : ""}` +
+    (d.reply !== null ? ` · Rückmeldung: ${d.reply}` : d.from === "table" ? " · no reply recorded" : "");
+
   const line = (t: PageTask) =>
     `${t.done ? "[x]" : "[ ]"} ${t.text}${t.details === null ? "" : `\n    ${t.details}`}`;
 
@@ -524,7 +532,9 @@ const taskDigest = async (
         : [`Lead: ${tasks.lead}${tasks.lead_cut ? " [cut; read_note for the rest]" : ""}`]),
       ...open.map(line),
       ...(includeDone ? done.map(line) : []),
-      `${open.length} open, ${done.length} done.`,
+      ...(tasks.delegated.length === 0 ? [] : ["Delegiert (counted as done):", ...tasks.delegated.map(handed)]),
+      `${open.length} open, ${done.length} done` +
+        (tasks.delegated.length === 0 ? "." : `, ${tasks.delegated.length} delegated.`),
       ...tasks.problems.map((problem) => `NOTE: ${problem}`),
     ].join("\n");
   });

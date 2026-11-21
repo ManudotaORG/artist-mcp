@@ -36,12 +36,33 @@ export type PageTask = {
   details: string | null;
 };
 
+/**
+ * A task handed on to someone, which the musician counts as done.
+ *
+ * Two places record it. A delegation table — one with an "Übergeben an" column,
+ * which the Festivalleitung template carries — records it as a row. Anywhere
+ * else it is a ticked task whose line names who it went to, the convention
+ * `policy:tasks` sets: "→ übergeben an <Name>, <Datum>".
+ */
+export type DelegatedTask = {
+  text: string;
+  /** Who it went to, as the page words it. */
+  to: string;
+  /** When, as the page words it, or null where nothing is recorded. */
+  on: string | null;
+  /** What came back, as the page words it, or null where nothing is recorded. */
+  reply: string | null;
+  from: 'table' | 'tick';
+};
+
 export type PageTasks = {
   /** The page's opening text up to its first task. */
   lead: string;
   /** Whether `lead` was cut at LEAD_CHARS. */
   lead_cut: boolean;
+  /** Open and done tasks. A done task that records a handover is in `delegated` instead. */
   tasks: PageTask[];
+  delegated: DelegatedTask[];
   /** Ways the page is not in a shape that reads reliably, each said in a sentence. */
   problems: string[];
 };
@@ -109,16 +130,87 @@ const taggedLines = (html: string): { text: string; done: boolean }[] =>
  */
 const TASK_HEADER = /^(aufgaben?|tasks?|to-?dos?)$/i;
 
-type TableRead = { tasks: PageTask[]; problems: string[] };
+type TableRead = { tasks: PageTask[]; delegated: DelegatedTask[]; problems: string[] };
+
+/**
+ * A cell that records nothing. The templates fill an unknown field with
+ * `UNKNOWN`, so a delegation table copied from one and never filled in is rows
+ * of it — found live on `CL Aufgaben — Montepulciano`, whose two rows are
+ * placeholders and not two handovers.
+ */
+const blank = (text: string): boolean => /^(|unknown|ungeklärt|tbc|—|–|-)$/i.test(text.trim());
+
+/** The column whose header matches, or -1. */
+const column = (header: string[], pattern: RegExp): number => header.findIndex((cell) => pattern.test(cell));
+
+/**
+ * A delegation table: each filled row is a handover, counted as done.
+ *
+ * A row needs both a task and a recipient to be one. A task with no recipient
+ * was meant to be handed on and is not recorded as having been, so it is said
+ * rather than counted either way.
+ */
+const readDelegations = (rows: string[][], header: string[], where: string): TableRead => {
+  const taskAt = Math.max(0, column(header, TASK_HEADER));
+  const toAt = column(header, /^übergeben an$/i);
+  const onAt = column(header, /^übergeben am$/i);
+  const replyAt = column(header, /^rückmeldung/i);
+  const cell = (row: string[], at: number): string | null => {
+    if (at < 0 || row[at] === undefined) return null;
+    const text = cellText(row[at]);
+    return blank(text) ? null : text;
+  };
+
+  const delegated: DelegatedTask[] = [];
+  const problems: string[] = [];
+  for (const row of rows.slice(1)) {
+    const text = cell(row, taskAt);
+    if (text === null) continue;
+    const to = cell(row, toAt);
+    if (to === null) {
+      problems.push(`"${text}" is listed for handover in ${where} with no recipient recorded.`);
+      continue;
+    }
+    delegated.push({ text, to, on: cell(row, onAt), reply: cell(row, replyAt), from: 'table' });
+  }
+  return { tasks: [], delegated, problems };
+};
+
+/**
+ * A ticked task whose line records a handover, by the wording `policy:tasks`
+ * sets: "übergeben an <Name>", optionally followed by a date. Only a ticked one:
+ * an open task that mentions a handover is open, because the tag is the record
+ * of whether the work is done.
+ */
+const HANDED_ON = /übergeben an\s+([^,;()]+?)\s*(?:[,;(]|$)/i;
+const DATE = /\b\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})?/;
+
+const handover = (task: PageTask): DelegatedTask | null => {
+  if (!task.done) return null;
+  const named = task.text.match(HANDED_ON);
+  if (!named) return null;
+  const after = task.text.slice((named.index ?? 0) + named[0].length - 1);
+  return {
+    text: task.text,
+    to: named[1].trim(),
+    on: after.match(DATE)?.[0] ?? null,
+    reply: null,
+    from: 'tick',
+  };
+};
 
 const readTable = (table: string, ordinal: number): TableRead => {
   const rows = outermost(inner(table), 'tr').map((row) =>
     outermost(inner(row.html), 't[dh]').map((cell) => cell.html),
   );
-  if (rows.length === 0) return { tasks: [], problems: [] };
+  if (rows.length === 0) return { tasks: [], delegated: [], problems: [] };
 
   const header = rows[0].map(cellText);
   const where = `Table ${ordinal}`;
+
+  // Before the tag check: the delegation tables seen live carry no tags at all,
+  // and a handed-on task is done whether or not anyone ticked it there.
+  if (column(header, /^übergeben an$/i) >= 0) return readDelegations(rows, header, where);
 
   if (!TAG.test(table)) {
     // Not every table is a task table, and an untagged table of facts is fine.
@@ -127,13 +219,14 @@ const readTable = (table: string, ordinal: number): TableRead => {
     return header.length > 1 && header.some((cell) => TASK_HEADER.test(cell))
       ? {
           tasks: [],
+          delegated: [],
           problems: [
             `${where} (headed "${header.join(' · ')}") has no to-do tags, so none of ` +
               `its ${rows.length - 1} row${rows.length === 2 ? ' is' : 's are'} read as tasks. Read the page with read_note ` +
               'to see them.',
           ],
         }
-      : { tasks: [], problems: [] };
+      : { tasks: [], delegated: [], problems: [] };
   }
 
   // The header row is the first row on every task table seen live. A tagged
@@ -166,7 +259,7 @@ const readTable = (table: string, ordinal: number): TableRead => {
       for (const line of taggedLines(cell)) tasks.push({ ...line, details });
     }
   }
-  return { tasks, problems };
+  return { tasks, delegated: [], problems };
 };
 
 /**
@@ -190,6 +283,7 @@ export const pageTasks = (html: string): PageTasks => {
   pieces.push({ kind: 'text', html: body.slice(at) });
 
   const tasks: PageTask[] = [];
+  const delegated: DelegatedTask[] = [];
   const problems: string[] = [];
   const leadParts: string[] = [];
   let leadOpen = true;
@@ -198,7 +292,8 @@ export const pageTasks = (html: string): PageTasks => {
     if (piece.kind === 'table') {
       const read = readTable(piece.html, piece.ordinal);
       problems.push(...read.problems);
-      if (read.tasks.length > 0) {
+      delegated.push(...read.delegated);
+      if (read.tasks.length > 0 || read.delegated.length > 0) {
         tasks.push(...read.tasks);
         leadOpen = false;
       }
@@ -217,7 +312,15 @@ export const pageTasks = (html: string): PageTasks => {
     }
   }
 
-  if (!TAG.test(body)) {
+  // A ticked task that records a handover is delegated, not merely done: the
+  // musician counts it done, and the digest needs the name it went to.
+  const ordinary = tasks.filter((task) => {
+    const handed = handover(task);
+    if (handed !== null) delegated.push(handed);
+    return handed === null;
+  });
+
+  if (!TAG.test(body) && delegated.length === 0) {
     problems.push(
       'This page has no to-do tags, so no task on it can be read. That does not ' +
         'mean it holds no work: read it with read_note.',
@@ -229,7 +332,8 @@ export const pageTasks = (html: string): PageTasks => {
   return {
     lead: lead_cut ? `${leadFull.slice(0, LEAD_CHARS).trimEnd()}…` : leadFull,
     lead_cut,
-    tasks,
+    tasks: ordinary,
+    delegated,
     problems,
   };
 };
