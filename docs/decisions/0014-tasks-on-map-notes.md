@@ -1,99 +1,77 @@
-# 0014 — Reading tasks across pages: a tasks mode on `map_notes`
+# 0014 — The CL Aufgaben page is the task record, and the tool keeps it current
 
 Status: **proposed, not built.** Written for review before any code. Builds on
-[0008](0008-tasks-are-onenote-tags.md) (a task is a to-do tag) and
-[0010](0010-two-discovery-paths.md) (where the requests go). Nothing here
-writes, and no row is added to the operation table.
+[0008](0008-tasks-are-onenote-tags.md) (a task is a to-do tag),
+[0010](0010-two-discovery-paths.md) (where the requests go) and
+[0006](0006-replacing-a-whole-table.md) (a table is replaced whole). Its
+maintenance half depends on [0015](0015-recovery-replaces-confirmation.md) for
+anything beyond appending.
 
-## Why this is wanted
+**Revised on 2026-11-21.** The first draft of this record proposed a tasks mode
+that read every page in scope and extracted its tasks. That answered the wrong
+question: it made a full read cheaper per call without making it rarer, and a
+full read is what the request budget cannot afford. This version replaces it.
+The measurements from the first draft are kept below, because they are what
+showed that reading every page was the wrong unit.
+
+## Why
 
 A daily digest for the musician, run as a ChatGPT scheduled task on the hosted
 path: what needs them today, what is new in the mail, which deadlines are close.
-It has to see the tasks of many pages in one run, unattended, inside a 60-second
-function limit and OneNote's request budget. Today the only way to see a page's
-tasks is `read_note`, one call per page.
+It runs unattended, inside a 60-second function limit and OneNote's request
+budget — 120 a minute and 400 an hour per app per user, shared by hosted and the
+local install because they are one app registration (0010), with every request
+inside a `$batch` counted.
 
-## What it saves, and what it does not
+Deadlines sit on pages that have not changed, so a digest that reads only what
+moved cannot see an old task coming due. And a full read of the three season
+notebooks measured about 270 requests on 2026-11-21. Reading everything every
+morning is two-thirds of the hour; reading only changes is blind.
 
-Measured on 2026-11-21 against a realistic digest input: the 24 pages in the
-five 2026-27 sections that changed since 14 November.
+The way out is to stop treating every page as a place tasks might be. Each
+project already has a page whose job is to hold its tasks.
 
-| | `read_note` per page | Task rows only |
-| --- | --- | --- |
-| OneNote requests | 25 | 25 — the same |
-| Text returned to the model | 143,730 chars (~36k tokens) | 27,143 chars (~6.8k tokens), 19% |
-| Tool calls | 24 | 1–2 |
+## The decision
 
-**It saves no OneNote requests.** A page's tasks cannot be found without
-fetching its content, which is exactly what `read_note` costs. The request saving
-for a digest comes from `since` narrowing the section walk (27827c5: 6 requests
-for that listing instead of 31), not from this. Anyone reading this later should
-not mistake a tasks mode for a throttling fix.
+**A project's tasks live on its CL Aufgaben page, and that page is the record.
+The tool keeps it current; the musician's other pages are sources it reads and
+never writes.**
 
-What it does save:
+- **The CL Aufgaben pages are this app's own.** They were created through it, so
+  `onenote-edit` (`Notes.ReadWrite.CreatedByApp`) reaches them, and Microsoft —
+  not this repository — keeps the tool off every page the musician wrote. That
+  is the separation the design rests on: CL Aufgaben pages are maintained with
+  less oversight precisely because they are apart from the pages that are always
+  human-managed.
+- **The musician can still edit them.** Ticking, correcting a date, deleting a
+  line — all fine. The page is the record, not a cache of something else, so
+  there is no copy for an edit to drift from and nothing for the tool to
+  overwrite it with. The tool reads whatever is there.
+- **Why maintenance, and not only reading.** Kept by hand, a CL Aufgaben page
+  drifts further from the truth the longer nobody has time for it, and a digest
+  built on a stale record is confidently wrong. If the musician wants more
+  automation, the record has to be fed automatically.
 
-- **Text.** About a fifth, with a caveat: the sample is dominated by one 69 KB
-  test page carrying 108 tasks. Real project pages run at a similar ratio —
-  `CL Aufgaben — Vidala-Tournee` is 19.6 KB for 18 tasks.
-- **Calls.** In a scheduled task, every `read_note` is another model step that
-  carries everything gathered so far. Twenty-four steps grow into several
-  hundred thousand tokens processed; one or two calls stay in the tens of
-  thousands. That is an estimate from the shape of the loop, not a measurement,
-  and it is probably the larger saving.
+## Reading: the digest reads one page per project
 
-Two findings from the same run shape what the mode must do:
+`map_notes` gains `tasks: true`. Per section in scope it reads **the CL
+Aufgaben page only**, found by the title rule `list_notes` already applies when
+it names a section's update target.
 
-- **Tasks are not only on `CL Aufgaben` pages.** Of 42 tasks on real project
-  pages, 29 were on CL Aufgaben pages; `CL Arrangements neue Stücke` holds 11,
-  and two more sit on pages named for a venue. Reading CL pages alone would
-  miss a third. Every page in scope is read.
-- **The date is not always on the task.** On `CL Arrangements neue Stücke` the
-  deadline for all eleven tasks is in the paragraph above them ("Deadline:
-  idealerweise bis 08.09.2026, spätestens bis 01.11.2026"). Rows alone would
-  drop the one date that governs the page.
+| Scope | Requests, estimated |
+| --- | --- |
+| All three season notebooks | about 93: 1 sections call + 46 section listings + ~46 CL Aufgaben pages |
+| Sections changed since yesterday (this week's input) | about 11: 1 + 5 listings + 5 pages |
 
-## Why on `map_notes`, and why that was checked first
+Against about 270 for reading every page. A full read becomes affordable once a
+morning — roughly a quarter of the hour — and the change-only read becomes
+nearly free. The section listings are now the larger share, because a section's
+page list is the only way to find its CL Aufgaben page; remembering those page
+ids would remove them, and is deliberately not proposed (it is state).
 
-A new tool costs its whole description on every request — `read_thread` added
-about 845 characters. A mode on an existing tool costs a parameter. `map_notes`
-already reads many pages in one call, stops at a deadline and names what it did
-not reach, which is the hard part.
-
-It was also the tool that ran the account out in September, so it was checked
-before being extended. Three live runs on 2026-11-21, local, against the real
-notebooks: no 429s, 13–21 s each, every page sketched.
-
-| Run | Requests | 429s | Total | Map step |
-| --- | --- | --- | --- | --- |
-| 2027-28, whole notebook, default 20 | 32 | 0 | 13 s | 2.8 s |
-| 2026-27, one section, 14 pages | 17 | 0 | 13 s | 4.1 s |
-| 2026-27, whole notebook, default 20 | 56 | 0 | 21 s | 8.4 s |
-
-Not measured on hosted, where September's timeouts appeared and a cold start
-counts against the same 60 seconds.
-
-## The proposal
-
-### Interface
-
-`map_notes` gains `tasks: true`. With it, each page in scope is read in full
-instead of previewed, and the answer is its tasks instead of its opening.
-
-It requires `section` or `since`. A whole-notebook task read with neither is
-refused, naming the cost: 2026-27 is 161 pages behind 30 section listings, about
-190 requests, nearly half the hour. The "20 newest by date" default that the map
-uses is not offered here, because on this account the date is the creation date
-— the twenty newest-created pages are not the twenty that matter.
-
-With `since`, every page in a changed section is read. On an account whose page
-dates are creation dates that is the only honest scope, and the answer says so:
-these are the tasks on pages in sections that changed, not tasks that changed.
-
-### What a page returns
-
-Facts the page states, in its own words. No date is parsed, no urgency is
-ranked, no task is called overdue — that is `policy:tasks`, applied by the model
-to what this returns.
+What a page returns is facts in the page's own words. No date is parsed, no
+urgency ranked, no task called overdue — that is `policy:tasks`, applied by the
+model.
 
 ```
 ## CL Aufgaben — Vidala-Tournee (BCW Wigmore hall u.a. Vidala) — id: …
@@ -106,77 +84,152 @@ Lead: Die Reise- und Hotelbuchungen warten auf Vertragsabschluss und Gagenbestä
 ```
 
 - **A task in a table** is its tagged cell, then the other cells of its row
-  labelled by the header row. The header is the first row, as on every task
-  table seen live (`Aufgabe · Verantwortlich · Frist · Status`).
-- **A task on a line** (`p` or `li`) is that line.
-- **The lead** is the page's opening prose up to its first task, capped (about
-  400 characters). It is where a page-wide deadline was found.
-- **Done tasks are counted, not listed**, unless asked for (`include_done`). The
-  digest is about open work; the janitor and the calendar reconciliation, which
-  need the ticked ones, can ask.
-- **A page with no tags says what it has instead**: its length, and whether it
-  holds a table that looks like a task table without tags. `policy:tasks` is
-  explicit that an untracked page is not a page with no work, and the tool
-  saying so on the page is stronger than the policy hoping to be remembered.
-- **What it leaves out is said once, in the output**: prose elsewhere on the
-  page is not included, so a task is not called unsettled, done or stale on
-  prose grounds without `read_note`. That is the one judgement a rows view
-  cannot support, and the rule belongs where the gap is.
+  labelled by the header row — the first row, on every task table seen live
+  (`Aufgabe · Verantwortlich · Frist · Status`; the tag sits on a `span` in the
+  cell).
+- **A task on a line** (`p` or `li`) is that line — including the lines the tool
+  itself appends (below).
+- **The lead** is the page's opening prose up to its first task, capped at about
+  400 characters. A page-wide deadline was found there on a live page.
+- **Done tasks are counted, not listed**, unless `include_done` asks for them.
+- **A section with no CL Aufgaben page says so**, and that its other pages were
+  not read. Several CL Aufgaben pages in one section are named, not chosen
+  between — the rule `list_notes` already follows.
+- **A CL Aufgaben page whose shape is broken says so** — a task table with no
+  header row, task-like lines without tags — rather than dropping what it
+  cannot place. `policy:tasks` is explicit that untracked work is not absent
+  work.
+- **What it leaves out is said once, in the output:** prose elsewhere on the
+  page and every other page in the section. A task is not called done, stale or
+  unsettled on prose grounds without `read_note`.
 
-### Requests, time and paging
+Paging and pacing carry over from the first draft: the 45-second deadline
+holds, pages it cut off are named as unread, the answer carries a cursor that
+resumes from a section rather than re-walking every section, and reads are
+paced under 120 a minute. With one page per section, a whole-notebook read of
+2026-27 is about 31 pages and should fit in one call; the cursor is for the
+cases that do not.
 
-- One content request per page, the same as `read_note`. Section listing as
-  today, narrowed by `since`.
-- Paced under OneNote's 120 a minute. The page reads of 2026-11-21's sweep ran
-  at about 127 a minute at four concurrent and drew 429s; the September cap of
-  four bounds concurrency, not rate. This mode reads more pages per call than
-  anything else, so it ships with a rate limit rather than relearning it.
-- The 45-second deadline holds, pages it cut off are named as unread, and the
-  answer carries a cursor to continue from. The cursor names a section and a
-  position in it, so a continuation re-lists only from there — the sections
-  call is one request; re-walking every section per continuation would cost
-  thirty.
-- Estimated, not measured: this week's digest input (24 pages) is one call of
-  roughly 10–15 s of reads on top of a six-request listing.
+## Maintaining: what a scheduled run may do to a CL Aufgaben page
 
-### Cost on every request
+The digest's other job, on the same run: look at what changed and feed the
+record.
 
-One boolean, one optional boolean and a sentence in the description. Measured
-with `context-budget` before it ships; anything much over 300 characters is a
-sign the description is carrying rules the output should.
+**Inputs.** The sections that changed since the last run (by section date, the
+same narrowing `since` already does), and new mail, read as threads
+(`read_thread`) so a value revised three replies later is not mistaken for the
+first one.
+
+**What it may write, in this record: additions only, appended below.**
+
+- A new task found in a source becomes a tagged line appended at the end of the
+  project's CL Aufgaben page, under a heading the tool owns ("Neu, automatisch
+  ergänzt"), each line carrying where it came from:
+  `[ ] Probenplan an die Agentur schicken — Frist 15.12.2026 · aus Mail „Re: Probenplan" (Agentur), 21.11.`
+- **Not into the table.** OneNote cannot add a row; adding one means replacing
+  the whole table (0006), which overwrites every cell the musician has edited.
+  An append overwrites nothing. The musician moves a line into the table when
+  they want it there, or a later step does once 0015's undo exists.
+- **Nothing existing is changed by a scheduled run.** No tick, no new date on an
+  existing row, no rewording, no removal. A changed deadline in the mail, or a
+  sign that a task is done, goes into the digest as something to confirm, not
+  onto the page. That keeps the line the musician drew: the tool adds, a person
+  decides what is finished.
+- **Not added twice.** Recognising that "Gage Mittersill bestätigen" is already
+  on the page is a judgement, not a string match. When unsure, the run does not
+  append; it lists the candidate in the digest instead.
+- **Tasks found on the musician's other pages are flagged, not copied.** Thirteen
+  of 42 real tasks in the 2026-11-21 sample were on pages like `Mittersill` or
+  `CL Arrangements neue Stücke`. Copying one makes two records that drift — tick
+  one and the other stays open — and the tool cannot remove the original from a
+  page it does not own. The digest says "3 open tasks on 'Mittersill', not on
+  the CL Aufgaben page", and the musician moves them once. After that the
+  convention holds.
+
+**Why this needs only a small change, not 0015.** An append destroys nothing, so
+under 0009's own rule it may commit in one call. Today `edit_onenote_page` asks
+for a confirmation token even for an append. Letting appends commit in one call
+is the first, smallest step, and it is independent of the undo machinery —
+though 0015's verified undo for an appended line (replace it with `<p></p>`)
+gives it one anyway.
+
+**What waits for 0015.** Changing existing rows unattended — ticking from
+evidence, updating a date, folding appended lines into the table — overwrites
+the musician's content and stays behind a confirmation until 0015's recovery is
+built and verified.
+
+**Oversight moves to after the fact.** Every appended line names its source and
+is in the write log. The digest opens with what was added overnight ("2 tasks
+added to CL Aufgaben — Vidala"), so the musician reviews additions where they
+already look. A wrong addition costs one deleted line.
+
+## What the first draft measured, and why it changed direction
+
+On 2026-11-21, the 24 pages in the five 2026-27 sections that changed since
+14 November:
+
+| | `read_note` per page | Task rows only |
+| --- | --- | --- |
+| OneNote requests | 25 | 25 — the same |
+| Text returned to the model | 143,730 chars (~36k tokens) | 27,143 chars (~6.8k tokens), 19% |
+| Tool calls | 24 | 1–2 |
+
+Extracting tasks saves no requests per page — a page's tasks cannot be found
+without fetching it. It saves text, and calls, which in a scheduled task is
+probably the larger saving (every call is another model step carrying all that
+came before; an estimate, not a measurement). Reading one page per project is
+what saves requests. The tasks mode keeps the text and call savings and drops
+the per-page cost from every page to one page per section.
+
+`map_notes` was checked live before being extended, since it ran the account out
+in September: three runs, no 429s, 13–21 s each, every page sketched. Not yet
+measured on hosted.
+
+## Cost on every request
+
+One boolean, one optional boolean, and a sentence in the `map_notes`
+description. Measured with `context-budget` before it ships.
 
 ## What this does not do
 
-- **Save OneNote requests per page.** See above.
-- **Judge.** No overdue, no ranking, no "unsettled". The model does that, under
-  `policy:tasks`, with what this returns.
-- **Write.** Ticking stays where 0004 and 0008 put it.
-- **Remember.** Nothing is stored between calls; the hosted scope stands.
-- **Replace `read_note`.** A task the digest needs to act on, or one whose prose
-  matters, is still read in full.
+- **Store state.** No index, no cache. The CL Aufgaben page is the record, and
+  it lives in the musician's notebook.
+- **Judge.** No overdue, no ranking. The model does that under `policy:tasks`.
+- **Touch the musician's pages.** Microsoft enforces it; nothing here asks it to.
+- **Change existing lines unattended.** Until 0015.
+- **Synchronise.** Nothing exists in two places: appended tasks come from mail
+  and chat, which are evidence rather than records, and tasks already on other
+  OneNote pages are flagged rather than copied.
 
 ## How it would be verified
 
-- Tests at request level, as for `since`: content fetched only for pages in
-  scope, a cursor that resumes without re-walking, the deadline naming pages it
-  cut off, and the tests failing with each guard removed.
-- Fixtures shaped like the live pages: the Vidala table (spans in cells, header
-  as first row), the Arrangements list with its deadline in the lead, a page of
-  untagged prose, an untagged task table.
-- Live, against the same 24-page input: every task the measurement script found
-  is present, with the Arrangements deadline in its lead, at no more requests
-  than reading the pages one by one.
+- Request-level tests: only CL Aufgaben pages fetched in tasks mode, a section
+  with none named, a broken table reported, the cursor resuming without
+  re-walking, each failing with its guard removed.
+- Fixtures shaped like the live pages: the Vidala table, an appended
+  automatic line, an untagged task table.
+- Live: a full tasks read of the three season notebooks, its request count
+  against the estimate of about 93, and every open task on those CL Aufgaben
+  pages present.
+- Live, on a scratch CL Aufgaben page this tool creates: a scheduled-style run
+  appends one task from a test mail with its source, and appends nothing on the
+  second run.
+- A check that every CL Aufgaben page really is this app's: each page's
+  `createdByAppId` against the identifier the write log recorded at creation
+  (0003). Cheap, and it turns "they are all ours" from recollection into fact
+  before anything writes unattended.
 - On hosted after promotion, under 60 seconds including a cold start.
 
 ## Open questions
 
-1. **How often a whole-notebook read is acceptable.** Deadlines live on pages
-   that have not changed, so a digest that only reads changed sections cannot
-   see an old task coming due. A full read of the three season notebooks is
-   about 270 requests. Once a morning, at a quiet hour, it fits inside the hour;
-   twice does not leave room for anything else. Daily, weekly, or not at all is
-   a product decision.
-2. **Whether `since` alone should be allowed without `notebook`.** The digest
-   wants every season's changes; today a notebook is chosen first.
-3. **The lead's cap.** 400 characters held the Arrangements deadline; a page
-   with a long preamble may push its deadline past it.
+1. **Cadence.** A full CL Aufgaben read is about 93 requests. Every morning
+   seems affordable; the scheduled task decides.
+2. **The heading for appended lines**, and whether it is one block per page or
+   one per run.
+3. **Mail as a source of tasks.** Which mail is in scope — a label, the
+   project's correspondents, anything mentioning the project — decides how
+   noisy the additions are.
+4. **Whether `since` should work across all notebooks** without one being chosen
+   first, since the digest wants every season.
+5. **The lead's cap.** 400 characters held the one page-wide deadline seen; a
+   long preamble could push one past it.

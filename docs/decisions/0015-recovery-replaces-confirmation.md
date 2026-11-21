@@ -144,6 +144,12 @@ preview until then.
 Ship order matters more than anything else here. Previews removed before undo
 exists would mean accepting the risk without the recovery that justifies it.
 
+One step can go first, and [0014](0014-tasks-on-map-notes.md) depends on it: an
+**append** to a page commits in one call. It destroys nothing, so 0009's rule
+already allows it, and the token `edit_onenote_page` asks for on an append today
+is friction rather than protection. Replaces and inserts keep the token until
+steps 1–3 are done.
+
 ## What has to change, and what does not
 
 - **The hosted table.** `write_audit` is insert-only, exposes nothing, and has
