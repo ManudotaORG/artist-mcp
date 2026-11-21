@@ -597,6 +597,38 @@ export const MAP_DEADLINE_MS = 45_000;
  */
 const NOT_REACHED = Symbol('not reached');
 
+/**
+ * Work that has started, given only until the deadline to finish.
+ *
+ * The deadline used to be checked before work started and never during it, on
+ * the reasoning that work already under way should be allowed to land. On
+ * hosted that is what killed the route: on 2026-11-21 a 30-section notebook
+ * spent 27 s listing from `iad1`, the map was given the remaining 18 s, and a
+ * request it had started was still open 33 s later when Vercel ended the
+ * function at sixty. The caller got "Internal error" and nothing else — the
+ * exact outcome the deadline exists to prevent, reached because nothing bounded
+ * a request once it was sent.
+ *
+ * So a started request is raced against the clock, and one that loses is
+ * reported as not reached. It is abandoned rather than cancelled: it may still
+ * complete in the background, and its result, or its failure, is discarded —
+ * the `catch` keeps a late rejection from surfacing as an unhandled one.
+ */
+const beforeDeadline = <T>(
+  work: Promise<T>,
+  stopAt: number,
+  now: () => number,
+): Promise<T | typeof NOT_REACHED> => {
+  work.catch(() => {});
+  const remaining = stopAt - now();
+  if (remaining <= 0) return Promise.resolve(NOT_REACHED);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const cut = new Promise<typeof NOT_REACHED>((resolve) => {
+    timer = setTimeout(() => resolve(NOT_REACHED), remaining);
+  });
+  return Promise.race([work, cut]).finally(() => clearTimeout(timer));
+};
+
 type MapNotesOptions = {
   deadlineMs?: number;
   /** Injectable so a test can reach the deadline without spending the time. */
@@ -642,19 +674,26 @@ export const mapNotes = async (
   let mapFailure: string | null = null;
 
   try {
-  // Previews first, in batches. Each group of batches starts only before the
-  // deadline, the same rule a single page followed: work that has started is
-  // allowed to finish, work that has not is reported as not reached.
+  // Previews first, in batches. A group starts only before the deadline, and a
+  // group that has started gets only until the deadline to finish; past it,
+  // its pages are reported as not reached (see `beforeDeadline`).
   const previews: (string | Error | typeof NOT_REACHED)[] = new Array(pages.length).fill(NOT_REACHED);
   // One batch per group, so the deadline is checked before every round trip.
   const GROUP = GRAPH_BATCH_SIZE;
   for (let i = 0; i < pages.length; i += GROUP) {
     if (now() >= stopAt) break;
     const group = pages.slice(i, i + GROUP);
-    const results = await graphBatchGet(
-      group.map((page) => `/me/onenote/pages/${encodeURIComponent(page.id)}/preview`),
-      token,
+    const results = await beforeDeadline(
+      graphBatchGet(
+        group.map((page) => `/me/onenote/pages/${encodeURIComponent(page.id)}/preview`),
+        token,
+      ),
+      stopAt,
+      now,
     );
+    // The batch outlived the deadline: its pages stay not reached, and so do
+    // the groups after it.
+    if (results === NOT_REACHED) break;
     results.forEach((result, j) => {
       previews[i + j] = result.ok
         ? String((result.body as { previewText?: string | null } | undefined)?.previewText ?? '').trim()
@@ -703,7 +742,12 @@ export const mapNotes = async (
       return NOT_REACHED;
     }
     try {
-      const { text, chars_total } = await readNote(token, page.id);
+      const read = await beforeDeadline(readNote(token, page.id), stopAt, now);
+      if (read === NOT_REACHED) {
+        notReached += 1;
+        return NOT_REACHED;
+      }
+      const { text, chars_total } = read;
       return {
         ...base,
         sketch: text.slice(0, DERIVED_SKETCH_CHARS),

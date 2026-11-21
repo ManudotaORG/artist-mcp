@@ -106,3 +106,66 @@ test('an unreached page is absent from the sketches, never a blank one', async (
 test('the default deadline leaves room under the hosted 60s limit', async () => {
   assert.equal(MAP_DEADLINE_MS < 60_000, true, `${MAP_DEADLINE_MS}ms does not fit in 60s`);
 });
+
+/**
+ * A request that has started must not outlive the deadline.
+ *
+ * On hosted, 2026-11-21: a 30-section notebook spent 27 s listing, the map got
+ * the remaining 18 s, and a request it had already sent was still open when
+ * Vercel ended the function at sixty. The deadline was checked only before work
+ * started, so nothing bounded work in flight. These stall a request forever and
+ * require the survey to come back on time anyway, with the stalled pages named.
+ */
+const never = () => new Promise(() => {});
+
+const withStalls = async (impl, run) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = impl;
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = original;
+  }
+};
+
+test('a preview batch that never answers is cut at the deadline', async () => {
+  const started = Date.now();
+  const result = await withStalls(never, () => mapNotes('token-stalled-batch', pagesOf(20), { deadlineMs: 200 }));
+  const took = Date.now() - started;
+
+  assert.equal(took < 2_000, true, `returned after ${took}ms, not at the deadline`);
+  assert.equal(result.sketches.length, 0);
+  assert.equal(result.not_reached, 20, 'stalled pages were not counted as unreached');
+});
+
+test('a fallback read that never answers is cut at the deadline', async () => {
+  // Previews come back empty, so every page falls back to a full read — and
+  // the full read stalls.
+  const batched = withGraphBatch(async () =>
+    new Response(JSON.stringify({ previewText: '' }), { status: 200 }),
+  );
+  const impl = async (url, init) => (String(url).endsWith('/$batch') ? batched(url, init) : never());
+
+  const started = Date.now();
+  const result = await withStalls(impl, () => mapNotes('token-stalled-read', pagesOf(6), { deadlineMs: 200 }));
+  const took = Date.now() - started;
+
+  assert.equal(took < 2_000, true, `returned after ${took}ms, not at the deadline`);
+  assert.equal(result.sketches.length + result.not_reached, 6, 'pages went missing');
+  assert.equal(result.not_reached, 6, 'a stalled read was reported as something other than unreached');
+  for (const s of result.sketches) assert.notEqual(s.source, 'none');
+});
+
+test('an abandoned request that fails later does not surface as unhandled', async () => {
+  const unhandled = [];
+  const onUnhandled = (err) => unhandled.push(err);
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    const late = () => new Promise((_, reject) => setTimeout(() => reject(new Error('late')), 300));
+    await withStalls(late, () => mapNotes('token-late-failure', pagesOf(4), { deadlineMs: 50 }));
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  } finally {
+    process.off('unhandledRejection', onUnhandled);
+  }
+  assert.deepEqual(unhandled, []);
+});

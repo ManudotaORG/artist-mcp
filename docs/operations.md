@@ -88,6 +88,14 @@ with `DEPLOY_ENV=production`. The footer reads the commit from Vercel's
 `VERCEL_GIT_COMMIT_SHA` system variable. No Vercel token or project ID is
 required in GitHub Actions.
 
+Functions run in **`lhr1` (London)**, set by `regions` in `apps/web/vercel.json`.
+That is next to the Supabase project (eu-west-2) and close to the European
+Microsoft data the users' notebooks live in. They ran in Vercel's default `iad1`
+(Washington) until 2026-11-21, when a hosted `map_notes` on a 30-section
+notebook spent 27 s listing what takes 10 s from Europe and was cut off at the
+60-second limit. Every Graph request and every token lookup crossed the Atlantic
+twice. A region left to the default is a decision nobody made.
+
 | Setting                    | Value                                                       |
 | -------------------------- | ----------------------------------------------------------- |
 | `DEPLOY_ENV`               | `production`                                                |
