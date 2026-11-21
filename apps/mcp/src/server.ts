@@ -7,7 +7,7 @@ import { listAgentWorkflows, loadAgentWorkflow, type ResolvedEntry } from "./age
 import { COLOR_NAMES } from "./calendar.js";
 import { GraphError } from "./client.js";
 import { call as localCall, type Operation } from "./dispatch.js";
-import type { PageTask, PageTasks } from "./tasks.js";
+import type { DelegatedTask, PageTask, PageTasks } from "./tasks.js";
 import {
   MAP_DEADLINE_MS,
   PAGE_LISTING_CAP,
@@ -507,6 +507,14 @@ const taskDigest = async (
           not_reached: NoteSummary[];
         }>("map_notes", { pages: toRead, tasks: true, deadline_ms: deadlineMs });
 
+  // A handover is said with who and when, and what came back — or that nothing
+  // is recorded as having come back, since a handover that went quiet is the one
+  // a "done" count would otherwise hide.
+  const handed = (d: DelegatedTask) =>
+    `→ ${d.text}${d.from === "table" ? ` — an ${d.to}` : ""}` +
+    `${d.from === "table" && d.on !== null ? `, ${d.on}` : ""}` +
+    (d.reply !== null ? ` · Rückmeldung: ${d.reply}` : d.from === "table" ? " · no reply recorded" : "");
+
   const line = (t: PageTask) =>
     `${t.done ? "[x]" : "[ ]"} ${t.text}${t.details === null ? "" : `\n    ${t.details}`}`;
 
@@ -524,7 +532,9 @@ const taskDigest = async (
         : [`Lead: ${tasks.lead}${tasks.lead_cut ? " [cut; read_note for the rest]" : ""}`]),
       ...open.map(line),
       ...(includeDone ? done.map(line) : []),
-      `${open.length} open, ${done.length} done.`,
+      ...(tasks.delegated.length === 0 ? [] : ["Delegiert (counted as done):", ...tasks.delegated.map(handed)]),
+      `${open.length} open, ${done.length} done` +
+        (tasks.delegated.length === 0 ? "." : `, ${tasks.delegated.length} delegated.`),
       ...tasks.problems.map((problem) => `NOTE: ${problem}`),
     ].join("\n");
   });
@@ -2740,7 +2750,7 @@ const createServer = async (
             image_parts.push({ ...image, caption: caption ?? null });
           }
 
-          const { title, web_url, section_name, written } = await call<{
+          const { title, page_id, web_url, section_name, written } = await call<{
             title: string;
             page_id: string | null;
             web_url: string | null;
@@ -2754,8 +2764,18 @@ const createServer = async (
                 type: "text",
                 text:
                   `Created the page "${title}" in ${section_name}:\n\n${written}\n` +
+                  (page_id ? `\nid: ${page_id}\n` : "") +
                   (web_url ? `\n${web_url}\n` : "") +
-                  "\nThis tool cannot change or remove it.",
+                  // Said by grant, because the unconditional sentence went
+                  // false when appends shipped: a scheduled run that creates a
+                  // CL Aufgaben page and then appends to it was told it could
+                  // not, and had no id to do it with. Found on hosted after
+                  // #261. Removing it is by hand either way — Notes.Create and
+                  // CreatedByApp both cannot delete.
+                  (isGranted(grants, "onenote-edit")
+                    ? "\nThis tool can append to it with that id, and change it after " +
+                      "showing the change first. It cannot remove it: that is done by hand in OneNote."
+                    : "\nThis tool cannot change or remove it."),
               },
             ],
           };

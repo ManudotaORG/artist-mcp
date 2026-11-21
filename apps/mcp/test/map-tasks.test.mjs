@@ -233,3 +233,85 @@ test('a page read that outlives the deadline is reported as not reached', async 
   assert.deepEqual(result.read, []);
   assert.deepEqual(result.not_reached.map((p) => p.id), ['p-vid']);
 });
+
+// ---------------------------------------------------------------------------
+// Delegation: a task handed on counts as done, with who it went to.
+
+const row = (...cells) => `<tr>${cells.map((c) => `<td><p>${c}</p></td>`).join('')}</tr>`;
+const DELEGATION_HEADER = row('Aufgabe', '&#220;bergeben an', '&#220;bergeben am', 'R&#252;ckmeldung erhalten');
+
+/** As on CL Aufgaben — Mittersill: four real handovers, entities as Graph sends them. */
+const MITTERSILL =
+  '<body><p data-tag="to-do">Musikerliste fertigstellen</p><table>' +
+  DELEGATION_HEADER +
+  row('Musikermanagement', 'Katharina W&#252;rgau', '&#252;bernommen — 10.09.2026', '&#220;bernommen; die Musikerliste fehlt noch') +
+  row('Bogenstriche in die Noten eintragen', 'Katja (Konzertmeisterin)', 'UNKNOWN', 'UNKNOWN') +
+  '</table></body>';
+
+/** As on CL Aufgaben — Montepulciano: the template's rows, never filled in. */
+const PLACEHOLDERS =
+  '<body><p data-tag="to-do">Ausgabe 2027 planen</p><table>' +
+  DELEGATION_HEADER +
+  row('UNKNOWN', 'UNKNOWN', 'UNKNOWN', 'UNKNOWN') +
+  row('UNKNOWN', 'UNKNOWN', 'UNKNOWN', 'UNKNOWN') +
+  '</table></body>';
+
+test('a delegation table row is a handover, with who, when and what came back', () => {
+  const { tasks, delegated, problems } = pageTasks(MITTERSILL);
+  assert.deepEqual(delegated, [
+    {
+      text: 'Musikermanagement',
+      to: 'Katharina Würgau',
+      on: 'übernommen — 10.09.2026',
+      reply: 'Übernommen; die Musikerliste fehlt noch',
+      from: 'table',
+    },
+    { text: 'Bogenstriche in die Noten eintragen', to: 'Katja (Konzertmeisterin)', on: null, reply: null, from: 'table' },
+  ]);
+  assert.deepEqual(tasks.map((t) => t.text), ['Musikerliste fertigstellen'], 'handovers are not open tasks');
+  assert.deepEqual(problems, [], 'an untagged delegation table is not an untagged task table');
+});
+
+test('template placeholder rows are not handovers', () => {
+  const { delegated, problems } = pageTasks(PLACEHOLDERS);
+  assert.deepEqual(delegated, []);
+  assert.deepEqual(problems, []);
+});
+
+test('a task listed for handover with no recipient is said, and counted neither way', () => {
+  const html = `<body><table>${DELEGATION_HEADER}${row('Hotel buchen', 'UNKNOWN', 'UNKNOWN', 'UNKNOWN')}</table></body>`;
+  const { delegated, tasks, problems } = pageTasks(html);
+  assert.deepEqual(delegated, []);
+  assert.deepEqual(tasks, []);
+  assert.ok(problems.some((p) => /"Hotel buchen" is listed for handover in Table 1 with no recipient recorded/.test(p)), problems.join('\n'));
+});
+
+test('a ticked task that names a handover is delegated, not merely done', () => {
+  const html =
+    '<body><p data-tag="to-do:completed">Musikerliste schicken → übergeben an Katharina Würgau, 12.10.2026</p>' +
+    '<p data-tag="to-do:completed">Programm geschickt</p></body>';
+  const { tasks, delegated } = pageTasks(html);
+  assert.deepEqual(delegated, [
+    {
+      text: 'Musikerliste schicken → übergeben an Katharina Würgau, 12.10.2026',
+      to: 'Katharina Würgau',
+      on: '12.10.2026',
+      reply: null,
+      from: 'tick',
+    },
+  ]);
+  assert.deepEqual(tasks.map((t) => t.text), ['Programm geschickt']);
+});
+
+test('an open task that mentions a handover stays open, because the tag is the record', () => {
+  const { tasks, delegated } = pageTasks('<body><p data-tag="to-do">Noten → übergeben an Daria</p></body>');
+  assert.deepEqual(delegated, []);
+  assert.equal(tasks[0].done, false);
+});
+
+test('the answer lists handovers under Delegiert, and counts them apart', async () => {
+  const { text } = await run({ tasks: true, section: 'Vidala-Tournee' }, { content: () => asHtml(MITTERSILL) });
+  assert.match(text, /Delegiert \(counted as done\):\n→ Musikermanagement — an Katharina Würgau, übernommen — 10\.09\.2026 · Rückmeldung: Übernommen; die Musikerliste fehlt noch/);
+  assert.match(text, /→ Bogenstriche in die Noten eintragen — an Katja \(Konzertmeisterin\) · no reply recorded/);
+  assert.match(text, /1 open, 0 done, 2 delegated\./);
+});

@@ -1,7 +1,7 @@
 # 0014 — The CL Aufgaben page is the task record, and the tool keeps it current
 
-Status: **reading half built and verified locally on 2026-11-21** (see "Built"
-below); maintenance waits for the digest playbook. Written for review before any
+Status: **reading half built and verified on 2026-11-21**, locally and on
+hosted (see "Built" below); maintenance waits for the digest playbook. Written for review before any
 code. Builds on
 [0008](0008-tasks-are-onenote-tags.md) (a task is a to-do tag),
 [0010](0010-two-discovery-paths.md) (where the requests go) and
@@ -251,14 +251,32 @@ tables as boxes of prose — 30 false notes in one notebook. Now a header cell
 must *be* a task word, in a table of more than one column. What is left is real:
 two tables headed `Aufgabe · Übergeben an · Übergeben am · Rückmeldung erhalten`,
 untagged. **That is where delegated tasks are kept**, which is what the digest
-needs to count a delegated task as done with its recipient's name; tasks mode
-names those tables but does not read their rows. Deciding that is the digest
-playbook's question.
+needs to count a delegated task as done with its recipient's name.
+
+**Delegation, decided and built the same day.** The musician counts a task
+handed on as done, with who has it. Tasks mode now returns handovers under
+"Delegiert", apart from open and done, from two places: a filled row of a table
+with an "Übergeben an" column (the Festivalleitung template's), and a ticked
+task whose line names the person, by the wording the custom pack's
+`policy:tasks` now sets — "→ übergeben an <Name>, <Datum>". A row needs a task
+and a recipient; `UNKNOWN` counts as empty, because `CL Aufgaben —
+Montepulciano`'s two rows were found live to be the template's placeholders, not
+two handovers. A task listed with no recipient is said and counted neither way.
+An open task mentioning a handover stays open, since the tag is the record, and
+a `Verantwortlich` cell naming someone else is deliberately not read as one: on
+these pages it says who should do the work, often "Büro", not that it was handed
+on. Verified live on both pages: Mittersill's four handovers came back with
+their recipients, one with its reply and three as "no reply recorded";
+Montepulciano's placeholders were ignored and its false note went away.
 
 The 2026-27 answer is about 50,000 characters (~12.6k tokens) for every task
 page in the notebook. The first draft's sample, 24 changed pages read whole, was
-143,730. Not yet run on hosted,
-where the listing's share of the 45 s budget decides whether 2026-27 fits.
+143,730.
+
+**On hosted after #261**, through ChatGPT, the same counts: 2026-27 listed its
+30 sections in 14.3 s and read all 24 pages in 13.4 s of the 27.0 s left;
+2027-28 took 4.6 s and 2.0 s; 2028-29 listed in 4.3 s and had nothing to read.
+Nothing was cut off.
 
 ## What the first draft measured, and why it changed direction
 
