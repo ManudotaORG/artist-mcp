@@ -112,15 +112,22 @@ leaving out any part with nothing in it:
 
 1. **Über Nacht geschrieben** — pages created, lines appended, each with its
    page. Writing is never left to be discovered.
-2. **Fällig** — overdue, then due within seven days, each with its project and
-   where the date comes from. `policy:tasks` decides what a deadline is; never
-   one the page does not support.
-3. **Dringend ohne Datum** — urgency marks with no date.
-4. **Aus der Post** — what was appended, what is *zu bestätigen* (page value
+2. **Ungeklärt** — every task `map_notes` marks UNSETTLED: the tag says open
+   and its own row says done, handed on or unclear. One line each, with what
+   the row says, as a question for Ruben to settle — usually a tick. These
+   lead because they are the likeliest to send him to redo finished work, and
+   they appear nowhere else in the digest: not under Fällig, not as delegated.
+3. **Fällig** — overdue, then due within seven days, each with its project and
+   where the date comes from. Open tasks only. `policy:tasks` decides what a
+   deadline is; never one the page does not support.
+4. **Dringend ohne Datum** — urgency marks with no date.
+5. **Aus der Post** — what was appended, what is *zu bestätigen* (page value
    and mail value side by side), and what was *nicht zugeordnet*.
-5. **Delegiert ohne Rückmeldung** — one line each: what, and who has it.
-6. **Projekte** — one line each: open count and the most pressing open task.
-7. **Nicht gelesen** — sections with no CL Aufgaben page, pages not reached,
+6. **Delegiert ohne Rückmeldung** — only what `map_notes` returned under
+   "Delegiert" with no reply recorded, one line each: what, and who has it.
+   Never a task read as handed on from its prose.
+7. **Projekte** — one line each: open count and the most pressing open task.
+8. **Nicht gelesen** — sections with no CL Aufgaben page, pages not reached,
    pages with no tags. Always present when anything was not read: a digest is
    trusted as complete.
 
