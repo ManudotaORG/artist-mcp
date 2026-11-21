@@ -141,10 +141,33 @@ export const extractAttachments = (part: GmailPart | undefined): AttachmentEntry
  * second metadata call to become a usable line. That is an N+1 by the API's
  * design, which is why the page is small and the calls run together.
  */
+/**
+ * The longest search sent to Gmail.
+ *
+ * It used to be 500, applied by silently cutting the query, and that was worse
+ * than any limit: the digest's search is an OR group of a project's
+ * counterparts with `has:userlabels` and the date at the end, so a cut removed
+ * exactly the terms that bound it and left Gmail an unbalanced brace. Every
+ * message past the cut stopped matching, and the reply — "No messages match"
+ * the full query — said nothing about it. Verified locally: one OR group found
+ * 17 messages at 64 characters and 0 at 1,225 with its matching term past 500.
+ * Now a query is sent whole or refused, and the refusal says how to split it.
+ */
+export const MAX_QUERY_CHARS = 2_000;
+
 export const listEmails = async (token: string, rawQuery: unknown) => {
   // Gmail search syntax is the user's own; it is sent as a query parameter,
-  // never interpolated into a path, and capped so it cannot become a URL bomb.
-  const query = typeof rawQuery === 'string' ? rawQuery.slice(0, 500).trim() : '';
+  // never interpolated into a path, and bounded so it cannot become a URL bomb.
+  const query = typeof rawQuery === 'string' ? rawQuery.trim() : '';
+  if (query.length > MAX_QUERY_CHARS) {
+    throw new GraphError(
+      `That search is ${query.length} characters; at most ${MAX_QUERY_CHARS} are sent, and ` +
+        'nothing was searched. A search is never cut, because a cut drops the terms at ' +
+        'the end — often the date or a closing brace — and silently matches less. Split ' +
+        'it into several searches, for example one per project, and use them together.',
+      false,
+    );
+  }
 
   const params = new URLSearchParams({ maxResults: '25' });
   if (query) params.set('q', query);

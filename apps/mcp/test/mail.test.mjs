@@ -145,14 +145,17 @@ test('a message with no body falls back to the snippet', async () => {
 });
 
 /** The user's search syntax goes in a query parameter, never into a path. */
-test('a search query is capped and sent as a parameter', async () => {
+test('a search query is sent whole, as a parameter', async () => {
+  // It was cut at 500 here, and this test pinned the cut. A cut drops the
+  // terms at the end of a search and silently matches less; the bound is now
+  // a refusal, tested in mail-query-whole.test.mjs.
   const seen = stubGmail({ '/messages?': { messages: [] } });
 
   await listEmails('token', 'x'.repeat(900));
 
   const [url] = seen;
   assert.match(url, /[?&]q=x+/);
-  assert.equal(new URL(url).searchParams.get('q').length, 500);
+  assert.equal(new URL(url).searchParams.get('q').length, 900);
 });
 
 test('ids of the wrong shape are dropped rather than fetched', async () => {
