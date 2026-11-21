@@ -35,6 +35,23 @@ const LEASE_SECONDS = 20;
 const WAIT_STEP_MS = 250;
 const WAIT_ATTEMPTS = 40; // 10s, comfortably past a normal exchange.
 
+/**
+ * How long a read of the stored connection may take before it is given up.
+ * The lease claim counts as one: if it lands after being abandoned, nobody
+ * refreshes under it, and it expires on its own in `LEASE_SECONDS`.
+ *
+ * Nothing bounded these, and a lookup that never answers holds the request
+ * until Vercel ends it at sixty seconds with nothing said. Reads only, and
+ * deliberately: the exchange with the provider and the write that stores its
+ * result are never timed out, because Microsoft invalidates the old refresh
+ * token the moment it issues the new one. Abandon an exchange that then
+ * succeeds, or a write that then lands nowhere, and the new token is lost —
+ * the connection dies silently, one call later, which is the failure this file
+ * exists to prevent. A slow request is the better outcome by far.
+ */
+const READ_TIMEOUT_MS = 8_000;
+const readSignal = () => AbortSignal.timeout(READ_TIMEOUT_MS);
+
 const need = (name: string): string => {
   const value = process.env[name];
   if (value === undefined || value === '') {
@@ -66,6 +83,15 @@ export const hostedTokens =
   async (provider: ProviderName): Promise<string> => {
     const db = admin();
 
+    // Where a request's time goes before any tool work starts. Without it, a
+    // hosted call that hung after its listing could only be guessed at.
+    const lookupStartedAt = Date.now();
+    const logLookup = (source: 'cached' | 'waited' | 'refreshed') =>
+      console.warn(
+        `[artist-mcp] hosted token provider=${provider} source=${source} ` +
+          `elapsed=${Date.now() - lookupStartedAt}ms`,
+      );
+
     // The same client that obtained the refresh token must be the one to
     // spend it — a refresh token is bound to its client, and presenting it as
     // anyone else is refused. Hosted connections are made by the web flow, so
@@ -82,26 +108,33 @@ export const hostedTokens =
     const config = client.config;
 
     const cached = async (): Promise<string | null> => {
-      const { data, error } = await db.rpc('connection_access_token', {
-        p_user_id: userId,
-        p_key: need('TOKEN_ENCRYPTION_KEY'),
-        p_provider: provider,
-      });
+      const { data, error } = await db
+        .rpc('connection_access_token', {
+          p_user_id: userId,
+          p_key: need('TOKEN_ENCRYPTION_KEY'),
+          p_provider: provider,
+        })
+        .abortSignal(readSignal());
       if (error) throw new GraphError(`Could not read the stored token: ${error.message}`, false);
       return data as string | null;
     };
 
     const hit = await cached();
-    if (hit !== null) return hit;
+    if (hit !== null) {
+      logLookup('cached');
+      return hit;
+    }
 
     // Whoever gets the lease does the exchange. Everyone else waits for the
     // token they are about to write, rather than spending the same refresh
     // token a second time and killing it for both.
-    const { data: locked, error: lockError } = await db.rpc('try_lock_refresh', {
-      p_user_id: userId,
-      p_provider: provider,
-      p_seconds: LEASE_SECONDS,
-    });
+    const { data: locked, error: lockError } = await db
+      .rpc('try_lock_refresh', {
+        p_user_id: userId,
+        p_provider: provider,
+        p_seconds: LEASE_SECONDS,
+      })
+      .abortSignal(readSignal());
     if (lockError) throw new GraphError(`Could not claim a refresh: ${lockError.message}`, false);
 
     if (locked !== true) {
@@ -111,11 +144,13 @@ export const hostedTokens =
       // ten-second wait for a refresh nobody was performing, and then reported
       // a timeout — which is both slow and false. Found by deleting a
       // connection and watching the server describe it as contention.
-      const { data: exists } = await db.rpc('connection_refresh_token', {
-        p_user_id: userId,
-        p_key: need('TOKEN_ENCRYPTION_KEY'),
-        p_provider: provider,
-      });
+      const { data: exists } = await db
+        .rpc('connection_refresh_token', {
+          p_user_id: userId,
+          p_key: need('TOKEN_ENCRYPTION_KEY'),
+          p_provider: provider,
+        })
+        .abortSignal(readSignal());
       if (exists === null) {
         throw new GraphError(`No ${config.label} connection for this account.`, true);
       }
@@ -123,7 +158,10 @@ export const hostedTokens =
       for (let i = 0; i < WAIT_ATTEMPTS; i += 1) {
         await sleep(WAIT_STEP_MS);
         const written = await cached();
-        if (written !== null) return written;
+        if (written !== null) {
+          logLookup('waited');
+          return written;
+        }
       }
       // The holder crashed or is pathologically slow. Its lease expires on its
       // own, so the next request recovers; failing here is better than a second
@@ -135,11 +173,13 @@ export const hostedTokens =
     }
 
     try {
-      const { data: refreshToken, error: readError } = await db.rpc('connection_refresh_token', {
-        p_user_id: userId,
-        p_key: need('TOKEN_ENCRYPTION_KEY'),
-        p_provider: provider,
-      });
+      const { data: refreshToken, error: readError } = await db
+        .rpc('connection_refresh_token', {
+          p_user_id: userId,
+          p_key: need('TOKEN_ENCRYPTION_KEY'),
+          p_provider: provider,
+        })
+        .abortSignal(readSignal());
       if (readError) {
         throw new GraphError(`Could not read the stored token: ${readError.message}`, false);
       }
@@ -207,6 +247,7 @@ export const hostedTokens =
         );
       }
 
+      logLookup('refreshed');
       return tokens.access_token;
     } catch (err) {
       // Without this a failed exchange blocks every later attempt until the

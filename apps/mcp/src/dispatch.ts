@@ -158,12 +158,66 @@ export type ResolveToken = (provider: ProviderName) => Promise<string>;
  * dispatcher gets a key of its own, which is right for a local install (one
  * user, one dispatcher) and can never merge two users' budgets.
  */
-export type DispatchOptions = { paceKey?: string };
+export type DispatchOptions = {
+  paceKey?: string;
+  /**
+   * How long this dispatcher's reads may run in all, from when it was built.
+   *
+   * Hosted builds one dispatcher per request and dies at sixty seconds, and
+   * dying there tells the caller nothing: on 2026-11-21 a `map_notes` came back
+   * as a bare "Internal error" twice, its listing done in 9 s and then nothing
+   * logged for 51. A read still running when the budget is spent is abandoned
+   * and reported as having run out of time, naming the operation, so the caller
+   * hears why rather than a 504.
+   *
+   * Reads only. A write cut off mid-flight may still land after the caller has
+   * been told it failed, and a retry would then make it twice; writes are
+   * single requests, and the throttle budget already bounds their retries.
+   */
+  budgetMs?: number;
+};
+
+/** What a caller hears when a hosted request's reads have used its budget. */
+export const outOfTimeMessage = (op: string, seconds: number): string =>
+  `${op} ran out of time: this request had already spent ${seconds} seconds, ` +
+  'and the server stops at sixty. Nothing was changed. A narrower call — one ' +
+  'section, or `since` — needs less time.';
+
+/**
+ * Work raced against a deadline. Abandoned rather than cancelled when it loses,
+ * so its late result or failure is discarded — the `catch` keeps a late
+ * rejection from surfacing as an unhandled one.
+ */
+const withinBudget = <T>(work: Promise<T>, stopAt: number, op: string, startedAt: number): Promise<T> => {
+  work.catch(() => {});
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const cut = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new GraphError(outOfTimeMessage(op, Math.round((Date.now() - startedAt) / 1000)), false)),
+      Math.max(0, stopAt - Date.now()),
+    );
+  });
+  return Promise.race([work, cut]).finally(() => clearTimeout(timer));
+};
 
 export const dispatchWith =
-  (resolve: ResolveToken, record: RecordWrite = recordWrite, { paceKey }: DispatchOptions = {}) => {
+  (
+    resolve: ResolveToken,
+    record: RecordWrite = recordWrite,
+    { paceKey, budgetMs }: DispatchOptions = {},
+  ) => {
     const key = paceKey ?? `dispatcher:${randomUUID()}`;
+    const startedAt = Date.now();
+    const one = dispatchOne(resolve, record, key);
     return async <T>(op: Operation, params: Record<string, unknown> = {}): Promise<T> => {
+      if (budgetMs === undefined || OPERATIONS[op].effect !== 'read') return one<T>(op, params);
+      return withinBudget(one<T>(op, params), startedAt + budgetMs, op, startedAt);
+    };
+  };
+
+const dispatchOne =
+  (resolve: ResolveToken, record: RecordWrite, key: string) =>
+    async <T>(op: Operation, params: Record<string, unknown> = {}): Promise<T> => {
       const token = await resolve(PROVIDER_FOR[op]);
       if (PROVIDER_FOR[op] === 'microsoft') bindPaceKey(token, key);
 
@@ -261,7 +315,6 @@ export const dispatchWith =
           throw new GraphError(`Unknown operation ${String(op)}.`, false);
       }
     };
-  };
 
 /** The local dispatcher: this machine's own connections, one process, one user. */
 export const call = dispatchWith(accessTokenFor);
