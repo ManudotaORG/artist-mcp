@@ -54,6 +54,12 @@ account looks like an invitation. It is not one.
   recorded. Read another source only when the musician asks for that look.
 - **One yes is one look, not a licence.** A later question starts over unless
   they said to keep using it.
+- **An automation the musician set up has already asked, for exactly what it
+  names.** A scheduled task whose prompt names notebooks or a mail search is
+  their yes to those looks on every run, and to nothing beyond them — the same
+  way setting one up is the decision for a write. It does not widen because a
+  page is thin, and a run with nobody to ask still does not reach a source its
+  prompt did not name.
 - **A tie is not an emergency.** Two pages disagreeing, a missing owner, an
   unconfirmed date: none of these justify reaching for a mailbox unasked. Report
   the tie.
