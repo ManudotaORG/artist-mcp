@@ -323,3 +323,23 @@ test('the schema accepts pictures and keeps them optional', async () => {
   );
   assert.ok(!schema.safeParse({ title: 'T', body: 'B', images: Array(4).fill({ email_id: 'm', attachment_id: '2' }) }).success);
 });
+
+test('the create result gives the page id, and says what this install can still do to it', async () => {
+  // It used to end "This tool cannot change or remove it." on every install,
+  // which went false once an install holding onenote-edit could append in one
+  // call — and the id that append needs was not in the result at all.
+  const dispatch = async () => ({ title: 'T', page_id: 'p-new', web_url: null, section_name: 'Gigs', written: 'B' });
+  const text = async (grants) =>
+    (await (await createServer(dispatch, grants))._registeredTools.create_onenote_page.handler({ title: 'T', body: 'B' }))
+      .content[0].text;
+
+  const createOnly = await text(['onenote-create']);
+  assert.match(createOnly, /id: p-new/);
+  assert.match(createOnly, /This tool cannot change or remove it\./);
+
+  const withEdit = await text(['onenote-create', 'onenote-edit']);
+  assert.match(withEdit, /id: p-new/);
+  assert.match(withEdit, /can append to it with that id/);
+  assert.match(withEdit, /cannot remove it: that is done by hand/);
+  assert.doesNotMatch(withEdit, /cannot change or remove/);
+});
