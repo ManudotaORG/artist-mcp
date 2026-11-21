@@ -145,6 +145,28 @@ type EmailBody = EmailSummary & {
   attachments?: Attachment[];
 };
 
+type ThreadMessage = {
+  position: number;
+  id: string;
+  from: string | null;
+  to: string | null;
+  cc: string | null;
+  date: string | null;
+  draft: boolean;
+  trashed: boolean;
+  text: string;
+  quoted_lines_removed: number;
+  attachments: Attachment[];
+};
+
+type EmailThread = {
+  id: string;
+  subject: string;
+  total: number;
+  messages: ThreadMessage[];
+  next_message: number | null;
+};
+
 type EventSummary = {
   id: string;
   summary: string;
@@ -196,12 +218,16 @@ const selectNotebook = async (
   section?: string,
   /** Return the chosen notebook's sections without walking their pages. */
   sectionsOnly = false,
+  /** Skip sections unchanged since this date before walking their pages. */
+  since?: string,
 ): Promise<
   | {
       pages: NoteSummary[];
       sections: SectionSummary[];
       creationDates: boolean;
       scope: string | null;
+      /** Sections `since` skipped for being unchanged; 0 when none were. */
+      sectionsUnchanged?: number;
       allSections?: { name: string; notebook: string | null }[];
       /** Set only when sectionsOnly was asked for: the sections, and no pages were fetched. */
       sectionList?: { name: string; notebook: string | null; last_modified: string | null }[];
@@ -301,17 +327,23 @@ const selectNotebook = async (
     sections = [],
     page_dates_are_creation_dates = false,
     all_sections,
+    sections_unchanged = 0,
   } = await call<{
     notes: NoteSummary[];
     sections?: SectionSummary[];
     page_dates_are_creation_dates?: boolean;
     all_sections?: { name: string; notebook: string | null }[];
+    sections_unchanged?: number;
   }>("list_notes", {
     ...(section === undefined ? {} : { section }),
     // The walk is narrowed to the chosen notebook before it starts: a map of one
     // season should not pay for every section on the account.
     ...(wanted === undefined ? {} : { notebook: wanted }),
     ...(section_list === undefined ? {} : { sections: section_list }),
+    // Only sections that changed in the window have their pages listed. Every
+    // `since` answer below reads pages or sections from inside that window, so
+    // the answer is the same and the walk is the size of what moved.
+    ...(since === undefined ? {} : { since }),
   });
 
   const pages = wanted
@@ -345,6 +377,7 @@ const selectNotebook = async (
     sections: inScope,
     creationDates: page_dates_are_creation_dates,
     scope,
+    sectionsUnchanged: sections_unchanged,
     allSections: wanted
       ? all_sections?.filter((sec) => (sec.notebook ?? "").trim().toLowerCase() === wanted)
       : all_sections,
@@ -552,13 +585,17 @@ const renderChangedSections = (
   chosen: { sections: SectionSummary[]; scope: string | null },
   notebook: string | undefined,
   since: string,
+  /** False when this is answered from sections only because none changed. */
+  pageDatesUnreliable = true,
 ): string => {
   const { sections: changed, undated } = narrowSections(chosen.sections, since);
   const where = notebook ? `"${notebook}"` : "this account";
 
-  const preamble =
-    "OneNote is not reporting page modification times on this account, so " +
-    "this answers with sections.";
+  const preamble = pageDatesUnreliable
+    ? "OneNote is not reporting page modification times on this account, so " +
+      "this answers with sections."
+    : "Answered from section dates, which move when any page inside a section " +
+      "is edited, added, moved or removed.";
 
   if (changed.length === 0) {
     return (
@@ -1329,6 +1366,7 @@ const createServer = async (
             "list_notes",
             section,
             section === undefined && since === undefined,
+            since,
           ));
         if ("message" in chosen) {
           return { content: [{ type: "text", text: chosen.message }] };
@@ -1372,10 +1410,23 @@ const createServer = async (
         // Nothing is lost from the answer itself. A section's timestamp moves
         // for any single page edit inside it, tested with a control, so no
         // change escapes this. What is surrendered is which page. See #122.
-        if (since !== undefined && chosen.creationDates) {
+        // Also when nothing changed at all. The walk skipped every section for
+        // being dated before `since`, so there are no pages to judge the
+        // account's page dates by — but there does not need to be: section
+        // dates move with any edit, so "no section changed" is the whole
+        // answer, on either kind of account, and a stronger one than the
+        // page-level "this is not evidence that nothing changed".
+        const nothingMoved =
+          since !== undefined &&
+          chosen.sections.length === 0 &&
+          ((chosen as { sectionsUnchanged?: number }).sectionsUnchanged ?? 0) > 0;
+        if (since !== undefined && (chosen.creationDates || nothingMoved)) {
           return {
             content: [
-              { type: "text", text: renderChangedSections(chosen, notebook, since) },
+              {
+                type: "text",
+                text: renderChangedSections(chosen, notebook, since, chosen.creationDates),
+              },
             ],
           };
         }
@@ -1536,7 +1587,7 @@ const createServer = async (
           (section !== undefined && notebook === undefined
             ? await findSectionAcrossNotebooks(call, section)
             : null) ??
-          (await selectNotebook(call, notebook, notebook_key, "map_notes", section));
+          (await selectNotebook(call, notebook, notebook_key, "map_notes", section, false, since));
         if ("message" in chosen) {
           return { content: [{ type: "text", text: chosen.message }] };
         }
@@ -1848,7 +1899,11 @@ const createServer = async (
           const who = e.from ?? "unknown sender";
           const when = e.date ?? "unknown date";
           const snippet = e.snippet ? `\n  ${e.snippet}` : "";
-          return `- ${e.subject} — ${who} — ${when}${snippet}\n  id: ${e.id}`;
+          // Gmail gives a thread the id of its first message, so a differing
+          // thread id is the free signal that this message answers others.
+          const thread =
+            e.thread_id && e.thread_id !== e.id ? ` — reply in thread ${e.thread_id}` : "";
+          return `- ${e.subject} — ${who} — ${when}${snippet}\n  id: ${e.id}${thread}`;
         });
         return { content: [{ type: "text", text: lines.join("\n") }] };
       } catch (err) {
@@ -1899,8 +1954,96 @@ const createServer = async (
               ),
             ].join("\n")
           : "";
+        // Said here, on the read that needs it, rather than in a description
+        // every request pays for: a reply read alone can look settled when a
+        // later message revised it.
+        const threadNote =
+          mail.thread_id && mail.thread_id !== mail.id
+            ? `\n\nThis message is a reply. Earlier and later messages may revise ` +
+              `what it says — read_thread with thread_id ${mail.thread_id} reads the ` +
+              `whole conversation.`
+            : "";
         return {
-          content: [{ type: "text", text: `${head}\n\n${mail.text}${tail}` }],
+          content: [{ type: "text", text: `${head}\n\n${mail.text}${tail}${threadNote}` }],
+        };
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  server.tool(
+    "read_thread",
+    EVIDENCE_GATE +
+      "Read a whole Gmail conversation, oldest first, each reply cut to what " +
+      "its sender added. Takes a thread id from list_emails or read_email. Use " +
+      "it when a fee, date or lineup is negotiated over several replies: the " +
+      "latest message that states a value is the one in force. Read-only.",
+    {
+      thread_id: z.string().describe("The thread id, as list_emails or read_email gives it"),
+      from_message: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe("Continue a long thread from this message, as the last read said"),
+    },
+    async ({ thread_id, from_message }) => {
+      try {
+        const thread = await call<EmailThread>("read_thread", { thread_id, from_message });
+        if (thread.messages.length === 0) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Thread ${thread.id} has ${thread.total} message(s); none from ` +
+                  `message ${from_message ?? 1} on.`,
+              },
+            ],
+          };
+        }
+        const parts = thread.messages.map((m) => {
+          const flags = [
+            ...(m.draft ? ["draft — never sent"] : []),
+            ...(m.trashed ? ["in the bin"] : []),
+          ];
+          const head = [
+            `## ${m.position}. ${m.from ?? "unknown sender"} — ${m.date ?? "unknown date"}` +
+              (flags.length ? ` (${flags.join(", ")})` : ""),
+            `To: ${m.to ?? "unknown"}${m.cc ? ` · Cc: ${m.cc}` : ""} · id: ${m.id}`,
+          ];
+          const body =
+            m.text ||
+            (m.quoted_lines_removed > 0
+              ? "(Nothing of its own: it only quotes earlier messages.)"
+              : "(No readable text.)");
+          const attached = m.attachments.length
+            ? "\nAttached, not read: " +
+              m.attachments
+                .map((a) => `${a.filename} (${a.mime_type}) — attachment id ${a.id}`)
+                .join("; ")
+            : "";
+          return `${head.join("\n")}\n\n${body}${attached}`;
+        });
+        const first = thread.messages[0].position;
+        const last = thread.messages[thread.messages.length - 1].position;
+        const range =
+          first === 1 && last === thread.total
+            ? `${thread.total} message(s)`
+            : `messages ${first}–${last} of ${thread.total}`;
+        const intro =
+          `# ${thread.subject}\n\n${range}. Quoted history and signatures are cut ` +
+          `from every reply after the first; read_email with a message id shows ` +
+          `one in full.`;
+        // A rule the output carries, at the only moment it is true: the
+        // unread rest of a negotiation can revise anything above it.
+        const more = thread.next_message
+          ? `\n\nNot read yet: messages ${thread.next_message}–${thread.total}. ` +
+            `Later messages may revise anything above — continue with ` +
+            `from_message ${thread.next_message} before treating a value as settled.`
+          : "";
+        return {
+          content: [{ type: "text", text: `${intro}\n\n${parts.join("\n\n")}${more}` }],
         };
       } catch (err) {
         return errorResult(err);

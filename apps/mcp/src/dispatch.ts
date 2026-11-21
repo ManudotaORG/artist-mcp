@@ -24,12 +24,14 @@ import {
   readEvent,
   rescheduleEvent,
 } from './calendar.js';
-import { listEmails, readEmail } from './mail.js';
+import { listEmails, readEmail, readThread } from './mail.js';
 import { listNotebooks, listNotes, mapNotes, readNote, type OneNoteSection } from './notes.js';
 import { applyEdit, previewEdit } from './onenote-patch.js';
 import { createPage, createSection } from './onenote-write.js';
 import { accessTokenFor } from './oauth.js';
 import { type ProviderName, loadTokens } from './tokens.js';
+import { bindPaceKey } from './pace.js';
+import { randomUUID } from 'node:crypto';
 
 /**
  * Every operation this server can carry out, with its provider and its effect.
@@ -55,6 +57,9 @@ export const OPERATIONS = {
   read_note: { provider: 'microsoft', effect: 'read' },
   list_emails: { provider: 'google', effect: 'read' },
   read_email: { provider: 'google', effect: 'read' },
+  // A whole conversation in one read, on the same gmail.readonly scope. See
+  // docs/scope.md, known gap 6.
+  read_thread: { provider: 'google', effect: 'read' },
   read_gmail_attachment: { provider: 'google', effect: 'read' },
   map_gmail_attachment: { provider: 'google', effect: 'read' },
   // Not a tool. create_onenote_page's handler calls it once per image, then
@@ -143,101 +148,119 @@ export const connectedProviders = async (): Promise<ProviderName[]> => {
  */
 export type ResolveToken = (provider: ProviderName) => Promise<string>;
 
-export const dispatchWith =
-  (resolve: ResolveToken, record: RecordWrite = recordWrite) =>
-  async <T>(op: Operation, params: Record<string, unknown> = {}): Promise<T> => {
-    const token = await resolve(PROVIDER_FOR[op]);
+/**
+ * Whose OneNote request budget this dispatcher spends.
+ *
+ * Microsoft limits OneNote per user, and access tokens cannot stand in for the
+ * user: locally a fresh one is fetched for every operation. So the caller says
+ * who it is — hosted passes the user's id — and every Microsoft token this
+ * dispatcher resolves is bound to that key for pacing (see pace.ts). Omitted, a
+ * dispatcher gets a key of its own, which is right for a local install (one
+ * user, one dispatcher) and can never merge two users' budgets.
+ */
+export type DispatchOptions = { paceKey?: string };
 
-    switch (op) {
-      case 'list_notebooks':
-        return (await listNotebooks(token)) as T;
-      case 'list_notes':
-        return (await listNotes(token, {
-          section: typeof params.section === 'string' ? params.section : undefined,
-          notebook: typeof params.notebook === 'string' ? params.notebook : undefined,
-          // Handed on from list_notebooks by the tool handler, never by a model,
-          // so the sections request is made once per call rather than twice.
-          sections: Array.isArray(params.sections)
-            ? (params.sections as OneNoteSection[])
-            : undefined,
-        })) as T;
-      case 'map_notes':
-        // The pages are chosen by the caller, which is where the notebook scope
-        // is settled; nothing here maps a notebook it was not given.
-        return (await mapNotes(token, params.pages as Parameters<typeof mapNotes>[1], {
-          // What is left of the route's budget once the listing has spent its
-          // share. Set by the tool handler, never by a model.
-          ...(typeof params.deadline_ms === 'number' ? { deadlineMs: params.deadline_ms } : {}),
-        })) as T;
-      case 'read_note':
-        return (await readNote(token, params.note_id, params.from_part, {
-          withEditIds: params.with_edit_ids === true,
-        })) as T;
-      case 'list_emails':
-        return (await listEmails(token, params.query)) as T;
-      case 'read_email':
-        return (await readEmail(token, params.email_id)) as T;
-      case 'map_gmail_attachment':
-        return (await mapAttachment(
-          gmailLoader(token, params.email_id, params.attachment_id),
-          'read_gmail_attachment',
-        )) as T;
-      case 'read_gmail_attachment':
-        return (await readAttachment(
-          gmailLoader(token, params.email_id, params.attachment_id),
-          params.from_page,
-          params.page_count,
-        )) as T;
-      case 'load_gmail_image':
-        return (await loadPageImage(
-          gmailLoader(token, params.email_id, params.attachment_id),
-          params,
-        )) as T;
-      case 'map_page_attachment':
-        return (await mapAttachment(
-          oneNoteLoader(token, params.note_id, params.attachment_id),
-          'read_page_attachment',
-        )) as T;
-      case 'read_page_attachment':
-        return (await readAttachment(
-          oneNoteLoader(token, params.note_id, params.attachment_id),
-          params.from_page,
-          params.page_count,
-        )) as T;
-      case 'list_events':
-        return (await listEvents(
-          token,
-          params.calendar_id,
-          params.query,
-          params.time_min,
-          params.time_max,
-        )) as T;
-      case 'read_event':
-        return (await readEvent(token, params.event_id, params.calendar_id)) as T;
-      case 'create_calendar_event':
-        return (await createEvent(token, params, record)) as T;
-      case 'delete_calendar_event':
-        return (await deleteEvent(token, params, record)) as T;
-      case 'edit_calendar_event':
-        return (await editEvent(token, params, record)) as T;
-      case 'reschedule_calendar_event':
-        return (await rescheduleEvent(token, params, record)) as T;
-      case 'create_onenote_page':
-        return (await createPage(token, params, record)) as T;
-      case 'create_onenote_section':
-        return (await createSection(token, params, record)) as T;
-      case 'preview_onenote_edit':
-        return (await previewEdit(token, params)) as T;
-      case 'edit_onenote_page':
-        return (await applyEdit(token, params, record)) as T;
-      case 'list_calendars':
-        // No parameters by design: the whole value is knowing the full set, and
-        // a filtered list of what exists is the reach problem again.
-        return (await listCalendars(token)) as T;
-      default:
-        // Unreachable through the tool definitions, which name every operation.
-        throw new GraphError(`Unknown operation ${String(op)}.`, false);
-    }
+export const dispatchWith =
+  (resolve: ResolveToken, record: RecordWrite = recordWrite, { paceKey }: DispatchOptions = {}) => {
+    const key = paceKey ?? `dispatcher:${randomUUID()}`;
+    return async <T>(op: Operation, params: Record<string, unknown> = {}): Promise<T> => {
+      const token = await resolve(PROVIDER_FOR[op]);
+      if (PROVIDER_FOR[op] === 'microsoft') bindPaceKey(token, key);
+
+      switch (op) {
+        case 'list_notebooks':
+          return (await listNotebooks(token)) as T;
+        case 'list_notes':
+          return (await listNotes(token, {
+            section: typeof params.section === 'string' ? params.section : undefined,
+            notebook: typeof params.notebook === 'string' ? params.notebook : undefined,
+            since: typeof params.since === 'string' ? params.since : undefined,
+            // Handed on from list_notebooks by the tool handler, never by a model,
+            // so the sections request is made once per call rather than twice.
+            sections: Array.isArray(params.sections)
+              ? (params.sections as OneNoteSection[])
+              : undefined,
+          })) as T;
+        case 'map_notes':
+          // The pages are chosen by the caller, which is where the notebook scope
+          // is settled; nothing here maps a notebook it was not given.
+          return (await mapNotes(token, params.pages as Parameters<typeof mapNotes>[1], {
+            // What is left of the route's budget once the listing has spent its
+            // share. Set by the tool handler, never by a model.
+            ...(typeof params.deadline_ms === 'number' ? { deadlineMs: params.deadline_ms } : {}),
+          })) as T;
+        case 'read_note':
+          return (await readNote(token, params.note_id, params.from_part, {
+            withEditIds: params.with_edit_ids === true,
+          })) as T;
+        case 'list_emails':
+          return (await listEmails(token, params.query)) as T;
+        case 'read_email':
+          return (await readEmail(token, params.email_id)) as T;
+        case 'read_thread':
+          return (await readThread(token, params.thread_id, params.from_message)) as T;
+        case 'map_gmail_attachment':
+          return (await mapAttachment(
+            gmailLoader(token, params.email_id, params.attachment_id),
+            'read_gmail_attachment',
+          )) as T;
+        case 'read_gmail_attachment':
+          return (await readAttachment(
+            gmailLoader(token, params.email_id, params.attachment_id),
+            params.from_page,
+            params.page_count,
+          )) as T;
+        case 'load_gmail_image':
+          return (await loadPageImage(
+            gmailLoader(token, params.email_id, params.attachment_id),
+            params,
+          )) as T;
+        case 'map_page_attachment':
+          return (await mapAttachment(
+            oneNoteLoader(token, params.note_id, params.attachment_id),
+            'read_page_attachment',
+          )) as T;
+        case 'read_page_attachment':
+          return (await readAttachment(
+            oneNoteLoader(token, params.note_id, params.attachment_id),
+            params.from_page,
+            params.page_count,
+          )) as T;
+        case 'list_events':
+          return (await listEvents(
+            token,
+            params.calendar_id,
+            params.query,
+            params.time_min,
+            params.time_max,
+          )) as T;
+        case 'read_event':
+          return (await readEvent(token, params.event_id, params.calendar_id)) as T;
+        case 'create_calendar_event':
+          return (await createEvent(token, params, record)) as T;
+        case 'delete_calendar_event':
+          return (await deleteEvent(token, params, record)) as T;
+        case 'edit_calendar_event':
+          return (await editEvent(token, params, record)) as T;
+        case 'reschedule_calendar_event':
+          return (await rescheduleEvent(token, params, record)) as T;
+        case 'create_onenote_page':
+          return (await createPage(token, params, record)) as T;
+        case 'create_onenote_section':
+          return (await createSection(token, params, record)) as T;
+        case 'preview_onenote_edit':
+          return (await previewEdit(token, params)) as T;
+        case 'edit_onenote_page':
+          return (await applyEdit(token, params, record)) as T;
+        case 'list_calendars':
+          // No parameters by design: the whole value is knowing the full set, and
+          // a filtered list of what exists is the reach problem again.
+          return (await listCalendars(token)) as T;
+        default:
+          // Unreachable through the tool definitions, which name every operation.
+          throw new GraphError(`Unknown operation ${String(op)}.`, false);
+      }
+    };
   };
 
 /** The local dispatcher: this machine's own connections, one process, one user. */

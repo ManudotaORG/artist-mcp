@@ -31,6 +31,9 @@ const SANCTIONED = {
   read_note: 'read',
   list_emails: 'read',
   read_email: 'read',
+  // Every message in one Gmail conversation, quoted history cut. A read on
+  // the same gmail.readonly scope as read_email; see docs/scope.md, gap 6.
+  read_thread: 'read',
   read_gmail_attachment: 'read',
   map_gmail_attachment: 'read',
   // Not a tool: create_onenote_page's handler fetches each picture through it

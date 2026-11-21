@@ -53,6 +53,10 @@ a fixed pack means every adjustment is a package release.
 
 - [x] Discovery has two paths ([0010](decisions/0010-two-discovery-paths.md)): `list_notes` on a notebook returns its sections from one request, with pages only for a named `section`, and `map_notes` stays for surveying an unfamiliar notebook once, now also per section. OneNote allows 400 requests an hour per app per user, and a notebook-wide walk spent a request per section on every call; a project question now costs about three. Verified live: a notebook's sections for one request
 
+- [x] **`since` narrows the walk, not just the answer.** `list_notes` and `map_notes` with `since` drop every section dated before the cutoff before its pages are listed, instead of listing the whole notebook and filtering afterwards. Sound because a section's timestamp moves when any page inside it changes, a control recorded on `narrowSections`: a section dated earlier holds no page that changed later. Sections with no date are still listed, a named `section` is never filtered, and when nothing changed the answer says so from section dates — on either kind of account — rather than the page-level "this is not evidence that nothing changed". Why it matters: OneNote allows 120 requests a minute and 400 an hour per app per user, requests inside a `$batch` count one by one, and a full sweep of the three season notebooks measured about 270 on 2026-11-21. Verified live the same day on the 2026-27 notebook: "since 2026-11-14" cost 6 Graph requests instead of 31, and "since 2026-11-20" 4, with the same answer and creation-date detection still firing on the narrowed walk. Tested at request level, and the tests fail with the filter removed. It is the cheap path the daily digest will stand on; it does nothing for a question with no date
+
+- [x] **OneNote requests are paced per user, under the per-minute limit.** The September cap of four in flight bounds concurrency, not rate: on 2026-11-21 a 221-page sweep ran at about 127 a minute and drew 429s, each of which also counts against the limit. Every OneNote request — reads, each request inside a `$batch`, page and section creation, page edits, retries included — now takes a slot in a sliding one-minute window of 100 (`ARTIST_MCP_ONENOTE_PER_MINUTE` overrides), and waits for one rather than being refused by Microsoft. A wait past 8 seconds, the throttle budget's ceiling, ends in a plain "pacing, try again in about a minute" instead of running into the hosted 60-second limit. The window is per user, never per process: the dispatcher binds every Microsoft token it resolves to a pacing key, and hosted passes the user's id, so one user's survey cannot slow another's read. Keying on the token was the first version, and the live run found it wrong — `accessTokenFor` fetches a fresh access token for every operation, so each operation counted as a new user and a 60-second window reached 133 requests with the pacer in place; the unit tests had reused one token. Verified live after the fix, at a budget of 10 a minute so as not to spend the hour twice: 10 requests reached Microsoft across separate operations with separate tokens, the next four were paced, and no 429s. Approximate on hosted, where serverless instances do not share memory; the hourly 400 is not paced. Tests cover pacing, users kept apart, the ceiling, batches, and a dispatcher minting a token per operation, and fail with the binding removed
+
 Checksums mean something narrower for a local file: derived from the directory as
 it is read, they prove only that it did not change between being listed and being
 loaded. The user is the authority on their own files. **The boundary does not
@@ -146,7 +150,7 @@ This line originally read "No writes to any source — not OneNote, Gmail, or Ca
 
 This line originally also read "No calendar. No Google. No web app deployment." All three have since shipped, so it is corrected here rather than quietly left standing:
 
-- **Google is connected**, and Gmail and Calendar are read as **supporting evidence only** — they corroborate or fill gaps in a OneNote page and are never themselves a working unit. Reads only: `list_emails`, `read_email`, `list_events`, `read_event`, and the attachment pair. That asymmetry is what kept the one-page-one-unit rule intact when the sources grew; see [CLAUDE.md](../CLAUDE.md).
+- **Google is connected**, and Gmail and Calendar are read as **supporting evidence only** — they corroborate or fill gaps in a OneNote page and are never themselves a working unit. Reads only: `list_emails`, `read_email`, `read_thread`, `list_events`, `read_event`, and the attachment pair. That asymmetry is what kept the one-page-one-unit rule intact when the sources grew; see [CLAUDE.md](../CLAUDE.md).
 - **The web app deploys** to one Vercel project, production, connected to the repository through the Vercel GitHub App. A staging project existed until 2026-09-13 and was retired with its Supabase project ([#194](https://github.com/ManudotaORG/artist-mcp/issues/194)); the `staging` branch and npm channel remain. See [operations.md](operations.md).
 
 Each new source means re-deciding the rule, not repeating it. Google Tasks was considered and deliberately left out: a task list is a rival system of record for the work itself, not evidence about it.
@@ -209,19 +213,47 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
    verification review for `gmail.readonly`; revisit only if a hosted
    non-production environment returns.
 
-6. **Email is read one message at a time, never as a thread.** `list_emails`
-   returns a `thread_id` and nothing consumes it, so a negotiation has to be
-   reassembled from separate reads and only if the model thinks to look.
+6. **Email is read one message at a time, never as a thread.** Built, and
+   verified live through Claude Desktop; hosted follows the next promotion. `read_thread` reads a whole conversation on the same
+   `gmail.readonly` scope, oldest first. The question this entry left open —
+   how to summarise a thread without pouring quoted history into chat — was
+   answered by cutting each reply to what its sender added, not by
+   summarising: English and German attributions and Outlook's header block are
+   cut points, forwards are kept because what they carry is usually new, and
+   the first message is left whole because what it quotes comes from outside
+   the thread. Drafts are marked as never sent. A thread over about 24,000
+   characters comes back in parts, and the partial answer says the unread rest
+   may revise anything above it.
 
-   The failure is quiet and in the wrong direction: a fee, date, or lineup
-   agreed in the first message and revised three replies later reads as settled,
-   because the message carrying it looks complete on its own. Intake's rule is
-   to surface contradictions with both sources named — a half-read thread hides
-   the contradiction instead, which is worse than not reading the mail at all.
+   `list_emails` now marks a reply with its thread id, and `read_email` on a
+   reply points at `read_thread` — said in the output of the read that needs
+   it rather than in a description every request pays for. The tool itself
+   adds about 845 characters to the tool list.
 
-   Deferred rather than dismissed. A `read_thread` operation is a small addition
-   on the same connection and scope; what needs deciding first is how a thread
-   is summarised without pouring quoted history into chat.
+   - [x] Verified live in a client: on 2026-11-21, through Claude Desktop
+     after a restart onto this build, the same eight-message thread came back
+     in one read with each reply cut to its sender's text and the forward
+     keeping its content but not its quoted chain. Not yet through hosted
+     ChatGPT, which needs a promotion. Before that, run live the same day
+     against the real account by driving the rebuilt `createServer` from a
+     shell. An eight-message hotel quote
+     thread (English Gmail replies, a German Gmail reply, a forward inside the
+     thread) and a four-message one with Outlook-sent replies came back with
+     only each sender's new text. That run found three defects the stubs had
+     not: German Gmail's name-first attribution ("… schrieb am Di., 27. Okt.
+     2026, 22:19:", wrapped), an English one wrapped after "<", and a forward
+     that brought its whole quoted reply chain along because scanning stopped
+     at the forward marker. All three are fixed and pinned by tests; the long
+     thread went from two reads and 29 KB to one read and 23 KB. Still open:
+     signatures without a `-- ` delimiter stay in, and inline signature logos
+     are listed on every reply.
+
+   The failure it addresses, kept because it is why the tool exists: a fee,
+   date, or lineup agreed in the first message and revised three replies later
+   reads as settled, because the message carrying it looks complete on its own.
+   Intake's rule is to surface contradictions with both sources named — a
+   half-read thread hides the contradiction instead, which is worse than not
+   reading the mail at all.
 
 7. **`apps/mcp/dist/` is no longer tracked.** Resolved. It had drifted from
    `src/`: release-please rewrites the `x-release-please-version` line in `src/`

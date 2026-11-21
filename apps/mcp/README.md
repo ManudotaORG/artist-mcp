@@ -79,6 +79,7 @@ Google is supporting evidence, and needs the separate Google connection:
 | --- | --- |
 | `list_emails` | Gmail search results — subject, sender, date, snippet |
 | `read_email` | Message body, plus what is attached by name, type, and size |
+| `read_thread` | A whole conversation, oldest first, each reply cut to what its sender added |
 | `map_gmail_attachment` | What is on each page of a PDF, without reading it |
 | `read_gmail_attachment` | Images as pictures; PDFs and `.docx` as text, in page ranges |
 | `list_calendars` | The calendars this account can see, which is primary, and your access to each |

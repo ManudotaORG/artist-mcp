@@ -158,6 +158,12 @@ needs a separate Google connection:
   plus a list of what is attached by name, type and size, each with a short id
   such as `2` or `1.2` giving its position in the message. Attachment contents
   are not read.
+- `read_thread` — accepts a thread id from `list_emails` or `read_email` and
+  returns every message in the conversation, oldest first. Each reply after the
+  first is cut to what its sender added: quoted history (English and German
+  reply headers, Outlook's header block) and signatures are removed, forwards
+  are kept, and drafts are marked as never sent. A long thread comes back in
+  parts, and the answer says the unread rest may revise what came before.
 - `map_gmail_attachment` — accepts an attachment id from `read_email` and returns what
   is on each page of a PDF — length, an apparent heading, and whether the page is
   a picture — without reading it. Use it to choose pages before reading them.
