@@ -1,6 +1,8 @@
 # 0014 — The CL Aufgaben page is the task record, and the tool keeps it current
 
-Status: **proposed, not built.** Written for review before any code. Builds on
+Status: **reading half built and verified locally on 2026-11-21** (see "Built"
+below); maintenance waits for the digest playbook. Written for review before any
+code. Builds on
 [0008](0008-tasks-are-onenote-tags.md) (a task is a to-do tag),
 [0010](0010-two-discovery-paths.md) (where the requests go) and
 [0006](0006-replacing-a-whole-table.md) (a table is replaced whole). Its
@@ -211,6 +213,52 @@ built and verified.
 is in the write log. The digest opens with what was added overnight ("2 tasks
 added to CL Aufgaben — Vidala"), so the musician reviews additions where they
 already look. A wrong addition costs one deleted line.
+
+## Built: the reading half, 2026-11-21
+
+`map_notes` with `tasks: true` (and `include_done`), as described above, with
+three choices the owner made at build time:
+
+- **The lead is capped at 400 characters**, and says when it was cut.
+- **No resume cursor.** Sections the deadline did not reach are named, to be
+  asked for again with `section`. A cursor is added only if a live run shows a
+  notebook not fitting in one call; none did.
+- **`since` stays per notebook**: the digest makes one call per season. In tasks
+  mode `since` narrows by section date only, so it works on accounts whose page
+  dates are creation dates too, and the answer names how many sections it
+  skipped and that their tasks, including any coming due, are not in it.
+
+A section with exactly one CL Aufgaben page reads it, with no `includeIDs`, since
+the ids serve only an edit. None and several are named and read nothing.
+
+**Live, locally, against the three season notebooks:**
+
+| Notebook | Sections | Pages read | OneNote requests | Open / done | Time |
+| --- | --- | --- | --- | --- | --- |
+| 2026-27 | 30 | 24 | 56 | 159 / 16 | 27.6 s |
+| 2027-28 | 11 | 4 | 17 | 16 / 3 | 18.5 s |
+| 2028-29 | 5 | 0 | 7 | 0 / 0 | 11.3 s |
+
+80 requests for all three, against the estimate of about 93. Every page's open
+tasks matched an independent count of open tags in the same HTML, taken through
+`htmlToText` as each page arrived, so the check cost no requests: zero
+mismatches. Nothing hit the deadline. The thirteen project sections without a
+page are the ones the ownership check found.
+
+The first run found one defect: an untagged table was reported as a task table
+whenever a header cell *mentioned* "Aufgaben", and the live pages use one-cell
+tables as boxes of prose — 30 false notes in one notebook. Now a header cell
+must *be* a task word, in a table of more than one column. What is left is real:
+two tables headed `Aufgabe · Übergeben an · Übergeben am · Rückmeldung erhalten`,
+untagged. **That is where delegated tasks are kept**, which is what the digest
+needs to count a delegated task as done with its recipient's name; tasks mode
+names those tables but does not read their rows. Deciding that is the digest
+playbook's question.
+
+The 2026-27 answer is about 50,000 characters (~12.6k tokens) for every task
+page in the notebook. The first draft's sample, 24 changed pages read whole, was
+143,730. Not yet run on hosted,
+where the listing's share of the 45 s budget decides whether 2026-27 fits.
 
 ## What the first draft measured, and why it changed direction
 

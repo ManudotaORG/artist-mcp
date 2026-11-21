@@ -693,7 +693,7 @@ export const MAP_DEADLINE_MS = 45_000;
  * distinguishing it from both is the whole point, because a page that was never
  * looked at must never read as a page with nothing on it.
  */
-const NOT_REACHED = Symbol('not reached');
+export const NOT_REACHED = Symbol('not reached');
 
 /**
  * Work that has started, given only until the deadline to finish.
@@ -712,7 +712,7 @@ const NOT_REACHED = Symbol('not reached');
  * complete in the background, and its result, or its failure, is discarded —
  * the `catch` keeps a late rejection from surfacing as an unhandled one.
  */
-const beforeDeadline = <T>(
+export const beforeDeadline = <T>(
   work: Promise<T>,
   stopAt: number,
   now: () => number,
