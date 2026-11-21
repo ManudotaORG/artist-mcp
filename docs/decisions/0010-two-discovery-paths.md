@@ -20,7 +20,7 @@ registration, so ChatGPT and Claude Desktop spend the same 400.
 
 | Operation | OneNote requests |
 | --- | --- |
-| Every section on the account, with last-changed dates | 1 |
+| Every section on the account, with last-changed dates | 1 per 100 sections, one after another — see [0016](0016-one-notebooks-sections.md) |
 | The pages of one section | 1 per section |
 | The preview of a page | 1 per page |
 | `read_note` | 1 |
