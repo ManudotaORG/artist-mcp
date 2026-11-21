@@ -73,24 +73,33 @@ A thread that matches no project is listed under *nicht zugeordnet* with its
 sender and subject. It is never silently dropped and never filed under the
 nearest project.
 
-### 4. Append new tasks
+### 4. Add new tasks to the task table
 
 `policy:patch` governs, and it is in force whether or not this role is loaded:
-only the CL Aufgaben page `list_notes` names, only by appending, nothing
-existing changed.
+only the CL Aufgaben page `list_notes` names, only by adding, nothing existing
+changed.
 
-- Read the page once with `read_note` before the first append to it, to see
-  whether it already ends in the heading and whether the task is already there.
-- The heading is **Neu, automatisch ergänzt**, once per page. Where the page
-  does not have it yet, the heading is the first change of the same append.
-  Never a second one.
-- Each task is one tagged line,
-  `<p data-tag="to-do">…</p>`, in the page's language:
-  `Probenplan an die Agentur schicken — Frist 15.12.2026 · aus Mail „Re: Probenplan" (Agentur Müller), 21.11.2026`
-  The deadline only where the mail states one, in its own words. The source
-  always: subject, sender, date.
-- All of a page's new tasks go in one call, as `changes`.
-- An append that is refused is reported and written nowhere else.
+- Read the page once with `read_note` before the first addition to it, to see
+  whether the task is already there and to get the task table's `element_id`.
+- **Add each task as a row of the page's task table**, with `edit_onenote_page`
+  and `action: append_row`: the table's id, and `rows`, each its cells by header
+  name. The server keeps every existing row and checks them afterwards: never
+  compose or replace the table yourself to add one.
+  - The task cell holds the task, then its source, in the page's language:
+    `Probenplan an die Agentur schicken — aus Mail „Re: Probenplan" (Agentur Müller), 21.11.2026`
+  - `Frist` only where the mail states one, in its own words; a column you do
+    not give is written `UNKNOWN`, the templates' convention.
+  - All of a page's new tasks go in one call, as several rows.
+- **Where `append_row` refuses the table** — it holds something other than text
+  and tags, has no task column, or the page has no task table — append below
+  the table instead: the heading **Neu, automatisch ergänzt** once per page (the
+  first change of the same append where the page lacks it, never a second one),
+  then one tagged line per task, `<p data-tag="to-do">…</p>`, with the source as
+  above. Say in the digest which page it was and why.
+- **A result that says WARNING** — rows read back differently after the write
+  — opens the digest, before everything else, with the page named. It means
+  the table may have lost something, and only Ruben can check it.
+- A write that is refused is reported and written nowhere else.
 
 ### 5. Create a missing CL Aufgaben page — only where the prompt says so
 
@@ -110,8 +119,8 @@ hand: this tool cannot delete one.
 In chat, in Ruben's language, short enough to read on a phone. In this order,
 leaving out any part with nothing in it:
 
-1. **Über Nacht geschrieben** — pages created, lines appended, each with its
-   page. Writing is never left to be discovered.
+1. **Über Nacht geschrieben** — pages created, rows added, lines appended, each
+   with its page. Writing is never left to be discovered.
 2. **Ungeklärt** — every task `map_notes` marks UNSETTLED: the tag says open
    and its own row says done, handed on or unclear. One line each, with what
    the row says, as a question for Ruben to settle — usually a tick. These
