@@ -178,7 +178,21 @@ const SECTIONS_PER_PAGE = 100;
 /** Far above any real account; a guard against a listing that never ends. */
 const MAX_SECTION_PAGES = 50;
 
-const fetchSections = async (token: string): Promise<OneNoteSection[]> => {
+/**
+ * Every section on the account, or, given a notebook id, every section in that
+ * notebook.
+ *
+ * The narrowed form filters the account-wide listing rather than asking the
+ * notebook (`/notebooks/{id}/sections`), which is faster but returns only the
+ * sections directly under it: a section inside a section group would be
+ * missing, and a missing section reads as one that does not exist. Every
+ * section carries its `parentNotebook`, grouped or not. See 0016.
+ */
+const fetchSections = async (token: string, notebookId?: string): Promise<OneNoteSection[]> => {
+  const filter =
+    notebookId === undefined
+      ? ''
+      : `&$filter=${encodeURIComponent(`parentNotebook/id eq '${notebookId}'`)}`;
   // Every page of the listing, not the first. Graph returns at most 100
   // sections a response, and on this endpoint it sends NO @odata.nextLink for
   // the rest — measured on 2026-09-15 against a 101-section account: `$top=100`
@@ -194,6 +208,7 @@ const fetchSections = async (token: string): Promise<OneNoteSection[]> => {
     const res = await graphGet(
       `${SECTIONS_PATH}?$select=id,displayName,lastModifiedDateTime` +
         `&$expand=parentNotebook($select=displayName)&$top=${SECTIONS_PER_PAGE}` +
+        filter +
         (page === 0 ? '' : `&$skip=${page * SECTIONS_PER_PAGE}`),
       token,
     );
@@ -222,9 +237,73 @@ const fetchSections = async (token: string): Promise<OneNoteSection[]> => {
  * a hundred requests to be slightly more familiar is not worth it, and the
  * count is only there to help the user recognise which notebook is which.
  */
+/** Notebook names and ids, without their sections. Paged like the sections are. */
+const fetchNotebooks = async (token: string): Promise<{ id: string; name: string }[]> => {
+  const notebooks: { id: string; name: string }[] = [];
+  const seen = new Set<string>();
+  for (let page = 0; ; page++) {
+    if (page === MAX_SECTION_PAGES) {
+      throw new GraphError(`Notebook listing did not end after ${MAX_SECTION_PAGES} pages.`, false);
+    }
+    const res = await graphGet(
+      `/me/onenote/notebooks?$select=id,displayName&$top=${SECTIONS_PER_PAGE}` +
+        (page === 0 ? '' : `&$skip=${page * SECTIONS_PER_PAGE}`),
+      token,
+    );
+    const value =
+      ((await res.json()) as { value?: { id?: string; displayName?: string }[] }).value ?? [];
+    // An endpoint that ignored $skip would hand back the same hundred forever.
+    const fresh = value.filter((n) => typeof n.id === 'string' && !seen.has(n.id));
+    for (const n of fresh) {
+      seen.add(n.id as string);
+      notebooks.push({ id: n.id as string, name: n.displayName ?? '(unnamed notebook)' });
+    }
+    if (value.length < SECTIONS_PER_PAGE || fresh.length === 0) return notebooks;
+  }
+};
+
+/**
+ * Which notebooks this account has — and, given one by name, only that
+ * notebook's sections.
+ *
+ * Without a name this lists every section on the account, because the notebook
+ * question shows a section count per notebook. That is one request per hundred
+ * sections, made one after another: five on a 429-section account, about 23 s
+ * measured on hosted on 2026-11-21, paid before any work by every call that
+ * names a notebook. So a named notebook costs its names and its own sections
+ * instead — two requests whatever the account's size (0016).
+ *
+ * `scoped` says which happened. Names from the notebook listing can include a
+ * notebook with no sections, which the section listing never shows, so a
+ * notebook_key derived from them may not match one issued by the full path; a
+ * caller that cannot prove its key against these names asks again without a
+ * name. A name matching no notebook, or more than one, takes the full path
+ * here, so it is answered exactly as before.
+ */
 export const listNotebooks = async (
   token: string,
-): Promise<{ notebooks: { name: string; sections: number }[]; section_list: OneNoteSection[] }> => {
+  { notebook }: { notebook?: string } = {},
+): Promise<{
+  notebooks: { name: string; sections: number | null }[];
+  section_list: OneNoteSection[];
+  scoped?: true;
+}> => {
+  if (notebook !== undefined) {
+    const wanted = notebook.trim().toLowerCase();
+    const all = await fetchNotebooks(token);
+    const matches = all.filter((n) => n.name.trim().toLowerCase() === wanted);
+    if (matches.length === 1 && ONENOTE_ID.test(matches[0].id)) {
+      const [chosen] = matches;
+      const sections = await fetchSections(token, chosen.id);
+      const own = sections.filter((sec) => typeof sec.id === 'string' && ONENOTE_ID.test(sec.id)).length;
+      return {
+        notebooks: all.map((n) => ({ name: n.name, sections: n.id === chosen.id ? own : null })),
+        section_list: sections,
+        scoped: true,
+      };
+    }
+  }
+
   // The same request listNotes needs, with the same fields, so a caller that
   // asks for notebooks and then for pages can hand this back instead of paying
   // for it twice. OneNote allows 400 requests an hour per app per user; one

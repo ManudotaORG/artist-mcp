@@ -223,7 +223,9 @@ const dispatchOne =
 
       switch (op) {
         case 'list_notebooks':
-          return (await listNotebooks(token)) as T;
+          return (await listNotebooks(token, {
+            notebook: typeof params.notebook === 'string' ? params.notebook : undefined,
+          })) as T;
         case 'list_notes':
           return (await listNotes(token, {
             section: typeof params.section === 'string' ? params.section : undefined,

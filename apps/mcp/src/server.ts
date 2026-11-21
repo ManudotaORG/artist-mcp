@@ -241,10 +241,26 @@ const selectNotebook = async (
   // that reach here only need the names: to ask which notebook, or to check
   // that a supplied one exists. Paying for every page of every notebook to
   // print a list of names is what had Graph refusing with 20166.
-  const { notebooks, section_list } = await call<{
-    notebooks: { name: string; sections: number }[];
+  //
+  // A notebook named with its key costs only that notebook's sections (0016).
+  // Anything that would need the whole account — the question, a key that does
+  // not prove — asks again for the full listing, so those answers are unchanged.
+  type Listing = {
+    notebooks: { name: string; sections: number | null }[];
     section_list?: unknown[];
-  }>("list_notebooks");
+    scoped?: true;
+  };
+  let listing = await call<Listing>(
+    "list_notebooks",
+    notebook !== undefined && notebookKey !== undefined ? { notebook } : {},
+  );
+  if (
+    listing.scoped &&
+    notebookKey?.trim().toLowerCase() !== notebookKeyFor(listing.notebooks.map((n) => n.name))
+  ) {
+    listing = await call<Listing>("list_notebooks");
+  }
+  const { notebooks, section_list } = listing;
   if (notebooks.length === 0) return { message: "No notes found." };
 
   const names = notebooks.map((n) => n.name);
