@@ -213,8 +213,8 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
    verification review for `gmail.readonly`; revisit only if a hosted
    non-production environment returns.
 
-6. **Email is read one message at a time, never as a thread.** Built, not yet
-   verified live. `read_thread` reads a whole conversation on the same
+6. **Email is read one message at a time, never as a thread.** Built, and
+   verified live through Claude Desktop; hosted follows the next promotion. `read_thread` reads a whole conversation on the same
    `gmail.readonly` scope, oldest first. The question this entry left open —
    how to summarise a thread without pouring quoted history into chat — was
    answered by cutting each reply to what its sender added, not by
@@ -230,9 +230,13 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
    it rather than in a description every request pays for. The tool itself
    adds about 845 characters to the tool list.
 
-   - [ ] Verified live in a client. Run live on 2026-11-21 against the real
-     account by driving the rebuilt `createServer` from a shell, not yet
-     through Claude Desktop or hosted ChatGPT. An eight-message hotel quote
+   - [x] Verified live in a client: on 2026-11-21, through Claude Desktop
+     after a restart onto this build, the same eight-message thread came back
+     in one read with each reply cut to its sender's text and the forward
+     keeping its content but not its quoted chain. Not yet through hosted
+     ChatGPT, which needs a promotion. Before that, run live the same day
+     against the real account by driving the rebuilt `createServer` from a
+     shell. An eight-message hotel quote
      thread (English Gmail replies, a German Gmail reply, a forward inside the
      thread) and a four-message one with Outlook-sent replies came back with
      only each sender's new text. That run found three defects the stubs had
