@@ -248,16 +248,14 @@ const selectNotebook = async (
   type Listing = {
     notebooks: { name: string; sections: number | null }[];
     section_list?: unknown[];
+    notebook_key?: string;
     scoped?: true;
   };
   let listing = await call<Listing>(
     "list_notebooks",
     notebook !== undefined && notebookKey !== undefined ? { notebook } : {},
   );
-  if (
-    listing.scoped &&
-    notebookKey?.trim().toLowerCase() !== notebookKeyFor(listing.notebooks.map((n) => n.name))
-  ) {
+  if (listing.scoped && notebookKey?.trim().toLowerCase() !== listing.notebook_key) {
     listing = await call<Listing>("list_notebooks");
   }
   const { notebooks, section_list } = listing;
@@ -275,7 +273,7 @@ const selectNotebook = async (
   // process happens to hold. Required only where the choice is real: one
   // notebook is not a choice, and demanding proof of a list with a single entry
   // would be ceremony.
-  const expected = notebookKeyFor(names);
+  const expected = listing.notebook_key ?? notebookKeyFor(names);
   const proven = notebookKey !== undefined && notebookKey.trim().toLowerCase() === expected;
   const unproven = notebook !== undefined && !proven;
 
@@ -534,9 +532,10 @@ const findSectionAcrossNotebooks = async (
     }
   | null
 > => {
-  const { notebooks, section_list } = await call<{
+  const { notebooks, section_list, notebook_key } = await call<{
     notebooks: { name: string }[];
     section_list?: unknown[];
+    notebook_key?: string;
   }>("list_notebooks");
   // One notebook is not a choice; the ordinary path already handles it.
   if (notebooks.length <= 1) return null;
@@ -554,7 +553,7 @@ const findSectionAcrossNotebooks = async (
     all_sections?: { name: string; notebook: string | null }[];
   }>("list_notes", { section, ...(section_list === undefined ? {} : { sections: section_list }) });
 
-  const miss = renderSectionMiss(section, sections, all_sections, notebookKeyFor(names));
+  const miss = renderSectionMiss(section, sections, all_sections, notebook_key ?? notebookKeyFor(names));
   if (miss !== null) return { message: miss };
 
   const [found] = sections;

@@ -101,15 +101,37 @@ test('the key the question issues proves the narrow path', async () => {
   assert.deepEqual(accountWide, []);
 });
 
-test('a notebook with no sections changes the key, and the full path still accepts it', async () => {
-  // The notebook listing shows an empty notebook the section listing never
-  // does, so a key issued from sections cannot prove against these names.
-  const withEmpty = { ...ACCOUNT, notebooks: [...ACCOUNT.notebooks, { id: 'nb-empty', displayName: 'Leer' }] };
-  const asked = await run(withEmpty, 'list_notes', {});
+/**
+ * The hosted regression. On 2026-11-21 the first deploy of 0016 made hosted
+ * slower, not faster: the key had been derived from the notebooks the section
+ * listing shows, the narrow path derived it from the notebook listing, and the
+ * two differ wherever a notebook has no sections. Every narrow call failed its
+ * own key and paid for the full listing as well.
+ */
+const WITH_EMPTY = { ...ACCOUNT, notebooks: [...ACCOUNT.notebooks, { id: 'nb-empty', displayName: 'Leer' }] };
+
+test('on an account with an empty notebook, the issued key proves the narrow path', async () => {
+  const asked = await run(WITH_EMPTY, 'list_notes', {});
   const issued = asked.text.match(/notebook_key: (\S+)/)?.[1];
-  const { accountWide, text } = await run(withEmpty, 'map_notes', { notebook: '2026-27', notebook_key: issued });
-  assert.equal(accountWide.length, 1, 'the fallback to the full listing did not happen');
+  const { accountWide, filtered, text } = await run(WITH_EMPTY, 'map_notes', {
+    notebook: '2026-27',
+    notebook_key: issued,
+  });
+  assert.deepEqual(accountWide, [], 'the key failed and the full listing was paid for as well');
+  assert.equal(filtered.length, 1);
   assert.doesNotMatch(text, /came without the notebook_key|Ask the user which notebook/, 'a valid key was refused');
+});
+
+test('the empty notebook is shown in the question, not hidden', async () => {
+  const { text } = await run(WITH_EMPTY, 'list_notes', {});
+  assert.match(text, /- Leer — 0 sections/);
+});
+
+test('a key issued from section names before the fix is asked again, not trusted', async () => {
+  // What the old full path issued: only the notebooks that have sections.
+  const stale = notebookKeyFor(['2026-27', '2025-26']);
+  const { text } = await run(WITH_EMPTY, 'map_notes', { notebook: '2026-27', notebook_key: stale });
+  assert.match(text, /came without the notebook_key/);
 });
 
 test('an unknown notebook is refused, and nothing is filtered', async () => {

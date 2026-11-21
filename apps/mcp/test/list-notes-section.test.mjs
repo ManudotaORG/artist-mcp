@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { createServer } from '../dist/server.js';
 import { listNotebooks, listNotes, mapNotes } from '../dist/notes.js';
-import { withGraphBatch } from './support/graph-batch.mjs';
+import { DERIVED, withGraphBatch } from './support/graph-batch.mjs';
 
 /**
  * `list_notes` with `section`: the first step of resolving a chat update to one
@@ -53,11 +53,15 @@ test.afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
+// A token per call: the pacer is real, and one token across the file would
+// spend a single per-minute budget on every test in it.
+let calls = 0;
 const callList = async (graph, args) => {
   const seen = stubGraph(graph);
+  const token = `token-${++calls}`;
   const dispatch = async (op, params) => {
-    if (op === 'list_notebooks') return listNotebooks('token');
-    if (op === 'list_notes') return listNotes('token', params);
+    if (op === 'list_notebooks') return listNotebooks(token);
+    if (op === 'list_notes') return listNotes(token, params);
     throw new Error(`unexpected operation ${op}`);
   };
   const server = await createServer(dispatch);
@@ -284,7 +288,7 @@ test('without a section, sections are listed and no page is fetched', async () =
   assert.match(text, /3 sections/);
   assert.doesNotMatch(text, /CL Aufgaben/);
   assert.ok(!seen.some((u) => u.includes('/pages')), 'a page listing was fetched');
-  assert.equal(seen.filter((u) => u.includes('/me/onenote/sections?')).length, 1);
+  assert.equal(seen.filter((u) => u.includes('/me/onenote/sections?') && !u.includes(DERIVED)).length, 1);
 });
 
 /** The page an update goes to, named in the reply. Title shapes are the live notebook's. */
@@ -379,5 +383,5 @@ test('one call fetches the sections list once', async () => {
   const first = await callList(SEASONS, {});
   const key = first.text.match(/notebook_key: (\S+)/)[1];
   const { seen } = await callList(SEASONS, { notebook: '2027-28', notebook_key: key });
-  assert.equal(seen.filter((u) => u.includes('/me/onenote/sections?')).length, 1);
+  assert.equal(seen.filter((u) => u.includes('/me/onenote/sections?') && !u.includes(DERIVED)).length, 1);
 });

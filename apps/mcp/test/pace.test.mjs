@@ -141,16 +141,16 @@ test('a dispatcher that gets a fresh token per operation is still paced as one u
   let minted = 0;
   const freshEachTime = async () => `fresh-token-${++minted}`;
   const frank = dispatchWith(freshEachTime, async () => {}, { paceKey: 'frank' });
-  await frank('list_notebooks');
-  await frank('list_notebooks');
-  await frank('list_notebooks');
-  const err = await frank('list_notebooks').then(() => null, (e) => e);
+  await frank('list_notes');
+  await frank('list_notes');
+  await frank('list_notes');
+  const err = await frank('list_notes').then(() => null, (e) => e);
   assert.match(String(err?.message), /pacing OneNote requests/);
   assert.equal(minted, 4, 'each operation did get its own token');
 
   // Another user on the same process, also minting tokens, is unaffected.
   const gina = dispatchWith(freshEachTime, async () => {}, { paceKey: 'gina' });
-  await gina('list_notebooks');
+  await gina('list_notes');
 });
 
 test('a dispatcher with no key gets one of its own, never a shared one', async () => {
@@ -158,9 +158,9 @@ test('a dispatcher with no key gets one of its own, never a shared one', async (
   let minted = 0;
   const fresh = async () => `anon-token-${++minted}`;
   const first = dispatchWith(fresh, async () => {});
-  for (let i = 0; i < 3; i++) await first('list_notebooks');
-  await assert.rejects(first('list_notebooks'), /pacing OneNote requests/);
+  for (let i = 0; i < 3; i++) await first('list_notes');
+  await assert.rejects(first('list_notes'), /pacing OneNote requests/);
   // A second keyless dispatcher is a separate budget, not the first one's.
   const second = dispatchWith(fresh, async () => {});
-  await second('list_notebooks');
+  await second('list_notes');
 });
