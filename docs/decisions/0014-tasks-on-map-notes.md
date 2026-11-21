@@ -128,7 +128,9 @@ first one.
   project's CL Aufgaben page, under a heading the tool owns ("Neu, automatisch
   ergänzt"), each line carrying where it came from:
   `[ ] Probenplan an die Agentur schicken — Frist 15.12.2026 · aus Mail „Re: Probenplan" (Agentur), 21.11.`
-- **Not into the table.** OneNote cannot add a row; adding one means replacing
+- **Not into the table.** *Proposed for reversal by
+  [0017](0017-appending-a-table-row.md), where the server builds the replace and
+  the model writes no existing cell.* OneNote cannot add a row; adding one means replacing
   the whole table (0006), which overwrites every cell the musician has edited.
   An append overwrites nothing. The musician moves a line into the table when
   they want it there, or a later step does once 0015's undo exists.

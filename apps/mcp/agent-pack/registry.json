@@ -47,7 +47,7 @@
       "name": "Patch",
       "description": "Once the musician has decided something, hand them the smallest fragment that records it, and say which part of the page it goes under.",
       "file": ".artist/policies/PATCH.md",
-      "sha256": "73d2a063d27f1b5b8708f5567ac1bdcce53120eb847b5bb8c16f3af499e355f1"
+      "sha256": "0e3fcf2defaf6770070459fcd7638655e63417d1455c09f06faee46a5335a308"
     },
     {
       "id": "project-type:concert",

@@ -31,8 +31,9 @@ chasing.
 Applying is not a lighter kind of offering. In a conversation, show the change
 and wait for a yes in words, every time — an edit is smaller and that is not a
 reason to ask less. What may run unattended, in an automation the musician set
-up, is what removes nothing: creating a page or a calendar event, and appending
-to the end of a page, because a wrong one can be deleted again. A replace or an
+up, is what removes nothing: creating a page or a calendar event, appending to
+the end of a page, and adding a row to a task table with `append_row`, which
+keeps every existing row — because a wrong one can be deleted again. A replace or an
 insert never runs unattended: it still has a preview and a token behind it. That
 token is a check that the values are the ones displayed; it cannot tell whether
 anybody read them. A patch they leave is left, and one they decline is

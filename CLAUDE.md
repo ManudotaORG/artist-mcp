@@ -33,7 +33,12 @@ this tool can undo commits in one call, and a write that overwrites or removes
 the musician's own content keeps a preview and a token — a replace or insert
 through `edit_onenote_page`, `edit_calendar_event`, and deleting an event this
 tool did not create. An append to a page commits in one call, the first step of
-[0015](docs/decisions/0015-recovery-replaces-confirmation.md). See
+[0015](docs/decisions/0015-recovery-replaces-confirmation.md), and so does a row
+added to a task table with `append_row`, because the server carries every
+existing row and checks them after the write
+([0017](docs/decisions/0017-appending-a-table-row.md)) — OneNote reads a to-do
+tag back on a `<span>` and drops one sent that way, so a table sent back as read
+loses every tick. See
 [0009](docs/decisions/0009-confirm-by-reversibility.md) before adding a preview
 back or taking the last one away.
 

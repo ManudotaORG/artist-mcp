@@ -3057,7 +3057,8 @@ const createServer = async (
 
     server.tool(
       "edit_onenote_page",
-      "A replace or an insert: only after preview_onenote_edit AND after the musician has said yes to what the preview showed. Never call it to find out whether it would work. An append commits in one call with no token: in a conversation, show the musician the addition and wait for their yes first; in an automation they set up, call it directly. " +
+      "A replace or an insert: only after preview_onenote_edit AND after the musician has said yes to what the preview showed. Never call it to find out whether it would work. An append, or append_row, commits in one call with no token: in a conversation, show the musician the addition and wait for their yes first; in an automation they set up, call it directly. " +
+        "append_row adds task rows to the end of a task table — give element_id (the table's, from read_note) and rows, each row its cells by header name as plain text; this tool carries every existing row across and checks them afterwards, so never rewrite a table to add a row. " +
         "Changes ONE page that artist-mcp itself created. It CANNOT touch a page " +
         "the musician wrote or one another app created — Microsoft refuses those, " +
         "not this tool — and it cannot delete anything. 'append' adds to the end " +
@@ -3076,15 +3077,25 @@ const createServer = async (
       {
         page_id: z.string().describe("Exactly what the preview showed"),
         action: z
-          .enum(["append", "replace", "insert"])
+          .enum(["append", "replace", "insert", "append_row"])
           .optional()
-          .describe("Exactly what the preview showed. Leave it out when passing `changes`"),
+          .describe(
+            "Exactly what the preview showed, or append_row, which needs no preview. Leave it out when passing `changes`",
+          ),
         text: z.string().optional().describe("Exactly what the preview was given"),
         html: z.string().optional().describe("Exactly what the preview was given, byte for byte"),
         element_id: z
           .string()
           .optional()
-          .describe("For replace and insert: the same element_id the preview was given"),
+          .describe(
+            "For replace and insert: the same element_id the preview was given. For append_row: the table's",
+          ),
+        rows: z
+          .array(z.record(z.string()))
+          .optional()
+          .describe(
+            "For append_row: the new rows, each its cells by header name, e.g. {\"Aufgabe\": \"…\", \"Frist\": \"…\"}. A column left out is written UNKNOWN",
+          ),
         position: z
           .enum(["before", "after"])
           .optional()
