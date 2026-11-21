@@ -110,7 +110,8 @@ const handle = async (request: Request): Promise<Response> => {
   // user's capability reach another's session, which is why createServer takes
   // it rather than reading process state.
   const server = await createServer(
-    dispatchWith(hostedTokens(userId), hostedAudit(userId)),
+    // paceKey: OneNote's request limit is per user, and this process serves many.
+    dispatchWith(hostedTokens(userId), hostedAudit(userId), { paceKey: userId }),
     await writeGrantsFor(userId),
   );
 

@@ -8,6 +8,7 @@
  */
 
 import { DuplicateEventError, GraphError, ScopeError } from './client.js';
+import { paceOneNote } from './pace.js';
 
 export const GRAPH = 'https://graph.microsoft.com/v1.0';
 export const GMAIL = 'https://gmail.googleapis.com/gmail/v1';
@@ -178,6 +179,8 @@ export const getWithRetry = async (
   let requestedWait: number | undefined;
 
   for (let attempt = 0; ; attempt++) {
+    // Every attempt, retries included: Microsoft counts each one.
+    if (isOneNote(url)) await paceOneNote(token);
     const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
     if (res.ok) return res;
 
@@ -339,6 +342,8 @@ const postBatch = async (
   });
 
   for (let attempt = 0; ; attempt++) {
+    // One slot per request inside, because that is how Microsoft counts them.
+    await paceOneNote(token, requests.length);
     const res = await fetch(`${GRAPH}/$batch`, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
@@ -650,6 +655,7 @@ export const onenoteCreatePage = async (
     // fetch writes the multipart content-type itself, with the boundary in it.
     delete headers['content-type'];
   }
+  await paceOneNote(token);
   const res = await fetch(url, { method: 'POST', headers, body });
 
   // Not retried, exactly as the calendar insert is not: a repeated create makes
@@ -717,6 +723,7 @@ export const onenoteCreateSection = async (
   token: string,
 ): Promise<Response> => {
   const url = `${GRAPH}/me/onenote/notebooks/${encodeURIComponent(notebookId)}/sections`;
+  await paceOneNote(token);
   const res = await fetch(url, {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
@@ -765,6 +772,7 @@ export const onenotePatchPage = async (
   token: string,
   etag: string | null,
 ): Promise<void> => {
+  await paceOneNote(token);
   const res = await fetch(`${GRAPH}/me/onenote/pages/${encodeURIComponent(pageId)}/content`, {
     method: 'PATCH',
     headers: {
