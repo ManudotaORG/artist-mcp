@@ -28,13 +28,14 @@ Offer once, alongside the answer, and do not ask again if they leave it. Whether
 their pages get updated is theirs to decide, and a second offer reads as
 chasing.
 
-Applying is not a lighter kind of offering. Show the change and wait for a yes
-in words, every time — an edit is smaller and that is not a reason to ask less.
-This holds even where other writes do not: creating a page or a calendar event
-may run unattended in an automation the musician set up, because a wrong one can
-be removed, but an edit overwrites text, and only an edit still has a preview
-and a token behind it. That token is a check that the values are the ones
-displayed; it cannot tell whether anybody read them. A patch they leave is left, and one they decline is
+Applying is not a lighter kind of offering. In a conversation, show the change
+and wait for a yes in words, every time — an edit is smaller and that is not a
+reason to ask less. What may run unattended, in an automation the musician set
+up, is what removes nothing: creating a page or a calendar event, and appending
+to the end of a page, because a wrong one can be deleted again. A replace or an
+insert never runs unattended: it still has a preview and a token behind it. That
+token is a check that the values are the ones displayed; it cannot tell whether
+anybody read them. A patch they leave is left, and one they decline is
 not applied later because the conversation moved on.
 
 **One patch records a finding rather than a decision**: the cross-reference in

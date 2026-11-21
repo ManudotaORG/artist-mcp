@@ -1594,6 +1594,58 @@ export async function previewEdit(token: string, params: Record<string, unknown>
 }
 
 /**
+ * Commit a change made only of appends: one PATCH, nothing read first.
+ *
+ * The result carries what a preview used to show, as 0009 requires of every
+ * write that commits in one call — exactly what was added, and how to take it
+ * back — so a wrong append is visible in the message that reports it.
+ */
+const appendOnly = async (token: string, draft: EditDraft, record: RecordWrite) => {
+  const content = draft.changes.map((change) =>
+    change.html === null ? paragraph(change.text as string) : (change.html as string),
+  );
+
+  await onenotePatchPage(
+    draft.page_id,
+    content.map((one) => appendCommand('body', one)),
+    token,
+    null,
+  );
+
+  const added = draft.changes.map((change) =>
+    change.html === null
+      ? (change.text as string).trim()
+      : rootTag(change.html) === 'table'
+        ? renderTable(change.html)
+        : renderFragment(change.html),
+  );
+
+  for (const [index, change] of draft.changes.entries()) {
+    await record({
+      operation: 'append_onenote_page',
+      summary:
+        (draft.changes.length === 1 ? '' : `[${index + 1}/${draft.changes.length}] `) +
+        `Added to the end of the page: ${
+          change.html === null ? (change.text as string).trim() : change.html
+        }`,
+      target: draft.page_id,
+      source_page: draft.source_page,
+      pre_image: null,
+    });
+  }
+
+  return {
+    changed: true,
+    page_id: draft.page_id,
+    note:
+      `Added to the end of the page${draft.changes.length === 1 ? '' : `, in one write`}:\n\n` +
+      added.join('\n\n') +
+      '\n\nNothing on the page was changed or removed. To take this back, delete ' +
+      'what was added in OneNote; this tool cannot remove it yet.',
+  };
+};
+
+/**
  * Apply the change, or the batch of them, having shown it.
  *
  * The page is read again here rather than trusted from the preview, and that is
@@ -1617,6 +1669,37 @@ export async function applyEdit(
   record: RecordWrite,
 ) {
   const draft = editFrom(params);
+
+  // An append destroys nothing, so under 0009's rule it commits in one call:
+  // no preview, no token, and no read of the page either. The read exists to
+  // capture what a change would overwrite and to produce the ETag that guards
+  // it, and an append overwrites nothing — so it would spend one of the
+  // musician's OneNote requests to protect nothing. A token passed anyway is
+  // ignored rather than checked, so a client following the old two-step flow
+  // keeps working. See docs/decisions/0015-recovery-replaces-confirmation.md.
+  //
+  // Known and accepted: without a token or a read, a caller that retries after
+  // a timeout in which the write actually landed appends the line twice. Left
+  // until it is seen to happen, by the owner's decision on 2026-11-21.
+  if (draft.changes.every((change) => change.action === 'append')) {
+    return appendOnly(token, draft, record);
+  }
+
+  if (typeof params.confirmation_token !== 'string' || params.confirmation_token === '') {
+    const needing = draft.changes
+      .map((change, index) => ({ change, index }))
+      .filter(({ change }) => change.action !== 'append')
+      .map(({ change, index }) =>
+        draft.changes.length === 1 ? `This ${change.action}` : `Change ${index + 1} (${change.action})`,
+      );
+    throw failure(
+      `${needing.join(', ')} needs a confirmation_token, and nothing was written. ` +
+        'Only an append commits in one call, because it removes nothing. Call ' +
+        'preview_onenote_edit with these values, show the musician what it returns, ' +
+        'and after their yes call this again with the token it gives.',
+    );
+  }
+
   const { html, etag } = await onenotePageContent(draft.page_id, token);
   const { captured, content } = resolveChanges(html, draft);
 

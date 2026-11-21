@@ -2702,7 +2702,7 @@ const createServer = async (
   if (isGranted(grants, "onenote-edit")) {
     server.tool(
       "preview_onenote_edit",
-      "Call this before edit_onenote_page — it is the only way to obtain the confirmation_token that one requires, and it is what puts the exact change in front of the musician. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. " +
+      "Call this before edit_onenote_page for a replace or an insert — it is the only way to obtain the confirmation_token those require, and it is what puts the exact change in front of the musician. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. An append needs no preview. " +
         "Reads the page as it stands right now and shows what the change would " +
         "do to it. Changes nothing. For a replace it quotes what would be " +
         "overwritten — a table as its rows — which is the part the musician has " +
@@ -2883,7 +2883,7 @@ const createServer = async (
 
     server.tool(
       "edit_onenote_page",
-      "Only call this after preview_onenote_edit AND after the musician has said yes to what the preview showed. Never call it to find out whether it would work. " +
+      "A replace or an insert: only after preview_onenote_edit AND after the musician has said yes to what the preview showed. Never call it to find out whether it would work. An append commits in one call with no token: in a conversation, show the musician the addition and wait for their yes first; in an automation they set up, call it directly. " +
         "Changes ONE page that artist-mcp itself created. It CANNOT touch a page " +
         "the musician wrote or one another app created — Microsoft refuses those, " +
         "not this tool — and it cannot delete anything. 'append' adds to the end " +
@@ -2894,7 +2894,7 @@ const createServer = async (
         "as undoable in OneNote. Replacing a TABLE overwrites every row of it at " +
         "once, because OneNote supports no change to a single row or cell — so " +
         "the html must carry the cells that are staying exactly as they read now, " +
-        "and a cell left out is a value destroyed. Requires the confirmation_token from a preview " +
+        "and a cell left out is a value destroyed. A replace or insert requires the confirmation_token from a preview " +
         "of these exact values; if the page changed since that preview the token " +
         "stops matching and nothing is written, which means preview again and " +
         "show the musician the new version. Never write a value the musician " +
@@ -2933,7 +2933,10 @@ const createServer = async (
           .describe(SOURCE_PAGE),
         confirmation_token: z
           .string()
-          .describe("The token preview_onenote_edit returned for these exact values"),
+          .optional()
+          .describe(
+            "For a replace or insert: the token preview_onenote_edit returned for these exact values. Not needed when every change is an append",
+          ),
       },
       async (params) => {
         try {
