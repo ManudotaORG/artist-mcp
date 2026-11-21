@@ -516,24 +516,35 @@ const taskDigest = async (
     (d.reply !== null ? ` · Rückmeldung: ${d.reply}` : d.from === "table" ? " · no reply recorded" : "");
 
   const line = (t: PageTask) =>
-    `${t.done ? "[x]" : "[ ]"} ${t.text}${t.details === null ? "" : `\n    ${t.details}`}`;
+    `${t.done ? "[x]" : "[ ]"} ${t.text}${t.details === null ? "" : `\n    ${t.details}`}` +
+    (t.stale_status === null
+      ? ""
+      : `\n    (status cell says ${t.stale_status}; the tag says open, and the tag stands)`);
+
+  // Said in the output because the rule in policy:tasks was loaded and lost on
+  // the first watched digest: an open task its own row calls done or handed on
+  // is neither, and the musician settles it.
+  const unsettledLine = (t: PageTask) =>
+    `${line(t)}\n    UNSETTLED: the tag says open, the row says "${t.unsettled}". Not open, done or delegated until Ruben settles it.`;
 
   const blocks = read.map(({ page, tasks, error }) => {
     const head = `## ${page.title} (${where(page)}) — dated ${page.last_modified ?? "unknown"}\nid: ${page.id}`;
     if (tasks === null) {
       return `${head}\nCOULD NOT BE READ (${error}) — its tasks are unknown, not absent.`;
     }
-    const open = tasks.tasks.filter((t) => !t.done);
+    const unsettled = tasks.tasks.filter((t) => !t.done && t.unsettled !== null);
+    const open = tasks.tasks.filter((t) => !t.done && t.unsettled === null);
     const done = tasks.tasks.filter((t) => t.done);
     return [
       head,
       ...(tasks.lead === ""
         ? []
         : [`Lead: ${tasks.lead}${tasks.lead_cut ? " [cut; read_note for the rest]" : ""}`]),
+      ...unsettled.map(unsettledLine),
       ...open.map(line),
       ...(includeDone ? done.map(line) : []),
       ...(tasks.delegated.length === 0 ? [] : ["Delegiert (counted as done):", ...tasks.delegated.map(handed)]),
-      `${open.length} open, ${done.length} done` +
+      `${open.length} open, ${unsettled.length === 0 ? "" : `${unsettled.length} unsettled, `}${done.length} done` +
         (tasks.delegated.length === 0 ? "." : `, ${tasks.delegated.length} delegated.`),
       ...tasks.problems.map((problem) => `NOTE: ${problem}`),
     ].join("\n");

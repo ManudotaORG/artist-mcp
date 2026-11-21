@@ -34,6 +34,15 @@ export type PageTask = {
   done: boolean;
   /** For a task in a table: the rest of its row, labelled by the header row. */
   details: string | null;
+  /**
+   * For an open task whose own row or line says it is done, handed on, or
+   * unsettled: that clause, in the page's words. `policy:tasks` calls such a
+   * task unsettled — neither open nor done — and it stays that way until the
+   * musician settles it. Null otherwise.
+   */
+  unsettled: string | null;
+  /** For an open task whose status cell says it is done: that word. The tag stands; the cell is out of date. */
+  stale_status: string | null;
 };
 
 /**
@@ -130,7 +139,8 @@ const taggedLines = (html: string): { text: string; done: boolean }[] =>
  */
 const TASK_HEADER = /^(aufgaben?|tasks?|to-?dos?)$/i;
 
-type TableRead = { tasks: PageTask[]; delegated: DelegatedTask[]; problems: string[] };
+type RawTask = Omit<PageTask, 'unsettled' | 'stale_status'>;
+type TableRead = { tasks: RawTask[]; delegated: DelegatedTask[]; problems: string[] };
 
 /**
  * A cell that records nothing. The templates fill an unknown field with
@@ -185,7 +195,7 @@ const readDelegations = (rows: string[][], header: string[], where: string): Tab
 const HANDED_ON = /übergeben an\s+([^,;()]+?)\s*(?:[,;(]|$)/i;
 const DATE = /\b\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})?/;
 
-const handover = (task: PageTask): DelegatedTask | null => {
+const handover = (task: RawTask): DelegatedTask | null => {
   if (!task.done) return null;
   const named = task.text.match(HANDED_ON);
   if (!named) return null;
@@ -241,7 +251,7 @@ const readTable = (table: string, ordinal: number): TableRead => {
   const label = (index: number): string =>
     headed && header[index] ? header[index] : `Column ${index + 1}`;
 
-  const tasks: PageTask[] = [];
+  const tasks: RawTask[] = [];
   for (const row of headed ? rows.slice(1) : rows) {
     const tagged = row
       .map((cell, index) => ({ cell, index }))
@@ -260,6 +270,51 @@ const readTable = (table: string, ordinal: number): TableRead => {
     }
   }
   return { tasks, delegated: [], problems };
+};
+
+/**
+ * Wording on an open task's own row that contradicts its tag.
+ *
+ * Moved here from `policy:tasks`, which says it and was loaded in full when the
+ * first watched digest reported "OFFEN — am 18.10.2026 von Ruben an Agnes
+ * weitergeleitet" as delegated and listed a dozen "OFFEN — vermutlich
+ * erledigt" rows as overdue. A rule applied in the output holds whether or not
+ * the model remembers it, and this one fires only on the rows it is about.
+ *
+ * A handover needs a person: "an Agnes weitergeleitet" is one, "nur an die
+ * eigene Gmail weitergeleitet" — also on a live page — is not.
+ */
+const SAYS_DONE = /(?<!nicht |kein )\b(erledigt|abgeschlossen)\b/i;
+const SAYS_HANDED_ON =
+  /\ban\s+[A-ZÄÖÜ][\wäöüß-]*(?:\s+[A-ZÄÖÜ][\wäöüß-]*)?\s+(weitergeleitet|übergeben|delegiert)\b|\b(weitergeleitet|übergeben|delegiert)\s+an\s+[A-ZÄÖÜ]/;
+
+const clause = (text: string): string => {
+  const cut = text.replace(/^[^—]*—\s*/, '').trim() || text.trim();
+  return cut.length > 160 ? `${cut.slice(0, 160).trimEnd()}…` : cut;
+};
+
+/** Read an open task's row against its tag. A done task is left as it is. */
+const contradictions = (task: Omit<PageTask, 'unsettled' | 'stale_status'>): PageTask => {
+  const settled = { ...task, unsettled: null, stale_status: null };
+  if (task.done) return settled;
+
+  const cells = (task.details ?? '').split(' · ').filter((cell) => cell !== '');
+  const status = cells.find((cell) => /^status:/i.test(cell))?.replace(/^status:\s*/i, '') ?? null;
+  const statusWord = status?.match(/^[^\s—–-]+/)?.[0] ?? '';
+
+  // The page itself says so: nothing to infer.
+  if (/^ungeklärt$/i.test(statusWord)) return { ...settled, unsettled: clause(status as string) };
+
+  // A status cell that says done beside an open tag is a stale cell, not a
+  // dispute: `policy:tasks` says the tag stands. Its prose, if any, still counts.
+  const stale = /^(erledigt|done|abgeschlossen)$/i.test(statusWord) ? statusWord : null;
+  const prose = [
+    task.text,
+    ...cells.filter((cell) => !/^status:/i.test(cell)).map((cell) => cell.replace(/^[^:]+:\s*/, '')),
+    ...(status === null ? [] : [status.slice(statusWord.length)]),
+  ];
+  const hit = prose.find((part) => SAYS_DONE.test(part) || SAYS_HANDED_ON.test(part));
+  return { ...settled, unsettled: hit === undefined ? null : clause(hit), stale_status: stale };
 };
 
 /**
@@ -282,7 +337,7 @@ export const pageTasks = (html: string): PageTasks => {
   });
   pieces.push({ kind: 'text', html: body.slice(at) });
 
-  const tasks: PageTask[] = [];
+  const tasks: RawTask[] = [];
   const delegated: DelegatedTask[] = [];
   const problems: string[] = [];
   const leadParts: string[] = [];
@@ -314,11 +369,13 @@ export const pageTasks = (html: string): PageTasks => {
 
   // A ticked task that records a handover is delegated, not merely done: the
   // musician counts it done, and the digest needs the name it went to.
-  const ordinary = tasks.filter((task) => {
-    const handed = handover(task);
-    if (handed !== null) delegated.push(handed);
-    return handed === null;
-  });
+  const ordinary = tasks
+    .filter((task) => {
+      const handed = handover(task);
+      if (handed !== null) delegated.push(handed);
+      return handed === null;
+    })
+    .map(contradictions);
 
   if (!TAG.test(body) && delegated.length === 0) {
     problems.push(
