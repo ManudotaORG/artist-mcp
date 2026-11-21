@@ -146,6 +146,55 @@ first one.
   the CL Aufgaben page", and the musician moves them once. After that the
   convention holds.
 
+### Creating a missing CL Aufgaben page
+
+Decided on 2026-11-21: **a scheduled run creates the CL Aufgaben page a project
+section lacks**, rather than only reporting it. The check below found thirteen
+project sections without one, and a digest that can only say "no CL Aufgaben
+page" for a third of the projects is not a digest of the work.
+
+`policy:intake` already describes the act — classify the section, then a CL
+Aufgaben page "from the current template for its type" — as something offered
+to the musician. This makes it something done, under the same rules:
+
+- **Only for a section classified as a project**, from what its pages record,
+  with the section name as a hint and not evidence, exactly as intake
+  classifies. Where the classification is unsure, or the section is plainly
+  not a project (`Claude Test`, `Claude Vorlagen`, `Projekt Kontext`,
+  `BCW ÜBERSICHT`, a stray `Neuer Abschnitt 1`), the run reports it and creates
+  nothing.
+- **From the current template for its type**, found in `Claude Vorlagen` by its
+  `Template: <type> v<n>` line, in the project's own season notebook or the
+  latest earlier one that has it. No template for the type: report, never
+  improvise one.
+- **Titled `CL Aufgaben — <project>`**, the templated form the update-target
+  rule recognises. `create_onenote_page` already refuses an unsettled title.
+- **Filled only with what the section's pages state, each value citing the page
+  it came from** — intake's rule for a summary, unchanged. A field nothing
+  states stays empty in the template's own convention for that, never a guess.
+- **Commitments written as prose on the section's pages become tagged tasks**
+  on the new page, citing their source. **Tasks already tagged on another page
+  are not re-tagged here**: they are listed as references ("open on page
+  `Michael`") and flagged in the digest, for the same reason as above — two
+  tags for one task drift.
+- **A section that keeps its state on another `CL` page** (`Köln Orfeo` and
+  `Köln Nozze di Figaro` have `CL Status & Termine`) still gets a CL Aufgaben
+  page. The other page stays where it is, as a source.
+- **At most three creations per run**, and each one opens the digest ("Created
+  CL Aufgaben — Köln Agrippina from template GPT v2, from 3 pages"). A
+  classification that goes wrong across a whole notebook in one night is the
+  failure this bounds.
+
+The cost of a mistake here is higher than for an appended line, and it is said
+so rather than hidden: `Notes.Create` cannot delete, so **a wrongly created page
+is removed by the musician by hand** — the one write in this record the tool
+cannot undo itself. That is why classification is conservative, creations are
+capped, and every one is announced.
+
+Creating a page already commits in one call (0009), so this needs no change to
+the confirmation rules, only to what a scheduled run is told to do. It also
+writes nothing onto an existing page.
+
 **Why this needs only a small change, not 0015.** An append destroys nothing, so
 under 0009's own rule it may commit in one call. Today `edit_onenote_page` asks
 for a confirmation token even for an append. Letting appends commit in one call
@@ -216,12 +265,30 @@ description. Measured with `context-budget` before it ships.
   second run.
 - A check that every CL Aufgaben page really is this app's: each page's
   `createdByAppId` against the identifier the write log recorded at creation
-  (0003). Cheap, and it turns "they are all ours" from recollection into fact
-  before anything writes unattended.
+  (0003). **Done on 2026-11-21**, from the page listing alone (62 requests, no
+  page content): every page this install has created carries
+  `WLID-000000004D91A800`, and so do all 29 pages titled `CL Aufgaben…` — 28
+  project task pages plus the `CL Aufgaben-Kategorien` reference page, which the
+  update-target rule already excludes. Ten of the eleven other `CL` pages are
+  this app's too. The exception is `CL Projekt-Etappen Übersicht`, created on
+  2026-08-11 by another app (`WLID-00000000418CF202`): it is the reference page
+  `policy:tasks` reads deadline rules from, and it stays human-managed.
 - On hosted after promotion, under 60 seconds including a cold start.
 
 ## Open questions
 
+0. **Sections with no CL Aufgaben page.** Found by the same check: 18 of the 46
+   sections in the three season notebooks have none. Five are not projects
+   (`BCW ÜBERSICHT`, `Claude Test`, `Claude Vorlagen`, `Neuer Abschnitt 1`,
+   `Projekt Kontext`). The other thirteen are, mostly in 2027-28 and 2028-29 —
+   projects still early, such as `CD Alina`, `Köln Agrippina` and
+   `Montepulciano 2028` — and two keep their state on a `CL Status & Termine`
+   page instead (`Köln Orfeo`, `Köln Nozze di Figaro`). A digest built on
+   CL Aufgaben pages says "no CL Aufgaben page" for each and sees none of their
+   tasks. **Decided: a scheduled run creates the missing page**, under the rules
+   in "Creating a missing CL Aufgaben page" above. What remains open is the cap
+   of three per run, and whether the first run over the thirteen should be
+   watched by a person rather than left to the schedule.
 1. **Cadence.** A full CL Aufgaben read is about 93 requests. Every morning
    seems affordable; the scheduled task decides.
 2. **The heading for appended lines**, and whether it is one block per page or
