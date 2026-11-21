@@ -36,6 +36,8 @@ test('a table task carries its row, labelled by the header row', () => {
     text: 'Arrangements fertigstellen',
     done: false,
     details: 'Verantwortlich: Ruben · Frist: spätestens 01.11.2026 · Status: OFFEN',
+    unsettled: null,
+    stale_status: null,
   });
   assert.equal(tasks[1].done, true);
 });
@@ -47,6 +49,8 @@ test('an appended line is a task, after the table, with its source in its words'
     text: 'Probenplan an die Agentur schicken — aus Mail „Re: Probenplan", 21.11.',
     done: false,
     details: null,
+    unsettled: null,
+    stale_status: null,
   });
 });
 
@@ -314,4 +318,62 @@ test('the answer lists handovers under Delegiert, and counts them apart', async 
   assert.match(text, /Delegiert \(counted as done\):\n→ Musikermanagement — an Katharina Würgau, übernommen — 10\.09\.2026 · Rückmeldung: Übernommen; die Musikerliste fehlt noch/);
   assert.match(text, /→ Bogenstriche in die Noten eintragen — an Katja \(Konzertmeisterin\) · no reply recorded/);
   assert.match(text, /1 open, 0 done, 2 delegated\./);
+});
+
+// ---------------------------------------------------------------------------
+// An open task whose own row contradicts its tag is unsettled (policy:tasks).
+// The rows below are the live ones the first watched digest got wrong.
+
+const taskTable = (...rows) =>
+  '<body><table>' +
+  row('Aufgabe', 'Verantwortlich', 'Frist', 'Status') +
+  rows.map(([task, status]) => `<tr><td><span data-tag="to-do">${task}</span></td><td><p>Ruben</p></td><td><p>UNKNOWN</p></td><td><p>${status}</p></td></tr>`).join('') +
+  '</table></body>';
+
+test('an open task its row calls done or handed on is unsettled, in the row\'s words', () => {
+  const { tasks } = pageTasks(
+    taskTable(
+      ['Vertragsdaten an Marzia Donnini schicken', 'OFFEN — am 18.10.2026 von Ruben an Agnes weitergeleitet; eine Zusendung ist nicht belegt'],
+      ['Frage zur Bläserbesetzung beantworten', 'OFFEN — vermutlich erledigt: Antwort von Ruben am 29.09.2026'],
+      ['Rückmeldung zur Orchesteraufstellung', 'UNGEKLÄRT — das Kästchen ist auf einer anderen Seite abgehakt'],
+    ),
+  );
+  assert.match(tasks[0].unsettled, /an Agnes weitergeleitet/);
+  assert.match(tasks[1].unsettled, /^vermutlich erledigt: Antwort von Ruben/);
+  assert.match(tasks[2].unsettled, /das Kästchen ist auf einer anderen Seite abgehakt/);
+});
+
+test('forwarding to oneself, "nicht erledigt" and a plain OFFEN are not contradictions', () => {
+  const { tasks } = pageTasks(
+    taskTable(
+      ['Video ansehen', 'OFFEN — am 14.10. nur an die eigene Gmail weitergeleitet'],
+      ['Gage klären', 'OFFEN — noch nicht erledigt'],
+      ['Hotel buchen', 'OFFEN'],
+    ),
+  );
+  assert.deepEqual(tasks.map((t) => t.unsettled), [null, null, null]);
+});
+
+test('a status cell that says ERLEDIGT beside an open tag is a stale cell, and the tag stands', () => {
+  const { tasks } = pageTasks(taskTable(['Programm schicken', 'ERLEDIGT']));
+  assert.equal(tasks[0].unsettled, null);
+  assert.equal(tasks[0].stale_status, 'ERLEDIGT');
+});
+
+test('a done task is left as it is', () => {
+  const { tasks } = pageTasks('<body><p data-tag="to-do:completed">Erledigt, vermutlich</p></body>');
+  assert.equal(tasks[0].unsettled, null);
+});
+
+test('the answer puts unsettled tasks first, says why, and counts them apart', async () => {
+  const html = taskTable(
+    ['Hotel buchen', 'OFFEN'],
+    ['Vertragsdaten an Marzia Donnini schicken', 'OFFEN — am 18.10.2026 von Ruben an Agnes weitergeleitet'],
+  );
+  const { text } = await run({ tasks: true, section: 'Vidala-Tournee' }, { content: () => asHtml(html) });
+  const block = text.slice(text.indexOf('## '));
+  assert.ok(block.indexOf('Vertragsdaten') < block.indexOf('Hotel buchen'), 'unsettled leads');
+  assert.match(text, /UNSETTLED: the tag says open, the row says "am 18\.10\.2026 von Ruben an Agnes weitergeleitet"\. Not open, done or delegated until Ruben settles it\./);
+  assert.match(text, /1 open, 1 unsettled, 0 done\./);
+  assert.doesNotMatch(text, /Delegiert/, 'an open task is never a handover');
 });
