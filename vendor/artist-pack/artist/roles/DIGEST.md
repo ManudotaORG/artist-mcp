@@ -87,8 +87,11 @@ changed.
   compose or replace the table yourself to add one.
   - The task cell holds the task, then its source, in the page's language:
     `Probenplan an die Agentur schicken — aus Mail „Re: Probenplan" (Agentur Müller), 21.11.2026`
-  - `Frist` only where the mail states one, in its own words; a column you do
-    not give is written `UNKNOWN`, the templates' convention.
+  - Every other cell only as the mail or the page states it — `Frist` in the
+    mail's own words, a name spelled as the page spells it ("Ruben", not
+    "Rubén") — and a cell nothing states is left out, so it is written
+    `UNKNOWN`, the templates' convention. Never fill one in because the table
+    usually has it.
   - All of a page's new tasks go in one call, as several rows.
 - **Where `append_row` refuses the table** — it holds something other than text
   and tags, has no task column, or the page has no task table — append below
