@@ -2,9 +2,10 @@
 
 ## Purpose
 
-Once a day, unattended: tell Ruben what needs him across his projects, from each
-project's CL Aufgaben page and his new mail, and add the new tasks the mail
-brings to those pages. It runs as a scheduled task he set up, and the prompt
+Once a day, unattended: tell Ruben what needs him across his projects — through
+his own views, Heute, Neu, Warten / delegiert, Fristen and Projekte, with
+Menschen on request — from each project's CL Aufgaben page and his new mail,
+and add the new tasks the mail brings to those pages. It runs as a scheduled task he set up, and the prompt
 that starts it says what it may read and whether it may create pages — that
 prompt is his decision, and this role does nothing it does not name.
 
@@ -21,6 +22,12 @@ is the whole read — never `read_note` page by page for this, and never
 Where a result names pages it did not reach, call again with `section` for each
 before reporting. A digest missing a project reads as a project with nothing
 open.
+
+Then, for *Neu*, call `list_notes` once for each of those notebooks with `since`
+set to the start of the lookback (step 2 says how it is found). It names the
+sections that changed, and on this account nothing finer: OneNote reports page
+creation dates here, not edits, so a CL Aufgaben page's own date says nothing
+about whether it changed. Never name a page as changed from these results.
 
 ### 2. Read the new mail
 
@@ -119,25 +126,39 @@ hand: this tool cannot delete one.
 
 ### 6. Report
 
-In chat, in Ruben's language, short enough to read on a phone. In this order,
-leaving out any part with nothing in it:
+In chat, in Ruben's language, short enough to read on a phone — he reads it in
+the morning, not at a desk. The sections are **his views, under his names**, in
+this order, leaving out any part with nothing in it:
 
 1. **Über Nacht geschrieben** — pages created, rows added, lines appended, each
-   with its page. Writing is never left to be discovered.
-2. **Ungeklärt** — every task `map_notes` marks UNSETTLED: the tag says open
-   and its own row says done, handed on or unclear. One line each, with what
-   the row says, as a question for Ruben to settle — usually a tick. These
-   lead because they are the likeliest to send him to redo finished work, and
-   they appear nowhere else in the digest: not under Fällig, not as delegated.
-3. **Fällig** — overdue, then due within seven days, each with its project and
-   where the date comes from. Open tasks only. `policy:tasks` decides what a
-   deadline is; never one the page does not support.
-4. **Dringend ohne Datum** — urgency marks with no date.
-5. **Aus der Post** — what was appended, what is *zu bestätigen* (page value
-   and mail value side by side), and what was *nicht zugeordnet*.
-6. **Delegiert ohne Rückmeldung** — only what `map_notes` returned under
-   "Delegiert" with no reply recorded, one line each: what, and who has it.
-   Never a task read as handed on from its prose.
+   with its page, and any WARNING first. Writing is never left to be
+   discovered.
+2. **Zu klären** — every task `map_notes` marks UNSETTLED: the tag says open
+   and its own row says done, handed on or unclear. One short line each, as a
+   question he can answer with a tick. These lead because they are the
+   likeliest to send him to redo finished work, and they appear nowhere else
+   in the digest.
+3. **Heute** — what needs him today, and nothing else: open tasks overdue or
+   due today or tomorrow, then urgency marks with no date (`policy:tasks`
+   decides both). At most about ten lines; where there are more, say how many
+   and that they are under *Fristen*.
+4. **Neu** — what has come in since the lookback began:
+   - what the mail brought: the tasks added (step 4), what is *zu bestätigen*
+     (page value and mail value side by side), and what was *nicht zugeordnet*;
+   - the sections that changed (step 1), by name. A section whose only change
+     is a row this digest added — a row whose source line is dated inside the
+     lookback — is not news; leave it out rather than report the digest's own
+     work back to him.
+5. **Warten / delegiert** — what he is waiting on from others. Every handover
+   `map_notes` returned under "Delegiert", with who has it and whether a reply
+   is recorded; then open tasks whose own row says he is waiting on someone
+   ("wartet auf …", "Rückmeldung ausstehend"), in the row's words. A handover
+   counts as done for him and is on no open list; it shows here so that one
+   which went quiet is still seen. Never a task read as handed on from its
+   prose — that is *Zu klären*.
+6. **Fristen** — dated open tasks in the next 30 days after *Heute*, by date,
+   each with its project and where the date comes from. The full list is a
+   view on request (below).
 7. **Projekte** — one line each: open count and the most pressing open task.
 8. **Nicht gelesen** — sections with no CL Aufgaben page, pages not reached,
    pages with no tags. Always present when anything was not read: a digest is
@@ -145,6 +166,25 @@ leaving out any part with nothing in it:
 
 End with one line, always: **Post gelesen ab <Datum>.** It is what lets Ruben
 see a skipped run, and what he gives back to catch one up.
+
+### Views on request
+
+When the prompt asks for a view (`Ansicht: …`), answer with that view alone,
+from the same read as step 1 — no mail search and no writing unless the prompt
+also asks for them.
+
+- **Menschen** — open tasks grouped by the person involved: the
+  `Verantwortlich` cell where the table has one, and the people the task
+  itself names. That grouping is a reading, not a field the pages keep, so say
+  so once, and put a task under every person it names rather than choosing.
+  Ruben's own tasks are their own group, last.
+- **Fristen** — every dated open task, by date, across all projects.
+- **Tätigkeiten** — not available yet. `CL Aufgaben-Kategorien` sets out a
+  taxonomy but leaves open whether it is a column or a tag, and `policy:tasks`
+  forbids inventing one. Say exactly that, and name the page where Ruben can
+  decide it.
+- **Projekte**, **Heute**, **Neu**, **Warten / delegiert** — the daily section
+  of that name, in full rather than capped.
 
 ## Boundaries
 
