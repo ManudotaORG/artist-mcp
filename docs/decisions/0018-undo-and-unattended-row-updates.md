@@ -1,6 +1,6 @@
 # 0018 — Undo, then unattended changes to a task row
 
-Status: **proposed; step 1 built and verified locally.** A build plan for the part of
+Status: **proposed; steps 1 and 2 built and verified locally.** A build plan for the part of
 [0015](0015-recovery-replaces-confirmation.md) the digest needs, written for
 approval before any code. Builds on [0017](0017-appending-a-table-row.md), whose
 server-built row is the pattern every step here reuses.
@@ -102,6 +102,21 @@ A new action on `edit_onenote_page`, built exactly like `append_row`:
   gives it, never inferred.
 - It keeps a preview and token until step 3 is verified live. Then it commits
   in one call, by 0015's rule.
+
+**Built on 2026-11-23.** `update_row` on both edit tools: `element_id` (the
+table), `row` (its task text), `done`, and `set` (cells by header name; never
+the task text itself, and never an empty cell). It reuses `append_row`'s table
+reading and refusals, rebuilds the one row from its cells in order (two cells
+reading `UNKNOWN` have identical markup, so a string replace would change the
+wrong one), swaps it in by position, records the table and the row before and
+after as a pending line, writes with `If-Match`, and reads back: every other
+row against its read, and the changed row cell by cell, since the written and
+read-back forms differ in shape. A token from `preview_onenote_edit` is bound
+to the row as previewed, so a row edited in between is refused. Tests copied
+from the round trip's markup; removing the token check, the rebuild by
+position, or the read-back check each fails a test. Live on the scratch page: a
+tick and a Frist change, each previewed and confirmed, every other row
+unchanged and an earlier tick intact, read back through tasks mode.
 
 ### 3. `undo_write`
 

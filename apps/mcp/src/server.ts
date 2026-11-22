@@ -1076,6 +1076,22 @@ const EVIDENCE_GATE =
  * index, one call before the markup is composed, is read at the moment it
  * applies, and a tool's own output outranks a playbook.
  */
+/** The parameters of update_row, shared by the preview and the edit so they cannot differ. */
+const ROW_UPDATE_PARAMS = {
+  row: z
+    .string()
+    .optional()
+    .describe("For update_row: the row's task text, exactly as map_notes or read_note shows it"),
+  done: z
+    .boolean()
+    .optional()
+    .describe("For update_row: true ticks the task, false reopens it"),
+  set: z
+    .record(z.string())
+    .optional()
+    .describe("For update_row: cells to change, by header name, as text — never the task text itself"),
+};
+
 const TABLE_MARKUP =
   "\n\nThis page has tables. A table cannot be edited a cell at a time — " +
   "OneNote supports no update to a row or a cell, so changing one value " +
@@ -2900,10 +2916,11 @@ const createServer = async (
           .string()
           .describe("The page to change, by id from list_notes or read_note. The id, not the title"),
         action: z
-          .enum(["append", "replace", "insert"])
+          .enum(["append", "replace", "insert", "update_row"])
           .optional()
           .describe(
             "One change. Leave it out when passing `changes`, which carries several. " +
+              "update_row changes one task row of a table, built by this tool: give element_id (the table), row, and done and/or set. " +
               "append adds to the end of the page and removes nothing. replace " +
               "overwrites one existing element — a paragraph, or a whole table — and " +
               "is the destructive one. insert puts a new block before or after an " +
@@ -2942,6 +2959,7 @@ const createServer = async (
           .enum(["before", "after"])
           .optional()
           .describe("For insert only: which side of that element the new block goes on"),
+        ...ROW_UPDATE_PARAMS,
         changes: z
           .array(
             z.object({
@@ -3077,10 +3095,10 @@ const createServer = async (
       {
         page_id: z.string().describe("Exactly what the preview showed"),
         action: z
-          .enum(["append", "replace", "insert", "append_row"])
+          .enum(["append", "replace", "insert", "append_row", "update_row"])
           .optional()
           .describe(
-            "Exactly what the preview showed, or append_row, which needs no preview. Leave it out when passing `changes`",
+            "Exactly what the preview showed (update_row included), or append_row, which needs no preview. Leave it out when passing `changes`",
           ),
         text: z.string().optional().describe("Exactly what the preview was given"),
         html: z.string().optional().describe("Exactly what the preview was given, byte for byte"),
@@ -3090,6 +3108,7 @@ const createServer = async (
           .describe(
             "For replace and insert: the same element_id the preview was given. For append_row: the table's",
           ),
+        ...ROW_UPDATE_PARAMS,
         rows: z
           .array(z.record(z.string()))
           .optional()
