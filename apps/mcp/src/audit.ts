@@ -12,9 +12,10 @@
  * since it defends against forgetting rather than against the user.
  */
 
-import { appendFile, mkdir } from 'node:fs/promises';
+import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { GraphError } from './client.js';
 
 export const auditPath = (): string =>
   process.env.ARTIST_MCP_AUDIT ?? join(homedir(), '.artist-mcp', 'writes.log');
@@ -66,7 +67,34 @@ export type WriteRecord = {
    * not its original HTML. See docs/decisions/0004-onenote-page-maintenance.md.
    */
   pre_image?: string | null;
+  /**
+   * Two-phase recording (0018): the same id on a `pending` line written
+   * before the write and a `done` line after it. A write that has an undo is
+   * recorded as pending first and refused if that cannot be done, because a
+   * write whose pre-image was not kept is a write with no way back. A pending
+   * line with no done line is a write that may or may not have landed, and
+   * whatever reads this log has to look at the page rather than trust it.
+   * Absent on writes recorded the old way, once, afterwards.
+   */
+  write_id?: string;
+  status?: 'pending' | 'done';
+  /** What the write put there, as written, so an undo can find it again. */
+  wrote?: string | null;
 };
+
+/** A line of the write log as read back. */
+export type WrittenRecord = WriteRecord & { at: string };
+
+/**
+ * Thrown when a pending record could not be made, so the write is not made
+ * either. A separate class so a caller can tell "nothing was written" from a
+ * failure of the write itself.
+ */
+export class UnrecordedWriteError extends GraphError {
+  constructor(message: string) {
+    super(message, false);
+  }
+}
 
 /**
  * Record a write that has already happened.
@@ -83,9 +111,50 @@ export const recordWrite = async (entry: WriteRecord): Promise<void> => {
     await mkdir(dirname(path), { recursive: true });
     await appendFile(path, line + '\n', 'utf8');
   } catch (err) {
+    // A pending line is the undo, recorded before the write it protects. If it
+    // cannot be kept, the write must not happen — the opposite of a completed
+    // write, whose failure to record is swallowed because the write is done.
+    if (entry.status === 'pending') {
+      throw new UnrecordedWriteError(
+        `Nothing was written: the record that would let this change be undone could not ` +
+          `be saved first (${err}).`,
+      );
+    }
     console.warn(
       `[artist-mcp] could not write the audit line for a completed write: ${err}. ` +
         `The event WAS created. Line: ${line}`,
     );
   }
 };
+
+/**
+ * This install's write log, newest first, optionally only what was written on
+ * or after `since`, or only the lines of one write. A line that does not parse
+ * is skipped rather than failing the read: the log is appended to by hand-held
+ * processes over months, and one torn line must not hide every other record.
+ */
+export const readWriteLog = async (
+  { since, writeId, limit = 200 }: { since?: string; writeId?: string; limit?: number } = {},
+): Promise<WrittenRecord[]> => {
+  let text: string;
+  try {
+    text = await readFile(auditPath(), 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw err;
+  }
+  const lines: WrittenRecord[] = [];
+  for (const raw of text.split('\n')) {
+    if (raw.trim() === '') continue;
+    try {
+      const line = JSON.parse(raw) as WrittenRecord;
+      if (since !== undefined && line.at < since) continue;
+      if (writeId !== undefined && line.write_id !== writeId) continue;
+      lines.push(line);
+    } catch {
+      // Skipped: see above.
+    }
+  }
+  return lines.reverse().slice(0, limit);
+};
+

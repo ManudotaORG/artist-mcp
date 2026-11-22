@@ -33,6 +33,9 @@ const CUSTODY_FUNCTIONS = [
   'set_write_grants',
   // A record anyone could write is not a record.
   'record_write',
+  // A log of what was written on someone's pages, with what it replaced, is as
+  // private as the pages (0018).
+  'writes_for',
 ];
 
 const allMigrations = [
@@ -42,6 +45,8 @@ const allMigrations = [
   '20260824130000_revoke_hosted_functions_from_roles.sql',
   '20260826090000_write_grants.sql',
   '20260826100000_write_audit.sql',
+  '20260831120000_write_audit_pre_image.sql',
+  '20261123120000_write_audit_two_phase.sql',
   '20260824140000_resolve_mcp_key.sql',
   '20260824150000_oauth_server.sql',
 ]
@@ -271,9 +276,35 @@ test('write_audit is not exposed through PostgREST', () => {
  * remove a row, and adding one would need arguing for here first.
  */
 test('nothing can amend or remove an audit row', () => {
-  const audit = read('20260826100000_write_audit.sql');
-  assert.doesNotMatch(audit, /update public\.write_audit/);
-  assert.doesNotMatch(audit, /delete from public\.write_audit/);
+  // Every migration touching the table, including the one that made recording
+  // two-phase: completion is a second row, never an update of the first.
+  for (const file of [
+    '20260826100000_write_audit.sql',
+    '20260831120000_write_audit_pre_image.sql',
+    '20261123120000_write_audit_two_phase.sql',
+  ]) {
+    const audit = read(file);
+    assert.doesNotMatch(audit, /update\s+public\.write_audit/, `${file} amends an audit row`);
+    assert.doesNotMatch(audit, /delete\s+from\s+public\.write_audit/, `${file} removes an audit row`);
+  }
+});
+
+/**
+ * The two-phase migration has to be safe to apply before the code that uses it
+ * ships: the running deployment calls record_write with six named arguments, so
+ * every parameter after them needs a default, or production stops recording.
+ */
+test('the two-phase record_write still accepts the six-argument call', () => {
+  const sql = read('20261123120000_write_audit_two_phase.sql');
+  const signature = sql.match(/create function public\.record_write\(([\s\S]*?)\)\s*returns/)[1];
+  for (const param of ['p_write_id', 'p_status', 'p_wrote']) {
+    assert.match(signature, new RegExp(`${param}\\s+\\w+\\s+default\\s+null`), `${param} has no default`);
+  }
+});
+
+test('the hosted sink refuses a write whose pending record failed', () => {
+  const sink = webSource('lib/write-audit.ts');
+  assert.match(sink, /entry\.status === 'pending'[\s\S]{0,200}throw new UnrecordedWriteError/);
 });
 
 /**
@@ -303,10 +334,16 @@ test('the hosted audit sink is bound to a single user', () => {
  * successful write as a failure, which is the one outcome guaranteed to make
  * someone create it a second time.
  */
-test('a failed audit does not fail the write', () => {
+test('a failed audit does not fail a completed write', () => {
+  // The catch in hostedAudit throws for exactly one case: a pending record,
+  // made before a write that must then not happen (0018). For every completed
+  // write the failure is swallowed, as it always was.
   const sink = webSource('lib/write-audit.ts');
-  assert.match(sink, /catch/);
-  assert.doesNotMatch(sink.slice(sink.indexOf('catch')), /throw/);
+  const audit = sink.slice(sink.indexOf('export const hostedAudit'), sink.indexOf('export const hostedWriteLog'));
+  const handler = audit.slice(audit.indexOf('} catch (err) {'));
+  const throws = handler.match(/\bthrow\b/g) ?? [];
+  assert.equal(throws.length, 1, 'the catch throws for something other than a pending record');
+  assert.match(handler, /if \(entry\.status === 'pending'\) \{\s*throw new UnrecordedWriteError/);
 });
 
 

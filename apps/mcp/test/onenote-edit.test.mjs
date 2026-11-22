@@ -294,9 +294,12 @@ test('an append commits in one call: no token, no read, one PATCH', async () => 
   assert.match(result.note, /Nothing on the page was changed or removed/);
   assert.match(result.note, /delete what was added in OneNote/);
 
-  assert.equal(lines.length, 1);
+  assert.deepEqual(lines.map((l) => l.status), ['pending', 'done']);
+  assert.equal(lines[0].write_id, lines[1].write_id);
   assert.equal(lines[0].operation, 'append_onenote_page');
   assert.equal(lines[0].pre_image, null);
+  assert.equal(lines[0].wrote, '<p>Curfew 23:00</p>', 'what an undo will look for');
+  assert.match(result.note, new RegExp(`Recorded as write ${lines[0].write_id}`));
 });
 
 test('an append ignores a token, so the old two-step flow still works', async () => {
@@ -334,7 +337,8 @@ test('a batch of appends commits together in one PATCH', async () => {
     s.sent[0].body.map((c) => c.content),
     ['<p>Neu, automatisch ergänzt</p>', '<p>[ ] Probenplan schicken</p>'],
   );
-  assert.equal(lines.length, 2);
+  assert.equal(lines.filter((l) => l.status === 'done').length, 2);
+  assert.equal(lines.filter((l) => l.status === 'pending').length, 2);
   assert.match(result.note, /in one write/);
 });
 
@@ -386,4 +390,17 @@ test('text going onto a page is escaped', async () => {
   );
 
   assert.equal(s.sent[0].body[0].content, '<p>Fee &amp; rider &lt;b&gt;</p>');
+});
+
+test('an append whose pending record fails sends nothing', async () => {
+  const s = server();
+  await withFetch(s.fetchImpl, () =>
+    assert.rejects(
+      applyEdit('t', { page_id: 'p1', action: 'append', text: 'x' }, async (entry) => {
+        if (entry.status === 'pending') throw new Error('disk full');
+      }),
+      /disk full/,
+    ),
+  );
+  assert.deepEqual(s.sent, []);
 });

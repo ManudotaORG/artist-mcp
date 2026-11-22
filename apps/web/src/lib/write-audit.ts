@@ -7,7 +7,8 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import type { RecordWrite } from '@manudota/artist-mcp/audit';
+import { UnrecordedWriteError } from '@manudota/artist-mcp/audit';
+import type { RecordWrite, WrittenRecord } from '@manudota/artist-mcp/audit';
 
 const need = (name: string): string => {
   const value = process.env[name];
@@ -41,12 +42,58 @@ export const hostedAudit =
         // and discarding its undo — not a weaker recovery than the local one,
         // but none. See docs/decisions/0004-onenote-page-maintenance.md.
         p_pre_image: entry.pre_image ?? null,
+        // Two-phase recording (0018): absent on writes recorded the old way.
+        p_write_id: entry.write_id ?? null,
+        p_status: entry.status ?? null,
+        p_wrote: entry.wrote ?? null,
       });
       if (error) throw new Error(error.message);
     } catch (err) {
+      // A pending row is the undo, recorded before the write it protects. If it
+      // cannot be kept, the write must not happen — the same rule as the local
+      // sink, and the opposite of a completed write, whose failure to record is
+      // swallowed below because the write is already done.
+      if (entry.status === 'pending') {
+        throw new UnrecordedWriteError(
+          `Nothing was written: the record that would let this change be undone could not ` +
+            `be saved first (${err instanceof Error ? err.message : String(err)}).`,
+        );
+      }
       console.error(
         `[artist-mcp] the write for ${userId} succeeded but was not recorded: ${err}. ` +
           `Entry: ${JSON.stringify(entry)}`,
       );
     }
+  };
+
+/**
+ * One user's write log, newest first: what an undo reads (0018). Bound to one
+ * user the same way `hostedAudit` is, so a reader built for one account cannot
+ * read another's — there is no argument that would express it.
+ */
+export const hostedWriteLog =
+  (userId: string) =>
+  async ({
+    since,
+    writeId,
+    limit,
+  }: { since?: string; writeId?: string; limit?: number } = {}): Promise<WrittenRecord[]> => {
+    const { data, error } = await admin().rpc('writes_for', {
+      p_user_id: userId,
+      p_since: since ?? null,
+      p_write_id: writeId ?? null,
+      p_limit: limit ?? 200,
+    });
+    if (error) throw new Error(`The write log could not be read: ${error.message}`);
+    return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+      at: String(row.at),
+      operation: String(row.operation),
+      summary: String(row.summary),
+      target: String(row.target),
+      source_page: (row.source_page as string | null) ?? null,
+      pre_image: (row.pre_image as string | null) ?? null,
+      ...(row.write_id ? { write_id: String(row.write_id) } : {}),
+      ...(row.status === 'pending' || row.status === 'done' ? { status: row.status } : {}),
+      wrote: (row.wrote as string | null) ?? null,
+    }));
   };

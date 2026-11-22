@@ -137,9 +137,17 @@ test('a write whose existing rows read back unchanged says so, and records the t
   assert.equal(result.verified, true);
   assert.match(result.note, /The 3 rows already in it were read back unchanged/);
   assert.equal(s.reads(), 2, 'one read before, one after');
-  assert.equal(lines.length, 1);
+  assert.deepEqual(lines.map((l) => l.status), ['pending', 'done']);
+  assert.equal(lines[0].write_id, lines[1].write_id);
   assert.equal(lines[0].operation, 'append_table_row');
   assert.equal(lines[0].pre_image, tableAsRead());
+  assert.deepEqual(JSON.parse(lines[0].wrote).cells, [
+    'Probenplan schicken — aus Mail „Re: Probenplan" (Agentur), 21.11.2026',
+    'UNKNOWN',
+    '15.12.2026',
+    'UNKNOWN',
+  ]);
+  assert.match(result.note, new RegExp(`Recorded as write ${lines[0].write_id}`));
 });
 
 test('a row that reads back differently after the write is reported loudly, by number', async () => {
@@ -163,7 +171,7 @@ test('several rows go in one write', async () => {
   );
   assert.equal(s.sent.length, 1);
   assert.equal((s.sent[0].body[0].content.match(/<p data-tag="to-do">[ab]<\/p>/g) ?? []).length, 2);
-  assert.equal(lines.length, 2);
+  assert.equal(lines.filter((l) => l.status === 'done').length, 2);
   assert.equal(result.verified, true);
 });
 
@@ -211,4 +219,28 @@ test('append_row commits through applyEdit with no token, and preview turns it a
   await withFetch(s.fetchImpl, () => applyEdit('t', call(), record));
   assert.equal(s.sent.length, 1);
   await assert.rejects(previewEdit('t', call()), /needs no preview/);
+});
+
+test('the pending record goes in before the write, and a failed one means nothing is written', async () => {
+  const order = [];
+  const s = server({ after: goodAfter });
+  const tracked = async (url, init = {}) => {
+    if ((init.method ?? 'GET') !== 'GET') order.push('PATCH');
+    return s.fetchImpl(url, init);
+  };
+  await withFetch(tracked, () =>
+    appendRows('t', call(), async (entry) => void order.push(entry.status)),
+  );
+  assert.deepEqual(order, ['pending', 'PATCH', 'done']);
+
+  const failing = server({ after: goodAfter });
+  await withFetch(failing.fetchImpl, () =>
+    assert.rejects(
+      appendRows('t', call(), async (entry) => {
+        if (entry.status === 'pending') throw new Error('disk full');
+      }),
+      /disk full/,
+    ),
+  );
+  assert.deepEqual(failing.sent, [], 'a write whose undo could not be recorded must not happen');
 });

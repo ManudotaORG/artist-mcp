@@ -30,7 +30,8 @@
  */
 
 import { onenotePageContent, onenotePatchPage } from './api.js';
-import { type RecordWrite } from './audit.js';
+import { randomUUID } from 'node:crypto';
+import { type RecordWrite, type WriteRecord } from './audit.js';
 import { GraphError } from './client.js';
 
 const failure = (message: string): GraphError => new GraphError(message, false);
@@ -1807,19 +1808,23 @@ export async function appendRows(token: string, params: Record<string, unknown>,
   // 3. The table put back into what OneNote accepts, with the new rows at the end.
   const content = asWritten(table).replace(/<\/table>\s*$/i, `${newRowsHtml}</table>`);
 
+  // 4. Recorded before the write, with the table as it was and the row as it
+  // will be written, and the write refused if that fails (0018). The row is
+  // what an undo looks for; the table is the only copy of what stood before.
+  const entries: WriteRecord[] = built.map((values) => ({
+    operation: 'append_table_row',
+    summary: `Added a row to the table headed "${header.join(' · ')}": ${values.join(' · ')}`,
+    target: pageId,
+    source_page: typeof source === 'string' && source !== '' ? source : null,
+    pre_image: table,
+    write_id: randomUUID(),
+    wrote: JSON.stringify({ table: tableId, header, cells: values }),
+  }));
+  for (const entry of entries) await record({ ...entry, status: 'pending' });
+
   // 5. Written whole, If-Match on the read just made.
   await onenotePatchPage(pageId, [replaceCommand(tableId, content)], token, before.etag);
-
-  // 4. Recorded with the table as it was, which is the only copy of it.
-  for (const values of built) {
-    await record({
-      operation: 'append_table_row',
-      summary: `Added a row to the table headed "${header.join(' · ')}": ${values.join(' · ')}`,
-      target: pageId,
-      source_page: typeof source === 'string' && source !== '' ? source : null,
-      pre_image: table,
-    });
-  }
+  for (const entry of entries) await record({ ...entry, status: 'done' });
 
   // 6. Read back, and every existing row checked.
   const oldRows = rows.map(rowFacts);
@@ -1852,7 +1857,13 @@ export async function appendRows(token: string, params: Record<string, unknown>,
         "Tell the musician now. The table as it was before is in this install's write log, " +
         'and nothing here can put it back.';
 
-  return { changed: true, page_id: pageId, verified: changed.length === 0 && !unread, note };
+  return {
+    changed: true,
+    page_id: pageId,
+    verified: changed.length === 0 && !unread,
+    write_ids: entries.map((entry) => entry.write_id as string),
+    note: `${note}\n\nRecorded as write ${entries.map((entry) => entry.write_id).join(', ')}.`,
+  };
 }
 
 /**
@@ -1866,6 +1877,24 @@ const appendOnly = async (token: string, draft: EditDraft, record: RecordWrite) 
   const content = draft.changes.map((change) =>
     change.html === null ? paragraph(change.text as string) : (change.html as string),
   );
+
+  // Recorded before the write, and the write refused if that fails (0018): an
+  // appended line's undo is finding it by what was written and removing it, so
+  // what was written has to be on record before it is on the page.
+  const entries: WriteRecord[] = draft.changes.map((change, index) => ({
+    operation: 'append_onenote_page',
+    summary:
+      (draft.changes.length === 1 ? '' : `[${index + 1}/${draft.changes.length}] `) +
+      `Added to the end of the page: ${
+        change.html === null ? (change.text as string).trim() : change.html
+      }`,
+    target: draft.page_id,
+    source_page: draft.source_page,
+    pre_image: null,
+    write_id: randomUUID(),
+    wrote: content[index],
+  }));
+  for (const entry of entries) await record({ ...entry, status: 'pending' });
 
   await onenotePatchPage(
     draft.page_id,
@@ -1882,28 +1911,18 @@ const appendOnly = async (token: string, draft: EditDraft, record: RecordWrite) 
         : renderFragment(change.html),
   );
 
-  for (const [index, change] of draft.changes.entries()) {
-    await record({
-      operation: 'append_onenote_page',
-      summary:
-        (draft.changes.length === 1 ? '' : `[${index + 1}/${draft.changes.length}] `) +
-        `Added to the end of the page: ${
-          change.html === null ? (change.text as string).trim() : change.html
-        }`,
-      target: draft.page_id,
-      source_page: draft.source_page,
-      pre_image: null,
-    });
-  }
+  for (const entry of entries) await record({ ...entry, status: 'done' });
 
   return {
     changed: true,
     page_id: draft.page_id,
+    write_ids: entries.map((entry) => entry.write_id as string),
     note:
       `Added to the end of the page${draft.changes.length === 1 ? '' : `, in one write`}:\n\n` +
       added.join('\n\n') +
       '\n\nNothing on the page was changed or removed. To take this back, delete ' +
-      'what was added in OneNote; this tool cannot remove it yet.',
+      'what was added in OneNote; this tool cannot remove it yet. ' +
+      `Recorded as write ${entries.map((entry) => entry.write_id).join(', ')}.`,
   };
 };
 
