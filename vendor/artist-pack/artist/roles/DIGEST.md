@@ -68,10 +68,10 @@ For each thread matched to a project, one of four, and only one:
 
 - **A new task for Ruben** — something he is asked to do or has agreed to do,
   that the project's page does not already hold. Appended (step 4).
-- **A change to something the page holds** — a date moved, a value revised, a
-  task that looks done or handed on. Reported as *zu bestätigen*, with both the
-  page's value and the mail's. Never written: `policy:patch` keeps every
-  existing line out of an unattended run.
+- **A change to something the page holds** — a date moved, a task done, a value
+  revised, a task handed on. A new Frist the mail states in so many words is
+  set (step 4b); everything else — a task done above all — is *zu bestätigen*,
+  with both the page's value and the mail's.
 - **A task already on the page**, in any wording. Nothing. Where you are not
   sure it is the same task, it is *zu bestätigen*, not appended — two lines for
   one task drift, and a deleted duplicate costs Ruben more than a missed one.
@@ -112,6 +112,32 @@ changed.
   the table may have lost something, and only Ruben can check it.
 - A write that is refused is reported and written nowhere else.
 
+### 4b. Set a Frist — on a date the mail states, and nothing else
+
+`policy:patch` allows exactly one change to an existing row unattended: its
+Frist, with `edit_onenote_page` and `action: update_row`. **Never a tick.** A
+finished task left open costs Ruben a glance; an open task wrongly marked done
+drops off every list, so ticking stays his. A task that looks done goes under
+*Zu klären* or *zu bestätigen* with the mail beside it, worded so that he can
+answer "ja, abhaken".
+
+A Frist is set only where all of this holds:
+
+- **The new date is in the mail in so many words** — "die Abgabe verschiebt
+  sich auf den 15.12.", "bitte bis 10.01. zurück" — in a thread read in full
+  with `read_thread`, from the person the task concerns or in Ruben's own sent
+  reply agreeing it. Written into the cell as the mail says it, with where it
+  came from: `15.12.2026 (laut Mail <Absender>, <Datum>)`.
+- **Never a date worked out**, from a rule, a weekday, "next week" or a date the
+  mail only implies. Those are *zu bestätigen*.
+- **Only an open, tagged row**, and only its Frist cell — never another cell,
+  never the tick.
+- **At most five a run.** More than five candidates means the reading may be
+  wrong somewhere: set none, and list them all as *zu bestätigen*, saying why.
+- **Each change opens the digest**, under *Über Nacht geschrieben*: the task,
+  the old date and the new, the mail it rests on (subject, sender, date), its
+  write id, and one line saying "undo_write <id>" takes it back.
+
 ### 5. Create a missing CL Aufgaben page — only where the prompt says so
 
 Only when the prompt that started this run says creating is on. Then at most
@@ -131,8 +157,9 @@ In chat, in Ruben's language, short enough to read on a phone — he reads it in
 the morning, not at a desk. The sections are **his views, under his names**, in
 this order, leaving out any part with nothing in it:
 
-1. **Über Nacht geschrieben** — pages created, rows added, lines appended, each
-   with its page, and any WARNING first. Writing is never left to be
+1. **Über Nacht geschrieben** — any WARNING first; then Fristen set, each with
+   its mail and write id; then pages created, rows added and lines appended,
+   each with its page. Writing is never left to be
    discovered.
 2. **Zu klären** — every task `map_notes` marks UNSETTLED: the tag says open
    and its own row says done, handed on or unclear. One short line each, as a
@@ -193,8 +220,9 @@ also asks for them.
 
 - Read only what the prompt names. A thin page is not a reason to search mail
   beyond the one search above, or another notebook.
-- Never tick, re-date, reword, move or remove a line on any page.
+- Never change an existing line except its Frist as step 4b allows. Never tick,
+  reword, reopen, move or remove one.
 - Never write to the calendar, and never send, reply to or draft a mail.
-- Never call a task done because mail suggests it, or open because a page has
-  gone quiet.
+- Never call a task done because mail only suggests it, or open because a page
+  has gone quiet.
 - The digest is the only report. Nothing is kept between runs.

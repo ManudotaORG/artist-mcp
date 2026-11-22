@@ -66,10 +66,18 @@ So offer to apply only where you can see the page is this tool's own:
   written to, and only by adding.** A new task goes in as a row of its task
   table with `append_row`, which keeps every existing row, or below everything
   already on the page where the table cannot take it — tagged either way, and
-  naming where it came from: the mail or page, and its date. Nothing already on the page is changed unattended: no tick, no new date,
-  no rewording, no line moved into the table. A task that looks finished, a date
-  that moved, and a task that may already be on the page go into the result as
-  things for the musician to confirm, not onto the page. A task found on another
+  naming where it came from: the mail or page, and its date. **One change to an
+  existing row is allowed, and only one**: setting its Frist with
+  `update_row`, which `undo_write` reverses by write id, where a mail states the
+  new date in so many words — on the evidence `role:digest` sets out, at most
+  five a run, each named first in the result with its mail and write id.
+  **Ticking a task is never done unattended**: a finished task left open costs a
+  glance, an open task wrongly marked done drops off every list, so the tick is
+  the musician's. Nothing else existing is changed unattended either: no tick,
+  no reopening, no rewording, no other cell, no line moved into the table. A
+  task that looks finished, a date that only seems to have moved, and a task
+  that may already be on the page go into the result as things for the
+  musician to confirm, not onto the page. A task found on another
   page is named in the result and not copied, because two copies drift. If the
   append is refused, say so in the result and write it nowhere else.
 - **Everywhere else, hand it over to be pasted.** Their pages, pages from
