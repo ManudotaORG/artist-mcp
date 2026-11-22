@@ -1,6 +1,6 @@
 # 0018 — Undo, then unattended changes to a task row
 
-Status: **proposed; steps 1–3 built and verified locally.** A build plan for the part of
+Status: **steps 1–3 built and verified on hosted; step 4 open.** A build plan for the part of
 [0015](0015-recovery-replaces-confirmation.md) the digest needs, written for
 approval before any code. Builds on [0017](0017-appending-a-table-row.md), whose
 server-built row is the pattern every step here reuses.
@@ -165,8 +165,17 @@ tick undone; a tool-added row ticked by hand-proxy, its undo refused, then
 allowed once the tick was undone; an appended line removed; a second undo of
 it refused; an earlier tick intact through eight writes.
 
-**`update_row` keeps its token** until undo is verified on hosted too: there it
-depends on the migration and `writes_for`, which are not in production yet.
+**Verified on hosted after #270**, through ChatGPT on the `Claude Test` scratch
+page: a line appended and named as write `97f52d84…`, undone by that id ("Read
+back: it is gone"), and a second undo refused as already undone. Production's
+`write_audit` holds exactly the four rows that should exist — the append's
+pending and done two seconds apart with what was written, and the undo's
+pending and done, each with the removed paragraph as its pre-image and naming
+the write it undoes — and none for the refusal.
+
+**`update_row` may now drop its token**, by this record's own condition. That
+is the next change, and it does not by itself let anything run unattended:
+`policy:patch` still allows an automation only to add, until step 4.
 
 ### 4. The digest may tick and re-date, on explicit evidence
 
