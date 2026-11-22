@@ -33,7 +33,8 @@
     "./grants": "./dist/grants.js",
     "./audit": "./dist/audit.js",
     "./oauth": "./dist/oauth.js",
-    "./client": "./dist/client.js"
+    "./client": "./dist/client.js",
+    "./tasks": "./dist/tasks.js"
   },
   "files": [
     "dist",
