@@ -20,7 +20,7 @@ import { createServer } from '@manudota/artist-mcp/server';
 import { hostedTokens } from '@/lib/hosted-tokens';
 import { userForRequest } from '@/lib/mcp-auth';
 import { writeGrantsFor } from '@/lib/write-grants';
-import { hostedAudit } from '@/lib/write-audit';
+import { hostedAudit, hostedWriteLog } from '@/lib/write-audit';
 import { dispatchWith } from '@manudota/artist-mcp/dispatch';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 
@@ -115,9 +115,11 @@ const handle = async (request: Request): Promise<Response> => {
     // budgetMs: reads still running near maxDuration are reported as out of
     // time rather than left for Vercel to end with a bare 504. Under sixty by
     // enough to send the answer; map_notes' own deadline normally ends first.
+    // readLog: undo_write reads the user's own write log, never another's.
     dispatchWith(hostedTokens(userId), hostedAudit(userId), {
       paceKey: userId,
       budgetMs: READ_BUDGET_MS,
+      readLog: hostedWriteLog(userId),
     }),
     await writeGrantsFor(userId),
   );

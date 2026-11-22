@@ -168,6 +168,10 @@ automation the musician set up, the CL Aufgaben page `list_notes` names is the
 only page written to, and only by appending, each line with its source. Anything
 that would change an existing line goes into the result to be confirmed.
 
+**Its OneNote half has a build plan**: [0018](0018-undo-and-unattended-row-updates.md),
+proposed on 2026-11-23, which undoes at the level of one table row rather than
+a whole table, following 0017.
+
 ## What has to change, and what does not
 
 - **The hosted table.** `write_audit` is insert-only, exposes nothing, and has
