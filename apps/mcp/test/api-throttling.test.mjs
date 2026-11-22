@@ -213,3 +213,54 @@ test('without Retry-After it does not invent a number', async () => {
     },
   );
 });
+
+// Google signals a per-user rate limit as a 403 with a reason in the body, as
+// often as with a 429. Only the 429 used to be retried.
+const googleRateLimit = (reason) =>
+  new Response(JSON.stringify({ error: { code: 403, message: 'User-rate limit exceeded', errors: [{ reason }] } }), {
+    status: 403,
+  });
+
+test('a Gmail 403 rate limit is retried like a 429', async () => {
+  for (const reason of ['rateLimitExceeded', 'userRateLimitExceeded']) {
+    let calls = 0;
+    const res = await withFetch(
+      async () => {
+        calls += 1;
+        return calls === 1 ? googleRateLimit(reason) : new Response('{"messages":[]}', { status: 200 });
+      },
+      () => getWithRetry('https://gmail.googleapis.com/gmail/v1/users/me/messages', 't', 'Gmail'),
+    );
+    assert.equal(calls, 2, `${reason} was not retried`);
+    assert.equal(res.status, 200);
+  }
+});
+
+test('a 403 for a missing scope, or a daily limit, is not retried', async () => {
+  for (const body of [
+    { error: { code: 403, message: 'Request had insufficient authentication scopes.', status: 'PERMISSION_DENIED' } },
+    { error: { code: 403, errors: [{ reason: 'dailyLimitExceeded' }] } },
+  ]) {
+    let calls = 0;
+    await withFetch(
+      async () => {
+        calls += 1;
+        return new Response(JSON.stringify(body), { status: 403 });
+      },
+      () => assert.rejects(getWithRetry('https://gmail.googleapis.com/gmail/v1/users/me/messages', 't', 'Gmail')),
+    );
+    assert.equal(calls, 1, 'a refusal that waiting cannot lift was retried');
+  }
+});
+
+test('a OneNote 403 naming a rate limit is not treated as Google throttling', async () => {
+  let calls = 0;
+  await withFetch(
+    async () => {
+      calls += 1;
+      return googleRateLimit('rateLimitExceeded');
+    },
+    () => assert.rejects(getWithRetry('https://graph.microsoft.com/v1.0/me/onenote/pages', 't', 'Microsoft Graph')),
+  );
+  assert.equal(calls, 1);
+});
