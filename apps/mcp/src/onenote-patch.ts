@@ -1488,6 +1488,12 @@ const resolveChanges = (
  * A read despite the name, exactly as the calendar and create previews are.
  */
 export async function previewEdit(token: string, params: Record<string, unknown>) {
+  if (params.action === 'append_row') {
+    throw failure(
+      'append_row needs no preview: it changes no existing cell and commits in one call. ' +
+        'Call edit_onenote_page with it directly.',
+    );
+  }
   // Naming a part to change requires knowing its id, and an id is only knowable
   // by reading the page. So a replace with no element_id is not a malformed
   // call — it is the first half of the only workflow available, and the tool
@@ -1593,6 +1599,262 @@ export async function previewEdit(token: string, params: Record<string, unknown>
   };
 }
 
+// ---------------------------------------------------------------------------
+// append_row: one or more task rows added to the end of a table, built by the
+// server, committed in one call. See docs/decisions/0017-appending-a-table-row.md.
+
+/** The most rows one call may add. A digest adds a handful; more is a sign something is wrong. */
+const MAX_NEW_ROWS = 12;
+
+/** A header cell naming the task column, matched on the whole cell, as tasks mode does. */
+const TASK_COLUMN = /^(aufgaben?|tasks?|to-?dos?)$/i;
+
+/**
+ * What a task table may hold for the server to carry it: text and tags, the
+ * owner's rule for CL Aufgaben tables, and exactly what the round trip tested.
+ * An allowlist rather than a list of dangers, because a list of dangers can only
+ * name what is already known to break.
+ */
+const CARRIED_TAGS = new Set(['table', 'tbody', 'tr', 'td', 'th', 'p', 'span', 'br', 'a', 'b', 'i', 'u', 'strong', 'em']);
+const CARRIED_ATTRIBUTES = new Set(['id', 'data-id', 'style', 'href', 'data-tag', 'lang', 'border']);
+
+/** Why a table cannot be carried, or null when it can. */
+const uncarried = (table: string): string | null => {
+  if ((table.match(/<table\b/gi) ?? []).length > 1) return 'it holds a table inside a cell';
+  for (const tag of table.matchAll(/<([a-z][a-z0-9]*)\b([^>]*)>/gi)) {
+    const name = tag[1].toLowerCase();
+    if (!CARRIED_TAGS.has(name)) return `it holds a <${name}>, and a task table carries text and tags only`;
+    for (const attr of tag[2].matchAll(/\s([a-z-]+)\s*=/gi)) {
+      const attrName = attr[1].toLowerCase();
+      if (!CARRIED_ATTRIBUTES.has(attrName)) {
+        return attrName === 'colspan' || attrName === 'rowspan'
+          ? 'it has merged cells'
+          : `a <${name}> in it carries ${attrName}, which this does not carry`;
+      }
+    }
+    const tagValue = tag[2].match(/\sdata-tag="([^"]*)"/i)?.[1];
+    if (tagValue !== undefined && !TASK_TAGS.has(tagValue)) {
+      return `it carries the OneNote tag "${tagValue}", and only the two to-do tags are carried`;
+    }
+  }
+  return null;
+};
+
+/**
+ * The table as read, put back into the form OneNote accepts.
+ *
+ * Found by the round trip in 0017, every one of these silently: OneNote returns
+ * a to-do tag on a <span> in the cell and accepts one only on a <p> — sent back
+ * as read, every tag in the table is dropped, the ticks included; it returns a
+ * CSS border and honours only the attribute; and it keeps a sent id as a
+ * data-id, so ids sent back pile up with every append.
+ */
+const asWritten = (table: string): string => {
+  let out = '';
+  let at = 0;
+  const tagged = /<span\b([^>]*?)\sdata-tag="([^"]*)"([^>]*)>/gi;
+  let open: RegExpExecArray | null;
+  while ((open = tagged.exec(table)) !== null) {
+    // Depth-counted to this span's own close: a bold run inside a task would
+    // otherwise end the paragraph halfway through the task.
+    const step = /<(\/?)span\b[^>]*?(\/?)>/gi;
+    step.lastIndex = open.index;
+    let depth = 0;
+    let match: RegExpExecArray | null;
+    let close = -1;
+    while ((match = step.exec(table)) !== null) {
+      if (match[2] === '/') continue;
+      depth += match[1] === '/' ? -1 : 1;
+      if (depth === 0) {
+        close = match.index;
+        break;
+      }
+    }
+    if (close < 0) throw failure('The table could not be read whole, so it cannot be carried. Nothing was changed.');
+    const inner = table.slice(open.index + open[0].length, close);
+    out += `${table.slice(at, open.index)}<p data-tag="${open[2]}">${inner}</p>`;
+    at = close + '</span>'.length;
+    tagged.lastIndex = at;
+  }
+  out += table.slice(at);
+
+  return out
+    .replace(/\s(?:data-id|id)="[^"]*"/g, '')
+    .replace(/<table\b(?![^>]*\bborder=)/i, '<table border="1"');
+};
+
+const rowFacts = (row: string): { text: string; tags: string } => ({
+  text: asText(row).replace(/\s+/g, ' ').trim(),
+  tags: [...row.matchAll(/data-tag="([^"]*)"/g)].map((m) => m[1]).join(','),
+});
+
+/** The outermost tables of a page, in order. */
+const pageTables = (html: string): string[] => childElements(html, 'table');
+
+type NewRow = Record<string, string>;
+
+const newRowsFrom = (params: Record<string, unknown>): NewRow[] => {
+  const rows = params.rows;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw failure('append_row needs rows: the new rows, each as its cells by header name.');
+  }
+  if (rows.length > MAX_NEW_ROWS) {
+    throw failure(`That is ${rows.length} rows in one call; ${MAX_NEW_ROWS} is the most.`);
+  }
+  return rows.map((row, index) => {
+    if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+      throw failure(`Row ${index + 1} is not a set of cells by header name.`);
+    }
+    const cells: NewRow = {};
+    for (const [name, value] of Object.entries(row as Record<string, unknown>)) {
+      if (typeof value !== 'string') throw failure(`Row ${index + 1}: the cell "${name}" is not text.`);
+      if (value.length > MAX_TEXT_CHARS) {
+        throw failure(`Row ${index + 1}: the cell "${name}" is ${value.length} characters; ${MAX_TEXT_CHARS} is the most.`);
+      }
+      cells[name] = value;
+    }
+    return cells;
+  });
+};
+
+/** A cell in the house shape, its text escaped. */
+const houseCell = (text: string, task: boolean): string =>
+  `<td style="border:1px solid #A3A3A3;padding:4px"><p${task ? ' data-tag="to-do"' : ''}>${escapeXml(text.trim()).replace(/\n/g, '<br/>')}</p></td>`;
+
+/**
+ * Add rows to the end of a task table: the server reads the table, carries every
+ * existing row across as OneNote returned it, adds the new ones, writes with
+ * If-Match, and reads the page back to check every existing row survived.
+ *
+ * The model writes no existing cell, which is what puts this on the one-call
+ * side of 0009's rule, and the read-back proves it on every write rather than
+ * once on a scratch page.
+ */
+export async function appendRows(token: string, params: Record<string, unknown>, record: RecordWrite) {
+  const pageId = params.page_id;
+  if (typeof pageId !== 'string' || !ONENOTE_ID.test(pageId)) {
+    throw failure('page_id is required, and must name the page to change.');
+  }
+  const tableId = params.element_id;
+  if (typeof tableId !== 'string' || !isGeneratedId(tableId) || !isTableId(tableId)) {
+    throw failure(
+      'append_row needs element_id: the generated id of the table, as read_note lists it. ' +
+        'Read the page again if you do not have one.',
+    );
+  }
+  for (const other of ['text', 'html', 'changes', 'position']) {
+    if (params[other] !== undefined && params[other] !== null && params[other] !== '') {
+      throw failure(`append_row takes rows, not ${other}. Send any other change in its own call.`);
+    }
+  }
+  const source = params.source_page;
+  if (source !== undefined && source !== null && source !== '' && (typeof source !== 'string' || !ONENOTE_ID.test(source))) {
+    throw failure('source_page is malformed.');
+  }
+  const wanted = newRowsFrom(params);
+
+  // 1. Read immediately before. The ETag goes out as If-Match.
+  const before = await onenotePageContent(pageId, token);
+  const table = preImage(before.html, tableId);
+  const ordinal = pageTables(before.html).findIndex((t) => t.includes(`id="${tableId}"`));
+
+  // 2. Refuse what cannot be carried, writing nothing.
+  const reason = uncarried(table);
+  if (reason !== null) {
+    throw failure(
+      `This table cannot be added to: ${reason}. Nothing was changed. Add the task below ` +
+        'the table instead, as an append.',
+    );
+  }
+  const rows = childElements(table, 'tr');
+  const header = rows.length === 0 ? [] : childElements(rows[0], 'td|th').map((cell) => asText(cell).replace(/\s+/g, ' ').trim());
+  if (rows.length === 0 || /data-tag=/.test(rows[0]) || header.length < 2) {
+    throw failure(
+      'This table has no header row, so there are no columns to put the cells in. Nothing ' +
+        'was changed. Add the task below the table instead, as an append.',
+    );
+  }
+  const taskAt = header.findIndex((cell) => TASK_COLUMN.test(cell));
+  if (taskAt < 0) {
+    throw failure(
+      `This table (headed "${header.join(' · ')}") has no task column, so it is not a task ` +
+        'table. Nothing was changed. Add the task below the table instead, as an append.',
+    );
+  }
+
+  const byName = new Map(header.map((name, index) => [name.toLowerCase(), index]));
+  const built = wanted.map((cells, index) => {
+    const values = header.map(() => 'UNKNOWN');
+    for (const [name, value] of Object.entries(cells)) {
+      const at = byName.get(name.trim().toLowerCase());
+      if (at === undefined) {
+        throw failure(
+          `Row ${index + 1}: "${name}" is not a column of this table. Its columns are ` +
+            `${header.map((h) => `"${h}"`).join(', ')}. Nothing was changed.`,
+        );
+      }
+      values[at] = value.trim() === '' ? 'UNKNOWN' : value;
+    }
+    if (values[taskAt] === 'UNKNOWN') {
+      throw failure(`Row ${index + 1} has no task: give the "${header[taskAt]}" cell. Nothing was changed.`);
+    }
+    return values;
+  });
+  const newRowsHtml = built
+    .map((values) => `<tr>${values.map((value, at) => houseCell(value, at === taskAt)).join('')}</tr>`)
+    .join('');
+
+  // 3. The table put back into what OneNote accepts, with the new rows at the end.
+  const content = asWritten(table).replace(/<\/table>\s*$/i, `${newRowsHtml}</table>`);
+
+  // 5. Written whole, If-Match on the read just made.
+  await onenotePatchPage(pageId, [replaceCommand(tableId, content)], token, before.etag);
+
+  // 4. Recorded with the table as it was, which is the only copy of it.
+  for (const values of built) {
+    await record({
+      operation: 'append_table_row',
+      summary: `Added a row to the table headed "${header.join(' · ')}": ${values.join(' · ')}`,
+      target: pageId,
+      source_page: typeof source === 'string' && source !== '' ? source : null,
+      pre_image: table,
+    });
+  }
+
+  // 6. Read back, and every existing row checked.
+  const oldRows = rows.map(rowFacts);
+  let changed: number[] = [];
+  let unread = false;
+  try {
+    const after = await onenotePageContent(pageId, token);
+    const written = ordinal < 0 ? undefined : pageTables(after.html)[ordinal];
+    const newRows = written === undefined ? [] : childElements(written, 'tr').map(rowFacts);
+    if (newRows.length !== oldRows.length + built.length) unread = true;
+    changed = oldRows
+      .map((old, index) => ({ old, now: newRows[index], index }))
+      .filter(({ old, now }) => now === undefined || now.text !== old.text || now.tags !== old.tags)
+      .map(({ index }) => index);
+  } catch {
+    unread = true;
+  }
+
+  const added = built.map((values) => `[ ] ${values[taskAt]}`).join('\n');
+  const note =
+    changed.length === 0 && !unread
+      ? `Added to the table headed "${header.join(' · ')}":\n\n${added}\n\n` +
+        `The ${oldRows.length - 1} rows already in it were read back unchanged. To take this ` +
+        'back, delete the row in OneNote.'
+      : `Added to the table headed "${header.join(' · ')}":\n\n${added}\n\n` +
+        'WARNING: ' +
+        (unread
+          ? 'the table could not be read back whole after the write, so it is NOT confirmed that the rows already in it survived. '
+          : `row${changed.length === 1 ? '' : 's'} ${changed.join(', ')} of the table read back differently after the write. `) +
+        "Tell the musician now. The table as it was before is in this install's write log, " +
+        'and nothing here can put it back.';
+
+  return { changed: true, page_id: pageId, verified: changed.length === 0 && !unread, note };
+}
+
 /**
  * Commit a change made only of appends: one PATCH, nothing read first.
  *
@@ -1668,6 +1930,8 @@ export async function applyEdit(
   params: Record<string, unknown>,
   record: RecordWrite,
 ) {
+  if (params.action === 'append_row') return appendRows(token, params, record);
+
   const draft = editFrom(params);
 
   // An append destroys nothing, so under 0009's rule it commits in one call:

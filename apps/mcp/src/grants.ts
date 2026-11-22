@@ -67,8 +67,8 @@ export const WRITE_CAPABILITIES = {
   // the pre-image, not the name it was granted under.
   // See docs/decisions/0004-onenote-page-maintenance.md.
   'onenote-edit':
-    'add to the end of a page that artist-mcp itself created, and change anything ' +
-    'else on one only after showing it to you first. ' +
+    'add to the end of a page that artist-mcp itself created, or add a row to a task ' +
+    'table on one, and change anything else on one only after showing it to you first. ' +
     'It cannot touch a page you wrote, and it cannot delete anything.',
 } as const;
 
