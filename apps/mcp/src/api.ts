@@ -28,6 +28,9 @@ const DELAYS = [400, 1200];
  */
 const THROTTLE_DELAYS = [1_000, 4_000, 10_000];
 
+/** The reasons Google gives in a 403 that means "too fast", not "not allowed". */
+const GOOGLE_RATE_LIMIT = /"reason"\s*:\s*"(rateLimitExceeded|userRateLimitExceeded)"|RATE_LIMIT_EXCEEDED/;
+
 /** Past this, waiting is worse for the caller than saying so. */
 const MAX_RETRY_AFTER_MS = 30_000;
 
@@ -184,7 +187,17 @@ export const getWithRetry = async (
     const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
     if (res.ok) return res;
 
-    const throttled = res.status === 429;
+    // Google says "slow down" two ways: 429, and a 403 whose body names a rate
+    // limit. Only the 429 was retried, so a mail search rate-limited the other
+    // way failed at once and unlogged — found when the first watched digest's
+    // split searches "failed on Gmail's quota" and the hosted logs held nothing.
+    // A daily limit (`dailyLimitExceeded`, `quotaExceeded`) is not here: waiting
+    // seconds does not lift it. A 403 for a missing scope stays a refusal below.
+    const googleRateLimited =
+      res.status === 403 &&
+      !isOneNote(url) &&
+      GOOGLE_RATE_LIMIT.test(await res.clone().text().catch(() => ''));
+    const throttled = res.status === 429 || googleRateLimited;
     const limit = throttled ? (isOneNote(url) ? 1 : THROTTLE_DELAYS.length) : DELAYS.length;
     const retryable = res.status >= 500 || throttled;
 
@@ -212,7 +225,7 @@ export const getWithRetry = async (
     // for a stdio server, and this is a diagnostic, not a result.
     if (throttled) {
       console.warn(
-        `[artist-mcp] ${api} 429 attempt=${attempt + 1} ` +
+        `[artist-mcp] ${api} ${res.status} attempt=${attempt + 1} ` +
           `retry_after=${requested === undefined ? 'unset' : `${Math.round(requested / 1000)}s`} ` +
           `waited=${Math.round(spentWaiting / 1000)}s`,
       );
