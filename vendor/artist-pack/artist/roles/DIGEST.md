@@ -23,11 +23,12 @@ Where a result names pages it did not reach, call again with `section` for each
 before reporting. A digest missing a project reads as a project with nothing
 open.
 
-Then, for *Neu*, call `list_notes` once for each of those notebooks with `since`
-set to the start of the lookback (step 2 says how it is found). It names the
-sections that changed, and on this account nothing finer: OneNote reports page
-creation dates here, not edits, so a CL Aufgaben page's own date says nothing
-about whether it changed. Never name a page as changed from these results.
+Nothing else is read from OneNote for the report. Which sections changed is
+deliberately not part of it: on this account section dates are the only change
+signal, they cannot tell Ruben's edits from this digest's own rows, and they
+never say what changed — the first run in this shape reported its own work back
+to him as news. A CL Aufgaben page's own date is its creation date here, not its
+last edit.
 
 ### 2. Read the new mail
 
@@ -140,25 +141,27 @@ this order, leaving out any part with nothing in it:
    in the digest.
 3. **Heute** — what needs him today, and nothing else: open tasks overdue or
    due today or tomorrow, then urgency marks with no date (`policy:tasks`
-   decides both). At most about ten lines; where there are more, say how many
-   and that they are under *Fristen*.
-4. **Neu** — what has come in since the lookback began:
-   - what the mail brought: the tasks added (step 4), what is *zu bestätigen*
-     (page value and mail value side by side), and what was *nicht zugeordnet*;
-   - the sections that changed (step 1), by name. A section whose only change
-     is a row this digest added — a row whose source line is dated inside the
-     lookback — is not news; leave it out rather than report the digest's own
-     work back to him.
+   decides both). At most about ten lines, the most pressing first; where
+   there are more, end with one line saying how many and that every overdue
+   task is under *Fristen*. Nothing overdue is ever simply left out — the first
+   run in this shape dropped four that the day before had shown.
+4. **Neu** — what the mail brought since the lookback began: the tasks added
+   (step 4), what is *zu bestätigen* (page value and mail value side by side),
+   and what was *nicht zugeordnet*. Not which sections changed — see step 1.
 5. **Warten / delegiert** — what he is waiting on from others. Every handover
    `map_notes` returned under "Delegiert", with who has it and whether a reply
    is recorded; then open tasks whose own row says he is waiting on someone
-   ("wartet auf …", "Rückmeldung ausstehend"), in the row's words. A handover
+   ("wartet auf …", "Rückmeldung ausstehend"), in the row's words; then what a
+   mail read in step 3 says someone else will send or do, marked **laut Mail**,
+   because the page does not record it. A handover
    counts as done for him and is on no open list; it shows here so that one
    which went quiet is still seen. Never a task read as handed on from its
    prose — that is *Zu klären*.
-6. **Fristen** — dated open tasks in the next 30 days after *Heute*, by date,
-   each with its project and where the date comes from. The full list is a
-   view on request (below).
+6. **Fristen** — first **Überfällig**: every open task whose date has passed,
+   oldest first, including those *Heute* had no room for, one short line each.
+   Then the dated open tasks of the next 30 days, by date. Each with its
+   project and where the date comes from. The full list is a view on request
+   (below).
 7. **Projekte** — one line each: open count and the most pressing open task.
 8. **Nicht gelesen** — sections with no CL Aufgaben page, pages not reached,
    pages with no tags. Always present when anything was not read: a digest is
