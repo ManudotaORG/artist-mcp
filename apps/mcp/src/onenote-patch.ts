@@ -1951,6 +1951,22 @@ const resolveRowChange = (
   }
 
   const byName = new Map(header.map((name, at) => [name.toLowerCase(), at]));
+
+  // policy:tasks: the status cell follows the tag, in the same change — never
+  // a tick beside a cell still saying OFFEN. Applied here rather than only
+  // stated there, because an unattended tick (0018 step 4) has nobody to
+  // notice, and this fires only on the calls it is about.
+  const statusAt = header.findIndex((name) => /^status$/i.test(name.trim()));
+  if (change.done !== null && statusAt >= 0) {
+    const given = Object.keys(change.set).some((name) => name.trim().toLowerCase() === header[statusAt].toLowerCase());
+    if (!given) {
+      throw failure(
+        `This table has a ${header[statusAt]} column, and it changes with the tick: give ` +
+          `${header[statusAt]} in set — the page's own word for ${change.done ? 'done (ERLEDIGT where the page uses it)' : 'open (OFFEN where the page uses it)'}. ` +
+          'Nothing was changed.',
+      );
+    }
+  }
   const setAt = new Map<number, string>();
   for (const [name, value] of Object.entries(change.set)) {
     const at = byName.get(name.trim().toLowerCase());

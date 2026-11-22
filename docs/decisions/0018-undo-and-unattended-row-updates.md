@@ -1,6 +1,6 @@
 # 0018 — Undo, then unattended changes to a task row
 
-Status: **steps 1–3 built and verified on hosted; step 4 open.** A build plan for the part of
+Status: **steps 1–3 built and verified on hosted; step 4 built (Frist only), not yet run.** A build plan for the part of
 [0015](0015-recovery-replaces-confirmation.md) the digest needs, written for
 approval before any code. Builds on [0017](0017-appending-a-table-row.md), whose
 server-built row is the pattern every step here reuses.
@@ -180,17 +180,18 @@ That does not let anything run unattended: the tool descriptions and
 `policy:patch` still allow an automation only to add, until step 4. Live
 locally: a tick with no token, verified, then undone by its write id.
 
-### 4. The digest may tick and re-date, on explicit evidence
+### 4. The digest may re-date, on an explicit date — never tick
 
 A pack change, once steps 1–3 are verified on hosted:
 
-- An unattended run may **tick** a task, or **set its Frist**, through
-  `update_row` — and nothing else. No rewording, no removal, no status word it
-  was not given.
-- **Only on explicit evidence in a thread read in full**: the person the task
-  concerns confirms it is done or sent, or states the new date. Anything less
-  stays *zu bestätigen*, as now. "Vermutlich erledigt" on a row, or a reply
-  that merely exists, is not evidence.
+- An unattended run may **set a task's Frist** through `update_row`, and
+  nothing else: never a tick (decision 2), no rewording, no removal, no other
+  cell. `update_row` also refuses any tick, attended or not, that leaves a
+  Status column behind, so a tick never sits beside `OFFEN`.
+- **Only on a date stated in so many words**, in a thread read in full, by the
+  person the task concerns or in Ruben's own reply agreeing it. Anything less
+  stays *zu bestätigen*, as now — and so does every task that looks done,
+  however clearly.
 - Each change opens the digest under *Über Nacht geschrieben*, with the mail it
   rests on and its `write_id`, so one sentence undoes it.
 
@@ -215,17 +216,29 @@ A pack change, once steps 1–3 are verified on hosted:
 - **Step 3**: live on the scratch page, each kind undone; a row edited by hand
   after the write, and the undo refusing and showing the pre-image; then on a
   real CL Aufgaben page in a watched run.
-- **Step 4**: a watched digest that ticks one task from a real confirming mail,
-  then undone by its `write_id`.
+- **Step 4**: a watched digest that sets one Frist from a real mail stating a
+  new date, then undone by its `write_id`; and a done-looking task left open
+  and listed for Ruben to confirm.
 
 ## Decisions this needs
 
 1. **Scope** — *decided 2026-11-23*: OneNote task rows now. The calendar half
    of 0015 waits, because its payoff is removing the calendar previews, which
    needs 0015's open question 3 decided with it; it adds no work to step 1.
-2. **What step 4 may change unattended**: the tick and the Frist only?
-3. **The evidence bar**: explicit confirmation in a thread read in full, as
-   above?
+2. **What step 4 may change unattended** — *decided 2026-11-23: the Frist
+   only. Ticking stays Ruben's.* Proposed first as tick and Frist; reversed by
+   the owner before it shipped, on the asymmetry of the two mistakes: a
+   finished task left open costs a glance, an open task wrongly marked done
+   drops off every list, and that is the failure the digest exists to prevent.
+   A wrongly later Frist can hide a task too, more rarely, and is accepted. A
+   task that looks done is listed for Ruben to confirm, worded so "ja, abhaken"
+   answers it, and a conversation then ticks it with `update_row`.
+3. **The evidence bar** — *decided 2026-11-23*: the new date in so many words,
+   in a thread read in full, from the person the task concerns or in Ruben's
+   own reply agreeing it; written as the mail says it, with its source. Never a
+   date worked out or implied. At most five a run; more means none are set and
+   all are listed. (The broader bar discussed for ticks — Ruben's own reply as
+   proof for tasks whose verb is the sending — fell away with the tick.)
 4. **Removing a line this tool appended** — *decided 2026-11-23: yes, within
    these limits.* The tool may remove a row or line only if the write log holds
    it as this tool's own addition, by `write_id`, and it still reads exactly as

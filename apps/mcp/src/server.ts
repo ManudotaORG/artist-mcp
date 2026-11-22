@@ -3075,7 +3075,7 @@ const createServer = async (
 
     server.tool(
       "edit_onenote_page",
-      "A replace or an insert: only after preview_onenote_edit AND after the musician has said yes to what the preview showed. Never call it to find out whether it would work. An append, append_row or update_row commits in one call with no token: in a conversation, show the musician the change and wait for their yes first; in an automation they set up, only append and append_row, never update_row. Each result names a write id that undo_write can reverse. " +
+      "A replace or an insert: only after preview_onenote_edit AND after the musician has said yes to what the preview showed. Never call it to find out whether it would work. An append, append_row or update_row commits in one call with no token: in a conversation, show the musician the change and wait for their yes first; in an automation they set up, append and append_row, and update_row only to set a Frist a mail states — never a tick, which is the musician's. Each result names a write id that undo_write can reverse. " +
         "append_row adds task rows to the end of a task table — give element_id (the table's, from read_note) and rows, each row its cells by header name as plain text; this tool carries every existing row across and checks them afterwards, so never rewrite a table to add a row. " +
         "Changes ONE page that artist-mcp itself created. It CANNOT touch a page " +
         "the musician wrote or one another app created — Microsoft refuses those, " +
