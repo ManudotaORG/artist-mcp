@@ -1,7 +1,8 @@
 # 0017 — A task row is added to the table by the server, and commits in one call
 
-Status: **accepted and built on 2026-11-22, verified locally** (see "Built"
-below); not yet on hosted. The three open questions were answered by the owner
+Status: **accepted, built, and verified on hosted on 2026-11-22** (see "Built"
+below): four rows added to three real CL Aufgaben tables in a watched digest,
+every earlier task read back unchanged. The three open questions were answered by the owner
 (below). Written for review before any code, after a round-trip test
 on a scratch page. Reverses one rule in
 [0014](0014-tasks-on-map-notes.md) ("Not into the table") and narrows
