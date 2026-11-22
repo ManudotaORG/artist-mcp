@@ -86,6 +86,13 @@ reads back with `readWriteLog`; hosted, `hostedWriteLog` reads through the new
 **Before this deploys, the migration has to be applied to production**:
 hosted code that records a pending row against the old function would refuse
 every append. Applied first, it is harmless to the running deployment.
+**Applied on 2026-11-23** with `supabase db push`, after a dry run showed it was
+the only migration production lacked. Checked in production: one
+`record_write` with all nine parameters, `writes_for` present, both refused to
+`anon` and `authenticated` and executable by `service_role`, the three columns
+added, the 327 existing rows intact. The security advisors raised only a
+pre-existing Auth warning (leaked-password protection off), nothing for these
+functions. The checkout was unlinked afterwards.
 
 ### 2. `update_row`: a task row changed by the server
 
