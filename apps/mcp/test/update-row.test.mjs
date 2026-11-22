@@ -66,7 +66,7 @@ const audit = () => {
   return { lines, record: async (entry) => void lines.push(entry) };
 };
 
-const tick = { page_id: 'p1', action: 'update_row', element_id: TABLE_ID, row: 'Vertrag zurücksenden', done: true };
+const tick = { page_id: 'p1', action: 'update_row', element_id: TABLE_ID, row: 'Vertrag zurücksenden', done: true, set: { Status: 'ERLEDIGT' } };
 
 /** Preview, then apply with the token it returned, against `after` as the read-back. */
 const previewThenApply = async (params, after) => {
@@ -80,7 +80,7 @@ const previewThenApply = async (params, after) => {
   return { s, preview, result, lines };
 };
 
-const ticked = page(tableAsRead([rowsAsRead[0], rowsAsRead[1], task('Vertrag zur&#252;cksenden', { done: true })]));
+const ticked = page(tableAsRead([rowsAsRead[0], rowsAsRead[1], task('Vertrag zur&#252;cksenden', { done: true, status: 'ERLEDIGT' })]));
 
 test('the preview shows the row before and after, and carries a token', async () => {
   const s = server();
@@ -123,19 +123,31 @@ test('a cell is changed by its column, even beside an identical cell', async () 
   assert.equal(result.verified, true);
 });
 
-test('with no token, or a token for a row that has since changed, nothing is written', async () => {
-  const s = server();
-  const { record } = audit();
-  await withFetch(s.fetchImpl, () => assert.rejects(updateRow('t', tick, record), /needs a confirmation_token/));
+test('update_row commits in one call: no token, If-Match on the read just made', async () => {
+  // Since undo_write was verified on hosted (0018), a wrong tick is reversed
+  // by its write id, so the token is gone. If-Match is what stops it
+  // overwriting an edit made between its own read and its write.
+  const s = server({ after: ticked });
+  const { lines, record } = audit();
+  const result = await withFetch(s.fetchImpl, () => updateRow('t', tick, record));
+  assert.equal(s.sent.length, 1);
+  assert.equal(s.sent[0].headers['if-match'], 'W/"7"');
+  assert.equal(result.verified, true);
+  assert.deepEqual(lines.map((l) => l.status), ['pending', 'done']);
+  assert.match(result.note, /Recorded as write [0-9a-f-]{36}/);
+});
 
-  const shown = await withFetch(server().fetchImpl, () => previewRowUpdate('t', tick));
-  // Ruben edits the row in OneNote between the preview and the write.
-  const moved = server({ before: page(tableAsRead([rowsAsRead[0], rowsAsRead[1], task('Vertrag zur&#252;cksenden', { frist: '01.12.2026' })])) });
-  await withFetch(moved.fetchImpl, () =>
-    assert.rejects(updateRow('t', { ...tick, confirmation_token: shown.confirmation_token }, record), /not what was previewed/),
-  );
-  assert.deepEqual(s.sent, []);
-  assert.deepEqual(moved.sent, []);
+test('a row edited since the tool last read it is still found by what it says now', async () => {
+  // With no token there is no "as previewed" to be stale against: the change
+  // applies to the row as it reads at the moment of writing. A tick asked for
+  // on a row whose Frist Ruben just changed ticks it and keeps his Frist.
+  const edited = page(tableAsRead([rowsAsRead[0], rowsAsRead[1], task('Vertrag zur&#252;cksenden', { frist: '01.12.2026' })]));
+  const after = page(tableAsRead([rowsAsRead[0], rowsAsRead[1], task('Vertrag zur&#252;cksenden', { frist: '01.12.2026', done: true, status: 'ERLEDIGT' })]));
+  const s = server({ before: edited, after });
+  const { record } = audit();
+  const result = await withFetch(s.fetchImpl, () => updateRow('t', tick, record));
+  assert.match(s.sent[0].body[0].content, /<p data-tag="to-do:completed">Vertrag zur&#252;cksenden<\/p>[\s\S]*01\.12\.2026/);
+  assert.equal(result.verified, true);
 });
 
 test('an unclear or impossible change is refused, writing nothing', async () => {
@@ -148,7 +160,7 @@ test('an unclear or impossible change is refused, writing nothing', async () => 
   await refuse(tick, /2 rows of this table have the task/, page(tableAsRead([...rowsAsRead, task('Vertrag zur&#252;cksenden')])));
   await refuse({ ...tick, done: undefined, set: { Notiz: 'x' } }, /"Notiz" is not a column/);
   await refuse({ ...tick, done: undefined, set: { Aufgabe: 'anders' } }, /task text itself is not changed/);
-  await refuse({ ...tick, done: undefined }, /needs something to change/);
+  await refuse({ ...tick, done: undefined, set: undefined }, /needs something to change/);
   await refuse(
     { ...tick, row: 'Ruben' },
     /No row of this table has the task "Ruben"/,
@@ -157,7 +169,7 @@ test('an unclear or impossible change is refused, writing nothing', async () => 
 
 test('a row that reads back wrong after the write is reported loudly', async () => {
   // The write landed but another row lost its tick.
-  const broken = page(tableAsRead([rowsAsRead[0], task('Programm an Cornelia', { status: 'ERLEDIGT' }), task('Vertrag zur&#252;cksenden', { done: true })]));
+  const broken = page(tableAsRead([rowsAsRead[0], task('Programm an Cornelia', { status: 'ERLEDIGT' }), task('Vertrag zur&#252;cksenden', { done: true, status: 'ERLEDIGT' })]));
   const { result } = await previewThenApply(tick, broken);
   assert.equal(result.verified, false);
   assert.match(result.note, /WARNING: after the write, row 2 did not read back as expected/);
@@ -173,4 +185,15 @@ test('both edit tools route update_row', async () => {
     applyEdit('t', { ...tick, confirmation_token: preview.confirmation_token }, record),
   );
   assert.equal(result.verified, true);
+});
+
+test('a tick in a table with a Status column needs the Status, so the cell never says OFFEN beside a tick', async () => {
+  const s = server();
+  await withFetch(s.fetchImpl, () =>
+    assert.rejects(
+      previewRowUpdate('t', { page_id: 'p1', action: 'update_row', element_id: TABLE_ID, row: 'Vertrag zurücksenden', done: true }),
+      /has a Status column, and it changes with the tick: give Status in set/,
+    ),
+  );
+  assert.deepEqual(s.sent, []);
 });

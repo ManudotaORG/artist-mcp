@@ -2892,7 +2892,7 @@ const createServer = async (
   if (isGranted(grants, "onenote-edit")) {
     server.tool(
       "preview_onenote_edit",
-      "Call this before edit_onenote_page for a replace or an insert — it is the only way to obtain the confirmation_token those require, and it is what puts the exact change in front of the musician. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. An append needs no preview. " +
+      "Call this before edit_onenote_page for a replace or an insert — it is the only way to obtain the confirmation_token those require, and it is what puts the exact change in front of the musician. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. An append, append_row or update_row needs no preview, though update_row can be previewed to show the row before and after. " +
         "Reads the page as it stands right now and shows what the change would " +
         "do to it. Changes nothing. For a replace it quotes what would be " +
         "overwritten — a table as its rows — which is the part the musician has " +
@@ -3075,7 +3075,7 @@ const createServer = async (
 
     server.tool(
       "edit_onenote_page",
-      "A replace or an insert: only after preview_onenote_edit AND after the musician has said yes to what the preview showed. Never call it to find out whether it would work. An append, or append_row, commits in one call with no token: in a conversation, show the musician the addition and wait for their yes first; in an automation they set up, call it directly. " +
+      "A replace or an insert: only after preview_onenote_edit AND after the musician has said yes to what the preview showed. Never call it to find out whether it would work. An append, append_row or update_row commits in one call with no token: in a conversation, show the musician the change and wait for their yes first; in an automation they set up, append and append_row, and update_row only to set a Frist a mail states — never a tick, which is the musician's. Each result names a write id that undo_write can reverse. " +
         "append_row adds task rows to the end of a task table — give element_id (the table's, from read_note) and rows, each row its cells by header name as plain text; this tool carries every existing row across and checks them afterwards, so never rewrite a table to add a row. " +
         "Changes ONE page that artist-mcp itself created. It CANNOT touch a page " +
         "the musician wrote or one another app created — Microsoft refuses those, " +
@@ -3098,7 +3098,7 @@ const createServer = async (
           .enum(["append", "replace", "insert", "append_row", "update_row"])
           .optional()
           .describe(
-            "Exactly what the preview showed (update_row included), or append_row, which needs no preview. Leave it out when passing `changes`",
+            "Exactly what the preview showed, or append_row or update_row, which need no preview. Leave it out when passing `changes`",
           ),
         text: z.string().optional().describe("Exactly what the preview was given"),
         html: z.string().optional().describe("Exactly what the preview was given, byte for byte"),

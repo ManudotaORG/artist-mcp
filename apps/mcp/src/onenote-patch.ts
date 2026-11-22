@@ -1951,6 +1951,22 @@ const resolveRowChange = (
   }
 
   const byName = new Map(header.map((name, at) => [name.toLowerCase(), at]));
+
+  // policy:tasks: the status cell follows the tag, in the same change — never
+  // a tick beside a cell still saying OFFEN. Applied here rather than only
+  // stated there, because an unattended tick (0018 step 4) has nobody to
+  // notice, and this fires only on the calls it is about.
+  const statusAt = header.findIndex((name) => /^status$/i.test(name.trim()));
+  if (change.done !== null && statusAt >= 0) {
+    const given = Object.keys(change.set).some((name) => name.trim().toLowerCase() === header[statusAt].toLowerCase());
+    if (!given) {
+      throw failure(
+        `This table has a ${header[statusAt]} column, and it changes with the tick: give ` +
+          `${header[statusAt]} in set — the page's own word for ${change.done ? 'done (ERLEDIGT where the page uses it)' : 'open (OFFEN where the page uses it)'}. ` +
+          'Nothing was changed.',
+      );
+    }
+  }
   const setAt = new Map<number, string>();
   for (const [name, value] of Object.entries(change.set)) {
     const at = byName.get(name.trim().toLowerCase());
@@ -2060,19 +2076,12 @@ export async function updateRow(token: string, params: Record<string, unknown>, 
   const { before, table, ordinal, rows, header, taskAt } = await readTaskTable(token, pageId, tableId, '');
   const resolved = resolveRowChange(table, rows, header, taskAt, change);
 
-  // Kept behind the preview until undo_write is built and verified (0018):
-  // this overwrites a row of the musician's record, and nothing yet can put it
-  // back but a person reading the write log.
-  if (params.confirmation_token !== rowToken(pageId, tableId, change, resolved.row)) {
-    throw failure(
-      typeof params.confirmation_token === 'string' && params.confirmation_token !== ''
-        ? 'That row is not what was previewed — the values changed, or the row did since it ' +
-            'was shown. Nothing was written. Preview it again.'
-        : 'update_row needs a confirmation_token from preview_onenote_edit for these exact ' +
-            'values. Nothing was written.',
-    );
-  }
-
+  // No token since undo_write was verified on hosted (0018): a wrong tick or
+  // date is reversed by its write id, so 0009's rule puts this on the one-call
+  // side. What stands between a change and Ruben's edits is If-Match on the
+  // read just made, and the read-back below. A preview is still available, and
+  // in a conversation policy:patch still has the change shown first; in an
+  // automation it is not allowed at all until 0018's step 4.
   // The table as OneNote accepts it, with this one row replaced.
   // Swapped by position, not by searching for its markup, so the row changed
   // is the row resolved — and refused outright if the table does not split

@@ -129,8 +129,8 @@ test('an added row that appears twice is not removed', async () => {
 /** Make a real update_row tick, and return its write id. */
 const tickRow = async (l) => {
   const before = page(table([...base, task('Vertrag zur&#252;cksenden')]));
-  const after = page(table([...base, task('Vertrag zur&#252;cksenden', { done: true })]));
-  const params = { page_id: 'p1', action: 'update_row', element_id: TABLE_ID, row: 'Vertrag zurücksenden', done: true };
+  const after = page(table([...base, task('Vertrag zur&#252;cksenden', { done: true, status: 'ERLEDIGT' })]));
+  const params = { page_id: 'p1', action: 'update_row', element_id: TABLE_ID, row: 'Vertrag zurücksenden', done: true, set: { Status: 'ERLEDIGT' } };
   const shown = await withFetch(notebook(before).fetchImpl, () => previewRowUpdate('t', params));
   const r = await withFetch(notebook(before, after).fetchImpl, () =>
     updateRow('t', { ...params, confirmation_token: shown.confirmation_token }, l.record),
@@ -141,7 +141,7 @@ const tickRow = async (l) => {
 test('a changed row that still reads as the change left it is put back', async () => {
   const l = log();
   const id = await tickRow(l);
-  const ticked = page(table([...base, task('Vertrag zur&#252;cksenden', { done: true })]));
+  const ticked = page(table([...base, task('Vertrag zur&#252;cksenden', { done: true, status: 'ERLEDIGT' })]));
   const restored = page(table([...base, task('Vertrag zur&#252;cksenden')]));
   const n = notebook(ticked, restored);
   const result = await withFetch(n.fetchImpl, () => undoWrite('t', { write_id: id }, l.record, l.readLog));
@@ -155,7 +155,8 @@ test('a changed row that still reads as the change left it is put back', async (
 test('a changed row Ruben has edited since is not put back', async () => {
   const l = log();
   const id = await tickRow(l);
-  const edited = page(table([...base, task('Vertrag zur&#252;cksenden', { done: true, status: 'ERLEDIGT' })]));
+  // Ruben changed the Frist after the tool ticked it.
+  const edited = page(table([...base, task('Vertrag zur&#252;cksenden', { done: true, status: 'ERLEDIGT', frist: '01.12.2026' })]));
   const n = notebook(edited);
   await withFetch(n.fetchImpl, () =>
     assert.rejects(undoWrite('t', { write_id: id }, l.record, l.readLog), /The row this tool changed no longer reads/),
