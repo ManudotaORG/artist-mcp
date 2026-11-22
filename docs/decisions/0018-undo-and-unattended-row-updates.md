@@ -173,9 +173,12 @@ pending and done two seconds apart with what was written, and the undo's
 pending and done, each with the removed paragraph as its pre-image and naming
 the write it undoes — and none for the refusal.
 
-**`update_row` may now drop its token**, by this record's own condition. That
-is the next change, and it does not by itself let anything run unattended:
-`policy:patch` still allows an automation only to add, until step 4.
+**`update_row` dropped its token the same day**, by this record's own
+condition. It commits in one call, with `If-Match` on its own read and the
+read-back as before; a preview is still there to show the row before and after.
+That does not let anything run unattended: the tool descriptions and
+`policy:patch` still allow an automation only to add, until step 4. Live
+locally: a tick with no token, verified, then undone by its write id.
 
 ### 4. The digest may tick and re-date, on explicit evidence
 

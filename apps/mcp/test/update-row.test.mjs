@@ -123,19 +123,31 @@ test('a cell is changed by its column, even beside an identical cell', async () 
   assert.equal(result.verified, true);
 });
 
-test('with no token, or a token for a row that has since changed, nothing is written', async () => {
-  const s = server();
-  const { record } = audit();
-  await withFetch(s.fetchImpl, () => assert.rejects(updateRow('t', tick, record), /needs a confirmation_token/));
+test('update_row commits in one call: no token, If-Match on the read just made', async () => {
+  // Since undo_write was verified on hosted (0018), a wrong tick is reversed
+  // by its write id, so the token is gone. If-Match is what stops it
+  // overwriting an edit made between its own read and its write.
+  const s = server({ after: ticked });
+  const { lines, record } = audit();
+  const result = await withFetch(s.fetchImpl, () => updateRow('t', tick, record));
+  assert.equal(s.sent.length, 1);
+  assert.equal(s.sent[0].headers['if-match'], 'W/"7"');
+  assert.equal(result.verified, true);
+  assert.deepEqual(lines.map((l) => l.status), ['pending', 'done']);
+  assert.match(result.note, /Recorded as write [0-9a-f-]{36}/);
+});
 
-  const shown = await withFetch(server().fetchImpl, () => previewRowUpdate('t', tick));
-  // Ruben edits the row in OneNote between the preview and the write.
-  const moved = server({ before: page(tableAsRead([rowsAsRead[0], rowsAsRead[1], task('Vertrag zur&#252;cksenden', { frist: '01.12.2026' })])) });
-  await withFetch(moved.fetchImpl, () =>
-    assert.rejects(updateRow('t', { ...tick, confirmation_token: shown.confirmation_token }, record), /not what was previewed/),
-  );
-  assert.deepEqual(s.sent, []);
-  assert.deepEqual(moved.sent, []);
+test('a row edited since the tool last read it is still found by what it says now', async () => {
+  // With no token there is no "as previewed" to be stale against: the change
+  // applies to the row as it reads at the moment of writing. A tick asked for
+  // on a row whose Frist Ruben just changed ticks it and keeps his Frist.
+  const edited = page(tableAsRead([rowsAsRead[0], rowsAsRead[1], task('Vertrag zur&#252;cksenden', { frist: '01.12.2026' })]));
+  const after = page(tableAsRead([rowsAsRead[0], rowsAsRead[1], task('Vertrag zur&#252;cksenden', { frist: '01.12.2026', done: true })]));
+  const s = server({ before: edited, after });
+  const { record } = audit();
+  const result = await withFetch(s.fetchImpl, () => updateRow('t', tick, record));
+  assert.match(s.sent[0].body[0].content, /<p data-tag="to-do:completed">Vertrag zur&#252;cksenden<\/p>[\s\S]*01\.12\.2026/);
+  assert.equal(result.verified, true);
 });
 
 test('an unclear or impossible change is refused, writing nothing', async () => {

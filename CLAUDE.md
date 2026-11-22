@@ -38,7 +38,10 @@ added to a task table with `append_row`, because the server carries every
 existing row and checks them after the write
 ([0017](docs/decisions/0017-appending-a-table-row.md)) — OneNote reads a to-do
 tag back on a `<span>` and drops one sent that way, so a table sent back as read
-loses every tick. See
+loses every tick. A row's tick or cell changed with `update_row` commits in one
+call too, since `undo_write` reverses it by write id
+([0018](docs/decisions/0018-undo-and-unattended-row-updates.md)); unattended it
+is still not allowed, until 0018's step 4. See
 [0009](docs/decisions/0009-confirm-by-reversibility.md) before adding a preview
 back or taking the last one away.
 
