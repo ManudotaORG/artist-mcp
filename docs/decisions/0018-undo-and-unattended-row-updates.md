@@ -1,6 +1,6 @@
 # 0018 — Undo, then unattended changes to a task row
 
-Status: **proposed; steps 1 and 2 built and verified locally.** A build plan for the part of
+Status: **proposed; steps 1–3 built and verified locally.** A build plan for the part of
 [0015](0015-recovery-replaces-confirmation.md) the digest needs, written for
 approval before any code. Builds on [0017](0017-appending-a-table-row.md), whose
 server-built row is the pattern every step here reuses.
@@ -137,6 +137,30 @@ unchanged and an earlier tick intact, read back through tasks mode.
   the grant behind the original write. No new capability, so no migration
   clearing `write_grants`.
 
+**Built on 2026-11-23.** `undo_write`, registered with `onenote-edit`, takes a
+`write_id` and reverses an `append_table_row` (the row removed), an
+`update_table_row` (the row restored from the table captured before the
+change) or a single-paragraph `append_onenote_page` (replaced with `<p></p>`),
+each found by what was written — cells and tick, or text and tag — and only
+while exactly one still reads that way. Anything else is refused before the
+page is read: an undo, an already-undone write (found by an undo whose `wrote`
+names it), and every other kind of write. The undo is two-phase itself, with
+`If-Match` and a read-back. The dispatcher is given the log reader — the file
+locally, `hostedWriteLog` on hosted — and the operation table gains
+`undo_write`, deliberately. The write-shaped-export guard had never seen
+`appendRows` or `updateRow`, because `append` and `update` were not in its
+pattern; they are now, with `undo` and `remove`, and `tasks.ts` is scanned.
+
+Verified with tests made from real writes, each guard failing a test when
+removed — the tick state in the row match, the already-undone check, the
+line's tag — and **live, locally, on the scratch page**: a Frist change and a
+tick undone; a tool-added row ticked by hand-proxy, its undo refused, then
+allowed once the tick was undone; an appended line removed; a second undo of
+it refused; an earlier tick intact through eight writes.
+
+**`update_row` keeps its token** until undo is verified on hosted too: there it
+depends on the migration and `writes_for`, which are not in production yet.
+
 ### 4. The digest may tick and re-date, on explicit evidence
 
 A pack change, once steps 1–3 are verified on hosted:
@@ -183,10 +207,15 @@ A pack change, once steps 1–3 are verified on hosted:
 2. **What step 4 may change unattended**: the tick and the Frist only?
 3. **The evidence bar**: explicit confirmation in a thread read in full, as
    above?
-4. **Removing a line this tool appended**, 0015's open question 1. Undo needs
-   it, and so does folding the lines appended below a table (such as Essen's)
-   into the table. The proposal is that removing an element this tool itself
-   added, and that still reads as written, is not the page deletion that
-   "deleting stays out" refers to — and is said so explicitly in `CLAUDE.md`.
+4. **Removing a line this tool appended** — *decided 2026-11-23: yes, within
+   these limits.* The tool may remove a row or line only if the write log holds
+   it as this tool's own addition, by `write_id`, and it still reads exactly as
+   written; one at a time, by that id; itself recorded with what it removed.
+   Never a page, never anything Ruben wrote, never a tool-added row Ruben has
+   since ticked or edited, and never anything recorded before the two-phase log
+   (Essen's first lines included). This is not the deletion "deleting stays
+   out" forbids: that rule exists because a page delete leaves nothing in the
+   recycle bin, and this removal is recoverable from the log. `CLAUDE.md` says
+   so.
 5. **Pre-image retention on hosted**, 0015's open question 4: kept indefinitely
    for now, as today, or a limit?

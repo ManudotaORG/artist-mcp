@@ -3158,6 +3158,28 @@ const createServer = async (
   }
 
 
+  if (isGranted(grants, "onenote-edit")) {
+    server.tool(
+      "undo_write",
+      "Reverses one write this tool made to a OneNote page, by the write id its result named " +
+        "(\"Recorded as write …\"): removes a row or line it added, or puts back a row it changed. " +
+        "Only while that still reads exactly as written — if Ruben has edited, ticked or removed it " +
+        "since, it is refused and nothing changes. It removes nothing else, ever. In a conversation, " +
+        "show the musician what will be undone and wait for their yes.",
+      {
+        write_id: z.string().describe("The id a write result named, as \"Recorded as write …\""),
+      },
+      async (params) => {
+        try {
+          const { note } = await call<{ note: string }>("undo_write", params);
+          return { content: [{ type: "text", text: note }] };
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+  }
+
   server.tool(
     "list_calendars",
     "Call this before concluding that something is NOT in the calendar. A search of one calendar that finds nothing is not evidence of absence — it is evidence about one calendar. Gigs commonly sit on a band, venue or shared calendar rather than the primary one. " +

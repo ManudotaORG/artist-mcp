@@ -73,7 +73,13 @@ which is where a filled-in page actually keeps its content: OneNote supports no
 update to a row or a cell, so the unit is the whole table, written as markup and
 previewed as rows. That widens what one confirmed change can destroy, and it
 amends `policy:patch`'s smallest-fragment rule rather than quietly breaking it —
-read it before touching either. **Deleting stays out.**
+read it before touching either. **Deleting stays out** — no page is ever
+deleted, because a Graph page delete leaves nothing in the recycle bin. The one
+removal that exists is narrower and recoverable: `undo_write` may take away a
+row or line this tool itself added, only while the write log holds it by
+`write_id` and it still reads exactly as written, and records what it removed
+([0018](docs/decisions/0018-undo-and-unattended-row-updates.md)). A row Ruben
+wrote, or one of the tool's he has since touched, is never removed.
 
 Message sending and synchronization remain out, and the reasoning is in the
 records rather than restated here.

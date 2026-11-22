@@ -81,6 +81,11 @@ const SANCTIONED = {
   // cannot proceed unless what it would overwrite was captured first.
   // See docs/decisions/0004-onenote-page-maintenance.md.
   edit_onenote_page: 'write',
+  // 0018: reverses one write this tool made to a OneNote page — removes a row
+  // or line it added, or puts back a row it changed — only while that still
+  // reads exactly as written. The only removal that exists, confined to the
+  // tool's own unchanged additions; no page is ever deleted.
+  undo_write: 'write',
 };
 
 test('the operation table is exactly what was sanctioned', () => {
@@ -256,7 +261,7 @@ test('no module outside the sanctioned list exports a write-shaped helper', asyn
   // and CRUD words. A write can be named for what it accomplishes rather than
   // for how, and this guard has now missed that twice.
   const suspicious =
-    /export\s+(?:const|function|async function)\s+(\w*(?:post|put|patch|delete|insert|create|send|write|reschedule|move|replace|edit)\w*)/gi;
+    /export\s+(?:const|function|async function)\s+(\w*(?:post|put|patch|delete|insert|create|send|write|reschedule|move|replace|edit|append|update|undo|remove)\w*)/gi;
   // Every module that can reach the network, not merely the ones that write
   // today. A new file is the third way this guard can go blind — after the
   // capital-D pattern and the verb-shaped names — because a module absent from
@@ -269,6 +274,7 @@ test('no module outside the sanctioned list exports a write-shaped helper', asyn
     'attachments.ts',
     'onenote-write.ts',
     'onenote-patch.ts',
+    'tasks.ts',
   ];
   // The sanctioned write path, named in full. Anything else matching the shape
   // is a boundary change and fails here.
@@ -329,6 +335,14 @@ test('no module outside the sanctioned list exports a write-shaped helper', asyn
     'onenote-patch.ts:editablePartsFrom',
     'onenote-patch.ts:previewEdit',
     'onenote-patch.ts:applyEdit',
+    // 0017 and 0018: the server-built row writes, and the undo. Never scanned
+    // until `append`, `update` and `undo` joined the pattern: appendRows and
+    // updateRow shipped while the guard was blind to both, a fifth way it went
+    // blind — a write named for the unit it changes. previewRowUpdate is a read.
+    'onenote-patch.ts:appendRows',
+    'onenote-patch.ts:updateRow',
+    'onenote-patch.ts:previewRowUpdate',
+    'onenote-patch.ts:undoWrite',
   ];
   const found = [];
   for (const file of files) {

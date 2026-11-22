@@ -12,7 +12,7 @@
  */
 
 import { GraphError } from './client.js';
-import { recordWrite, type RecordWrite } from './audit.js';
+import { readWriteLog, recordWrite, type RecordWrite } from './audit.js';
 import { gmailLoader, loadPageImage, mapAttachment, readAttachment } from './attachments.js';
 import { oneNoteLoader } from './page-attachments.js';
 import {
@@ -27,7 +27,7 @@ import {
 import { listEmails, readEmail, readThread } from './mail.js';
 import { listNotebooks, listNotes, mapNotes, readNote, type OneNoteSection } from './notes.js';
 import { mapTasks } from './tasks.js';
-import { applyEdit, previewEdit } from './onenote-patch.js';
+import { applyEdit, previewEdit, undoWrite, type ReadWriteLog } from './onenote-patch.js';
 import { createPage, createSection } from './onenote-write.js';
 import { accessTokenFor } from './oauth.js';
 import { type ProviderName, loadTokens } from './tokens.js';
@@ -106,6 +106,13 @@ export const OPERATIONS = {
   // proceed unless what it would overwrite has been captured first.
   // See docs/decisions/0004-onenote-page-maintenance.md.
   edit_onenote_page: { provider: 'microsoft', effect: 'write' },
+  // 0018: one write this tool made to a OneNote page, reversed — a row it
+  // added removed, a row it changed put back, a line it appended removed —
+  // only while what it wrote still reads exactly as written. The one removal
+  // there is, and confined to this tool's own unchanged additions: no page is
+  // ever deleted. Gated on onenote-edit, the grant behind every write it can
+  // reverse. See docs/decisions/0018-undo-and-unattended-row-updates.md.
+  undo_write: { provider: 'microsoft', effect: 'write' },
 } as const satisfies Record<string, { provider: ProviderName; effect: 'read' | 'write' }>;
 
 export type Operation = keyof typeof OPERATIONS;
@@ -162,6 +169,12 @@ export type ResolveToken = (provider: ProviderName) => Promise<string>;
 export type DispatchOptions = {
   paceKey?: string;
   /**
+   * This user's own write log, for undo_write: the file on this machine by
+   * default, the user's own rows hosted. Injected like the recorder, and bound
+   * to one user the same way.
+   */
+  readLog?: ReadWriteLog;
+  /**
    * How long this dispatcher's reads may run in all, from when it was built.
    *
    * Hosted builds one dispatcher per request and dies at sixty seconds, and
@@ -205,11 +218,11 @@ export const dispatchWith =
   (
     resolve: ResolveToken,
     record: RecordWrite = recordWrite,
-    { paceKey, budgetMs }: DispatchOptions = {},
+    { paceKey, budgetMs, readLog = readWriteLog }: DispatchOptions = {},
   ) => {
     const key = paceKey ?? `dispatcher:${randomUUID()}`;
     const startedAt = Date.now();
-    const one = dispatchOne(resolve, record, key);
+    const one = dispatchOne(resolve, record, key, readLog);
     return async <T>(op: Operation, params: Record<string, unknown> = {}): Promise<T> => {
       if (budgetMs === undefined || OPERATIONS[op].effect !== 'read') return one<T>(op, params);
       return withinBudget(one<T>(op, params), startedAt + budgetMs, op, startedAt);
@@ -217,7 +230,7 @@ export const dispatchWith =
   };
 
 const dispatchOne =
-  (resolve: ResolveToken, record: RecordWrite, key: string) =>
+  (resolve: ResolveToken, record: RecordWrite, key: string, readLog: ReadWriteLog) =>
     async <T>(op: Operation, params: Record<string, unknown> = {}): Promise<T> => {
       const token = await resolve(PROVIDER_FOR[op]);
       if (PROVIDER_FOR[op] === 'microsoft') bindPaceKey(token, key);
@@ -316,6 +329,8 @@ const dispatchOne =
           return (await previewEdit(token, params)) as T;
         case 'edit_onenote_page':
           return (await applyEdit(token, params, record)) as T;
+        case 'undo_write':
+          return (await undoWrite(token, params, record, readLog)) as T;
         case 'list_calendars':
           // No parameters by design: the whole value is knowing the full set, and
           // a filtered list of what exists is the reach problem again.
