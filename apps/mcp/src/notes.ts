@@ -45,6 +45,7 @@ type OneNotePage = {
   id: string;
   title?: string;
   lastModifiedDateTime?: string;
+  links?: { oneNoteClientUrl?: { href?: string }; oneNoteWebUrl?: { href?: string } };
 };
 
 export type OneNoteSection = {
@@ -65,6 +66,14 @@ export type NoteSummary = {
    * modification date. See `pageDatesAreCreationDates`.
    */
   date_is_creation?: boolean;
+  /**
+   * Where the page opens, as Graph gives it on the listing: in OneNote on the
+   * web, and in the OneNote app (`onenote:` scheme). A page link cannot be
+   * built from its id, and these come on a request made anyway. Set only when
+   * Graph returned them. See 0020, where every task links to its page.
+   */
+  web_url?: string;
+  client_url?: string;
 };
 
 export type SectionSummary = {
@@ -442,7 +451,9 @@ export const listNotes = async (
         `/me/onenote/sections/${section.id}/pages` +
         // createdDateTime is selected only so the two can be compared. It
         // costs nothing — the request is made either way.
-        `?$select=id,title,createdDateTime,lastModifiedDateTime&$top=${PAGE_LISTING_CAP}`,
+        // `links` for the same reason: where the page opens costs nothing here
+        // and cannot be worked out from the id later (0020).
+        `?$select=id,title,createdDateTime,lastModifiedDateTime,links&$top=${PAGE_LISTING_CAP}`,
     ),
     token,
   );
@@ -456,6 +467,10 @@ export const listNotes = async (
       section: section.displayName ?? null,
       notebook: section.parentNotebook?.displayName ?? null,
       last_modified: p.lastModifiedDateTime ?? null,
+      ...(typeof p.links?.oneNoteWebUrl?.href === 'string' ? { web_url: p.links.oneNoteWebUrl.href } : {}),
+      ...(typeof p.links?.oneNoteClientUrl?.href === 'string'
+        ? { client_url: p.links.oneNoteClientUrl.href }
+        : {}),
     }));
   });
 
