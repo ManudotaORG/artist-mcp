@@ -1,8 +1,9 @@
 # Local State
 
 Use local state only when it helps the musician resume work without rereading
-the same context. The backend remains stateless: it stores connection
-credentials, never agent memory or copies of OneNote content.
+the same context. The backend stores connection credentials and a log of what
+this tool wrote — with what each write replaced, so that it can be undone — and
+nothing else: never agent memory, and no other copy of OneNote content.
 
 ## Storage boundary
 
@@ -29,8 +30,9 @@ The Auditor may assess an Envoy draft in the current chat, and the Janitor may
 propose stale items for the musician to clear. Neither action creates a review
 system or authorizes an external write.
 
-## Read-only MVP
+## Writes
 
-All source facts are fetched from the current OneNote working-unit page. Show
-the result in chat. The musician remains responsible for editing, sending,
-booking, closing, deleting, and changing connected applications.
+Facts come from the OneNote pages. What this tool may write, and when, is
+`policy:patch`'s, under the grants the musician gave. Everything else stays
+theirs: sending, booking, closing, deleting, and changing connected
+applications.

@@ -30,17 +30,26 @@ section with no CL Aufgaben page. Everywhere else, work by section and never sur
 - Do not `map_notes` an organised notebook to answer a question. It costs a
   request for every section and every page sketched, and OneNote allows this
   account 400 an hour across ChatGPT and Claude together; one map spends a
-  noticeable share of it, and a repeated one runs the account out.
+  noticeable share of it, and a repeated one runs the account out. The
+  exception is `map_notes` with `tasks: true`, which reads only each section's
+  CL Aufgaben page — about one request per section — and is how a notebook's
+  tasks are read, by the Project Manager and the digest.
 - Names and ids already returned in this conversation stay valid. Reuse them
   instead of listing again.
 
 ### CL pages
 
-Every page whose title starts with `CL` belongs to this tool. Only one kind
-is a project summary: `CL Aufgaben — <project>` inside a project section. A plain
+Pages whose titles start with `CL` were made by this tool, with one known
+exception: `CL Projekt-Etappen Übersicht` was created by another app and stays
+human-managed. Only one kind is a project summary: `CL Aufgaben — <project>`
+inside a project section. A plain
 `CL Aufgaben` is an older summary that was never templated. It still counts as the
 section's summary, and say that it should be converted to the template. Any
-other `CL` page is a reference page, never the place an update belongs.
+other `CL` page is a reference page or a source, never the place an update
+belongs — including a section's `CL Status & Termine`, which the project types
+count among the pages a project is gathered on: it stays a source, and the
+section's CL Aufgaben page, or the one still to be created, is where updates and
+tasks go.
 
 The reference pages live in the section `Projekt Kontext`:
 `CL Projekt-Etappen Übersicht` and `CL Aufgaben-Kategorien`. Find them the same

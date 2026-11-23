@@ -37,7 +37,10 @@ they are read and not ignored.
   open task whose prose says it was handed on is unsettled under the first rule
   here, not delegated. And "Verantwortlich" naming someone else is not a
   handover: that column says who should do the work, not that it was passed on
-  and taken.
+  and taken. **Done for Ruben is not carried out.** A handover takes the task
+  off his open list; whether the person it went to has done the work is what
+  *Warten / delegiert* tracks, and a project type that says never to infer a
+  delegated step was carried out is about exactly that.
 - **A ticked box carries no date.** *What* is finished can be answered; *when*
   cannot. Never date a completed task, never report what was finished "this
   week", and never read a tick as done on time. A date written beside the task
@@ -61,8 +64,10 @@ Under `policy:patch`, and only on a page this tool may change.
   line "→ übergeben an Georgija, <Datum>" — the date of the handover where it
   is stated, and otherwise the date it was said, stamped the way the page
   stamps chat values. That addition is the one change to a task's wording this
-  policy allows. On a page with a delegation table, the handover may go in as a
-  row there instead, never both: two records of one handover drift.
+  policy allows. `update_row` never changes a task's wording, so in a
+  conversation a handover is a replace of the table, with its preview — or, on a
+  page with a delegation table, a row there instead, never both: two records of
+  one handover drift. Never unattended.
 - **The status cell follows the tag, in the same change.** Ticking a task sets
   its status cell to the page's word for done — `ERLEDIGT` where the page uses
   it — in the same `changes` call. Never change a status cell without the tag,
