@@ -116,11 +116,13 @@ Then choose a returned page and ask:
 
 > Read the note titled “Test”.
 
-The MCP server exposes fourteen tools that read, and up to six more depending
-on which write capabilities this install was granted — see the four sections
-starting at "Letting it add a calendar event" below. Creating an event, moving
-one, removing one and creating a page are one tool each; editing a page is a
-pair, one tool that previews the change and one that applies it.
+The MCP server exposes fourteen tools that read, and up to nine more depending
+on which write capabilities this install was granted — see the sections
+starting at "Letting it add a calendar event" below. Creating, moving, editing
+and removing an event, creating a page and creating a section are one tool
+each; changing a page is `edit_onenote_page`, with `preview_onenote_edit` in
+front of it for a replace or an insert, and `undo_write` to take back what this
+tool added or changed.
 
 OneNote holds the working unit:
 
@@ -224,8 +226,8 @@ the assistant calls again with the confirmation token. Holding both also adds
 `edit_calendar_event`, which changes an event in place (title, times, location,
 notes, colour) behind the same kind of confirmation, and
 `reschedule_calendar_event` for events it created. See
-[0013](decisions/0013-editing-any-calendar-event.md). Google keeps a deleted event in that
-calendar's bin for 30 days. Delete needs no extra consent beyond create, because
+[0013](decisions/0013-editing-any-calendar-event.md). Google keeps a deleted event for a while
+and documents no period — only that it "will eventually disappear". Delete needs no extra consent beyond create, because
 Google has one scope for both.
 
 Creating adds one tool and nothing else: `create_calendar_event` writes the
@@ -234,7 +236,7 @@ already on those dates in that calendar, and how to delete it. There is no
 separate preview step. In a conversation the assistant is told to show you the
 event and wait for your yes first; a scheduled task you set up may create it
 directly. See [0009](decisions/0009-confirm-by-reversibility.md) for why only
-editing a page still has a preview.
+a change that overwrites something still has a preview.
 
 What it deliberately cannot do:
 
@@ -297,6 +299,23 @@ What it deliberately cannot do:
 - Interpret Markdown or HTML in the body. A blank line starts a paragraph and a
   single newline is a line break; everything else appears as typed.
 
+## Letting it add a OneNote section
+
+Off by default, and a separate grant from adding pages, so permission to add a
+page does not quietly come to mean adding structure to a notebook:
+
+```bash
+npx @manudota/artist-mcp init --allow-writes onenote-create-section
+artist-mcp connect microsoft
+```
+
+It uses the same `Notes.Create` scope as adding a page, so the same provider
+boundary holds: it can create a section and cannot rename or delete one,
+including one it made. `create_onenote_section` adds one empty section to a
+notebook named from `list_notes`; a name already used in that notebook is
+refused, and there is no bulk form. A section created by mistake stays until
+you remove it in OneNote. See [0011](decisions/0011-creating-sections.md).
+
 ## Letting it change a page it wrote
 
 Off by default, opt-in per install, and a separate decision again:
@@ -312,39 +331,60 @@ this app created can be changed, a page you wrote is refused with a `401`, and a
 page some other app created is refused with a `403`. As with creating, the
 boundary is the provider's rather than a rule this code keeps.
 
-Adding a capability that changes existing content only made sense with an undo,
-so there is one. Before any change is applied, the content it is about to
-overwrite is captured and written to the audit log alongside the new text. The
-preview quotes what will be destroyed, in full — nothing is clipped — and the
-edit is applied against the page as it was read, so a page that moved underneath
-you is refused rather than half-applied.
+Adding a capability that changes existing content only made sense with a way
+back, so there is one. Every write is recorded in the write log **before** it is
+made — what will be written and, for a change to existing content, what it
+overwrites — and a write whose record cannot be made is refused. A change is
+applied against the page as it was read, so a page that moved underneath you is
+refused rather than half-applied.
 
-It adds `preview_onenote_edit`, which shows the change and what it would
-overwrite, and `edit_onenote_page`, which applies it against the confirmation
-token that preview returned. Three shapes of change are available: `append`
-after an element, `insert` before or after one, and `replace` of one element. The unit is one element,
-never the page body — a mistake costs a paragraph, which is why it can be held
-on to. A table is the exception, because OneNote supports no update to a row or
-a cell: the unit there is the whole table, sent as markup and previewed as rows
-with the differences marked. Several changes can be given in one call, up to
-twelve, and they are previewed, confirmed and written together — if any one of
-them cannot be applied, none of them is.
+Confirmation follows what a change can destroy
+([0009](decisions/0009-confirm-by-reversibility.md),
+[0015](decisions/0015-recovery-replaces-confirmation.md)):
+
+- **In one call, and undoable**, through `edit_onenote_page`:
+  - `append` — add a paragraph or a heading at the end of the page, or after an
+    element.
+  - `append_row` — add a row to a task table (one whose header has an
+    Aufgabe/Task column). The server reads the table and carries every existing
+    row across as OneNote returned it, so a tick is never lost, and checks them
+    afterwards ([0017](decisions/0017-appending-a-table-row.md)).
+  - `update_row` — tick or untick a task row, or change one of its cells. The
+    row is found by its task text, and its wording cannot be changed this way
+    ([0018](decisions/0018-undo-and-unattended-row-updates.md)).
+
+  Each result names a write id. `undo_write` with that id takes the change back
+  — removes the line or row, or puts the row's previous cells back — but only
+  while it still reads exactly as this tool wrote it. Something you have edited
+  since is refused, never overwritten. An undo is itself recorded.
+- **Shown first, then confirmed**: `insert` before or after an element, and
+  `replace` of one element. `preview_onenote_edit` shows the change and quotes
+  what will be destroyed, in full, and `edit_onenote_page` applies it with the
+  confirmation token that preview returned. A table is replaced whole, because
+  OneNote supports no update to a row or a cell outside a task table; it is sent
+  as markup and previewed as rows with the differences marked. There is no undo
+  for these yet: the previous content is in the write log, for a person to put
+  back. [0019](decisions/0019-retiring-the-previews.md) plans one.
+
+Several changes can be given in one call, up to twelve; if any one of them
+cannot be applied, none of them is.
 
 What it deliberately cannot do:
 
 - Touch a page this tool did not create. Microsoft refuses it; this is not a
   check that could be removed here.
-- Delete anything — not a page, not an element. There is no such tool under any
-  grant.
-- Apply a change without a captured pre-image. No capture, no write.
+- Delete a page, or anything you wrote. The only removal is `undo_write` taking
+  back a line or row this tool added, by its write id, while it still reads as
+  written.
+- Apply a change it could not record first. No record, no write.
 - Change two things about the same element in one call.
 - Repair markup. Malformed HTML is refused rather than cleaned up and guessed
   at.
 
-Every write appends a line to `~/.artist-mcp/writes.log` recording what was
-written, where, when, and from which page — plus, for a change to an existing
-page, the content it replaced. So a write can be traced back and undone later,
-when the conversation is long gone.
+Every write appends to `~/.artist-mcp/writes.log` (on hosted, to the account's
+own rows in the database): what was written, where, when, and from which page —
+plus, for a change to existing content, what it replaced. So a write can be
+traced back when the conversation is long gone.
 
 Without the capability, its tools are not registered. Not present and refusing:
 absent. `artist-mcp status` prints a `Writes` line saying which capabilities

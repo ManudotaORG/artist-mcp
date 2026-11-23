@@ -354,16 +354,20 @@ description. Measured with `context-budget` before it ships.
    page instead (`Köln Orfeo`, `Köln Nozze di Figaro`). A digest built on
    CL Aufgaben pages says "no CL Aufgaben page" for each and sees none of their
    tasks. **Decided: a scheduled run creates the missing page**, under the rules
-   in "Creating a missing CL Aufgaben page" above. What remains open is the cap
-   of three per run, and whether the first run over the thirteen should be
-   watched by a person rather than left to the schedule.
-1. **Cadence.** A full CL Aufgaben read is about 93 requests. Every morning
-   seems affordable; the scheduled task decides.
-2. **The heading for appended lines**, and whether it is one block per page or
-   one per run.
-3. **Mail as a source of tasks.** Which mail is in scope — a label, the
-   project's correspondents, anything mentioning the project — decides how
-   noisy the additions are.
+   in "Creating a missing CL Aufgaben page" above — **watched first, then at
+   most three a run** (decided 2026-11-22). The watched creation pass is in the
+   custom pack's `prompts/digest.md`, and has not been run yet.
+1. **Cadence — decided:** daily at 07:00 (Europe/Vienna), with the mail
+   lookback taken from the stated schedule rather than from a log of past runs
+   (`role:digest`). Scheduling it in ChatGPT is the owner's step.
+2. **The heading for appended lines — decided:** tasks go into the task table
+   with `append_row` ([0017](0017-appending-a-table-row.md)); only on a page
+   with no task table do they become lines, under **Neu, automatisch ergänzt**,
+   once per page.
+3. **Mail as a source of tasks — decided:** the project's correspondents *or*
+   any mail Ruben labelled himself (`has:userlabels`), not both at once; the
+   model matches a labelled thread to a project, and drops one that is not
+   about a project (`role:digest`).
 4. **Whether `since` should work across all notebooks** without one being chosen
    first, since the digest wants every season.
 5. **The lead's cap.** 400 characters held the one page-wide deadline seen; a

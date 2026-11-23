@@ -31,8 +31,10 @@ and wait for a yes in words, every time — an edit is smaller and that is not a
 reason to ask less. What may run unattended, in an automation the musician set
 up, is what removes nothing: creating a page or a calendar event, appending to
 the end of a page, and adding a row to a task table with `append_row`, which
-keeps every existing row — because a wrong one can be deleted again. A replace or an
-insert never runs unattended: it still has a preview and a token behind it. That
+keeps every existing row — because a wrong one can be deleted again — and, on a
+CL Aufgaben page only, setting a Frist a mail states, as the next section says.
+A tick is never made unattended. A replace or an insert never runs unattended:
+it still has a preview and a token behind it. That
 token is a check that the values are the ones displayed; it cannot tell whether
 anybody read them. A patch they leave is left, and one they decline is
 not applied later because the conversation moved on.
@@ -95,8 +97,10 @@ before the fact.
 The musician types what happened — "Melk is confirmed for the 17th", "I sent the
 programme to Cornelia" — and the project's CL Aufgaben page is corrected to say
 it. That message is the decision this policy waits for; it needs no second
-prompt to become one. Everything else here still applies: the yes in words, the
-preview for anything other than an append, the whole table carried across.
+prompt to become one. Everything else here still applies: the yes in words, and
+a preview for a replace or an insert. A task row is changed with `update_row` —
+`done` for the tick, cells by header name in `set` — and a new task is added
+with `append_row`; both carry every other row across themselves.
 
 **Find the page with `list_notes` and `section`, never by memory or by title.**
 Pass the project as they named it and no notebook. The reply either names one CL
@@ -140,7 +144,9 @@ On a templated page:
   does not reach.
 
 **Tasks follow `policy:tasks`.** A finished task is ticked, its status cell
-changes with it, and any task this change writes carries its tag.
+changes with it — `update_row` with `done` and the Status in `set`, which it
+refuses without the Status where the table has that column — and any task this
+change writes carries its tag.
 
 One message often settles two things — a date and a task. That is one preview
 with both changes, not two rounds.
@@ -159,6 +165,13 @@ may have edited since.
   named for where it goes. Not one merged block covering both.
 
 ### A table is the exception, and only because OneNote makes it one
+
+**A task table is not composed by hand any more.** Adding a task is
+`append_row`, and ticking one or changing one of its cells is `update_row`:
+the tool reads the table, carries every other row across as OneNote returned
+it, and checks them after the write. Compose a whole table only for a table
+that is not a task table — a Field / Value block, a roster — or for a change
+those two cannot express. What follows is about that case.
 
 OneNote supports no change to a single row or cell. The tool can replace a whole
 table and nothing smaller, so where the decision lands in a table the smallest
@@ -279,6 +292,9 @@ page says nothing about any of this until they paste it.
 
 ## Table markup
 
+For a task table, use `append_row` and `update_row` instead (above). This is the
+markup for every other table.
+
 A table cannot be edited a cell at a time — OneNote supports no update to a row
 or a cell, so changing one value rewrites the whole table. Every cell that is
 not changing has to be carried across exactly as it reads.
@@ -325,10 +341,12 @@ thing that confirms what the page now holds.
 - Never claim a page was changed unless the tool reported changing it. A patch
   offered, or previewed, or agreed to and not yet applied, is not a page that
   says anything new.
-- Never call a change undoable. OneNote keeps no version of a page and a recycle
-  bin does not catch what this writes; what was overwritten is kept in this
-  install's own write log, which is a real recovery and not one the musician can
-  perform in OneNote. Say that, rather than "I can put it back".
+- Say exactly what can be undone, and nothing more. An append, a row added with
+  `append_row` and a row changed with `update_row` are reversed with
+  `undo_write`, by the write id their result names, while they still read as
+  written. A replace or an insert has no undo this tool performs: OneNote keeps
+  no version of a page, and what was overwritten is in this install's write log,
+  for a person to put back. Never say "I can put it back" about those.
 - Never track what was pasted or assume an earlier fragment landed. Nothing here
   remembers, and a page that looks patched is a page you have re-read. This now
   has a second reason: the ids that address a page's parts move every time it is
@@ -337,8 +355,10 @@ thing that confirms what the page now holds.
 - Never patch two pages into agreement with each other. Where two records of one
   event conflict, `policy:divergence` governs, and a cross-reference is the only
   fragment offered before the fields are settled.
-- Never delete anything. Not a page, not a section of one, and there is no tool
-  that can — a deleted page is not in the notebook's recycle bin.
+- Never delete a page, a section, or anything the musician wrote — a deleted
+  page is not in the notebook's recycle bin. The one removal there is
+  `undo_write` taking back a row or line this tool itself added, still exactly as
+  written, by its write id.
 - Replace only text **this tool itself wrote**, and only where the musician has
   now settled it differently — correcting a fee on a page it generated is the
   case this exists for. A page it created is its own output right up until they

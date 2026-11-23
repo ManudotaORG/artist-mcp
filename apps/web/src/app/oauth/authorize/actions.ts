@@ -1,9 +1,10 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { CODE_TTL_MS, SCOPE, admin, hash, newSecret, redirectAllowed } from '@/lib/oauth';
+import { CODE_TTL_MS, SCOPE, hash, newSecret, redirectAllowed } from '@/lib/oauth';
 import { getSiteUrl } from '@/lib/siteUrl';
 import { supabaseServer } from '@/lib/supabase/server';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 /**
  * Send the magic link, returning to this authorization request afterwards.
@@ -52,7 +53,7 @@ export const approve = async (formData: FormData): Promise<void> => {
   } = await supabase.auth.getUser();
   if (!user) redirect('/oauth/authorize?error=session_expired');
 
-  const db = admin();
+  const db = supabaseAdmin();
   const { data: client } = await db
     .from('oauth_clients')
     .select('client_id, redirect_uris')

@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { createHash } from 'node:crypto';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 /**
  * Who a hosted request is acting for.
@@ -34,13 +34,13 @@ export const userForRequest = async (request: Request): Promise<string | null> =
   const key = match[1].trim();
   if (key === '') return null;
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (url === undefined || secret === undefined) return null;
-
-  const db = createClient(url, secret, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  // Unconfigured is not authenticated: fail closed, as a 401 rather than a 500.
+  let db: ReturnType<typeof supabaseAdmin>;
+  try {
+    db = supabaseAdmin();
+  } catch {
+    return null;
+  }
 
   // Hashing here means a wrong secret never travels further than this function,
   // and the lookup is by exact hash — there is no comparison to get wrong.

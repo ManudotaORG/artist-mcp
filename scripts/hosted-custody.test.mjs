@@ -356,7 +356,8 @@ test('a failed audit does not fail a completed write', () => {
 test('granting a write uses the service role and the session user', () => {
   const actions = webSource('app/actions.ts');
   const fn = actions.slice(actions.indexOf('export const setWriteGrant'));
-  assert.match(fn, /SUPABASE_SERVICE_ROLE_KEY/, 'the grant is set with the browser key');
+  assert.match(fn, /supabaseAdmin\(\)\.rpc\('set_write_grants'/, 'the grant is set with the browser key');
+  assert.doesNotMatch(fn, /supabase\.rpc\('set_write_grants'/, 'the grant is set with the session client');
   assert.match(fn, /p_user_id: user\.id/, 'the grant is set for someone other than the caller');
   assert.match(fn, /auth\.getUser\(\)/);
 });
@@ -404,4 +405,22 @@ test('the connect screen states that a grant needs a reconnect', () => {
   assert.match(page, /RECONNECT \{\[\.\.\.connected\]/);
   // And the off state says plainly that nothing can change either source.
   assert.match(page, /NOT ALLOWED — READ ONLY\. NOTHING CAN CHANGE YOUR CALENDAR OR YOUR NOTES/);
+});
+
+test('the service-role client is built in one file and nowhere else', () => {
+  // It reads every hosted user's rows. Six copies of its construction used to
+  // disagree about a missing key; one file means one place to read, and a
+  // seventh copy fails here rather than in review.
+  const root = new URL('../apps/web/src/', import.meta.url);
+  const sources = readdirSync(root, { recursive: true })
+    .filter((file) => /\.(ts|tsx)$/.test(file))
+    .map((file) => [file.replaceAll('\\', '/'), readFileSync(new URL(file, root), 'utf8')]);
+
+  const readers = sources
+    .filter(([, source]) => source.includes('SUPABASE_SERVICE_ROLE_KEY'))
+    .map(([file]) => file);
+  assert.deepEqual(readers, ['lib/supabase/admin.ts']);
+
+  const admin = sources.find(([file]) => file === 'lib/supabase/admin.ts')[1];
+  assert.match(admin, /^import 'server-only';/m, 'the helper must be server-only');
 });

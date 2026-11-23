@@ -229,10 +229,12 @@ thing that confirms what the page now holds.
 - Never claim a page was changed unless the tool reported changing it. A patch
   offered, or previewed, or agreed to and not yet applied, is not a page that
   says anything new.
-- Never call a change undoable. OneNote keeps no version of a page and a recycle
-  bin does not catch what this writes; what was overwritten is kept in this
-  install's own write log, which is a real recovery and not one the musician can
-  perform in OneNote. Say that, rather than "I can put it back".
+- Say exactly what can be undone, and nothing more. An append, a row added with
+  `append_row` and a row changed with `update_row` are reversed with
+  `undo_write`, by the write id their result names, while they still read as
+  written. A replace or an insert has no undo this tool performs: OneNote keeps
+  no version of a page, and what was overwritten is in this install's write log,
+  for a person to put back. Never say "I can put it back" about those.
 - Never track what was pasted or assume an earlier fragment landed. Nothing here
   remembers, and a page that looks patched is a page you have re-read. This now
   has a second reason: the ids that address a page's parts move every time it is
@@ -241,8 +243,10 @@ thing that confirms what the page now holds.
 - Never patch two pages into agreement with each other. Where two records of one
   event conflict, `policy:divergence` governs, and a cross-reference is the only
   fragment offered before the fields are settled.
-- Never delete anything. Not a page, not a section of one, and there is no tool
-  that can — a deleted page is not in the notebook's recycle bin.
+- Never delete a page, a section, or anything the musician wrote — a deleted
+  page is not in the notebook's recycle bin. The one removal there is
+  `undo_write` taking back a row or line this tool itself added, still exactly as
+  written, by its write id.
 - Replace only text **this tool itself wrote**, and only where the musician has
   now settled it differently — correcting a fee on a page it generated is the
   case this exists for. A page it created is its own output right up until they

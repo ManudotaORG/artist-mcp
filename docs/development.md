@@ -87,9 +87,10 @@ working on the package:
 Only the `NEXT_PUBLIC_` pair may carry that prefix. Never commit `.env.local`
 or real values.
 
-The provider client secrets that used to live here are gone: the web app no
-longer performs OAuth, and no deployment holds a credential that can read a
-user's account. `GOOGLE_DESKTOP_CLIENT_SECRET` is the exception and is not
+The provider secrets for the *package's* clients are not here: an installed copy
+signs in on the user's machine, and nothing in this app can read that account.
+The web OAuth clients above serve hosted users only. `GOOGLE_DESKTOP_CLIENT_SECRET`
+is the exception and is not
 really a secret — it is served to anyone who asks, because every install needs
 it and PKCE is what makes it harmless. Without it, `/api/client-config` returns
 503 and `artist-mcp connect google` cannot complete.
@@ -169,9 +170,11 @@ the supported webpack build for verification:
 pnpm --dir apps/web exec next build --webpack
 ```
 
-The MVP intentionally relies on the acceptance test instead of a separate test
-suite. For auth or database changes, repeat the relevant live
-flow and record verified results in [scope.md](scope.md).
+`pnpm test` runs all of this, exactly as CI does. The package suite
+(`apps/mcp/test`) and the repository scripts' tests (`scripts/*.test.mjs`) stub
+the providers, so they cannot show what Graph or Google actually does: for
+provider behaviour, auth or database changes, repeat the relevant live flow and
+record verified results in [scope.md](scope.md).
 
 ## Database
 

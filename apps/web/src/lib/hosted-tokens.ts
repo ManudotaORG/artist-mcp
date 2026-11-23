@@ -3,7 +3,7 @@ import 'server-only';
 import { GraphError } from '@manudota/artist-mcp/client';
 import { postToken } from '@manudota/artist-mcp/oauth';
 import { webClient } from '@/lib/connect';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 /**
  * Server-side token custody, for clients that cannot run a local process.
@@ -60,16 +60,6 @@ const need = (name: string): string => {
   return value;
 };
 
-/**
- * The service role bypasses RLS, which is the point: it reads a row on behalf
- * of a user who is not the one holding a browser session. It must never reach
- * anything the browser can call.
- */
-const admin = () =>
-  createClient(need('NEXT_PUBLIC_SUPABASE_URL'), need('SUPABASE_SERVICE_ROLE_KEY'), {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -81,7 +71,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export const hostedTokens =
   (userId: string) =>
   async (provider: ProviderName): Promise<string> => {
-    const db = admin();
+    const db = supabaseAdmin();
 
     // Where a request's time goes before any tool work starts. Without it, a
     // hosted call that hung after its listing could only be guessed at.

@@ -13,7 +13,7 @@ acts on it.
    email or calendar entry, verify it against that same item and say so; a fact
    that came from outside OneNote stays labelled that way in your report.
 4. Return `changes required` with exact corrections, or `pass` with sources.
-4. Recheck the corrected version rather than assuming the fix was made.
+5. Recheck the corrected version rather than assuming the fix was made.
 
 ## Boundaries
 

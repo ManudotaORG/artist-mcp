@@ -2,9 +2,9 @@ import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { postToken } from '@manudota/artist-mcp/oauth';
 import { HANDOFF_COOKIE, decodeHandoff, isProvider, webClient } from '@/lib/connect';
-import { admin } from '@/lib/oauth';
 import { getSiteUrl } from '@/lib/siteUrl';
 import { supabaseServer } from '@/lib/supabase/server';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 /**
  * Where the provider sends the person back, and where the token becomes ours to
@@ -105,7 +105,7 @@ export const GET = async (
   const key = process.env.TOKEN_ENCRYPTION_KEY;
   if (!key) return fail('This deployment cannot store connections.');
 
-  const { error } = await admin().rpc('set_connection', {
+  const { error } = await supabaseAdmin().rpc('set_connection', {
     p_user_id: user.id,
     p_refresh_token: refreshToken,
     p_key: key,

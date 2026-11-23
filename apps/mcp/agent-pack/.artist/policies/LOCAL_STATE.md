@@ -1,8 +1,9 @@
 # Local State
 
 Use local state only when it helps the musician resume work without rereading
-the same context. The backend remains stateless: it stores connection
-credentials, never agent memory or copies of OneNote content.
+the same context. What is stored is connection credentials and a log of what
+this tool wrote — with what each write replaced, so that it can be undone — and
+nothing else: never agent memory, and no other copy of OneNote content.
 
 ## Storage boundary
 
@@ -32,11 +33,13 @@ system or authorizes an external write.
 ## Nothing is kept here
 
 All source facts are fetched from the current OneNote working-unit page. Show
-the result in chat. The musician remains responsible for editing, sending,
-closing, deleting, and changing connected applications.
+the result in chat. What this tool may write, and when, is `policy:patch`'s,
+under the grants the musician gave; sending, closing, deleting, and changing
+connected applications stay theirs.
 
 Where an install has been granted a write, it changes nothing about this
-policy: a granted write is one action the musician asked for and confirmed, not
+policy: a granted write is one action the musician asked for, or set an
+automation to make, not
 a store of state, a sync, or a system of record that lives here. Nothing is
 remembered between sessions, and a calendar is not somewhere to keep track of
 work.

@@ -115,8 +115,9 @@ trustworthy.
   the `Lint and build` check with `enforce_admins`, so a direct push is rejected
   — and Commitlint runs only on `pull_request`, so a push that did land would
   skip it entirely.
-- Pull-request CI runs only when the target is `staging` or `main`. A pull
-  request against `release` is not checked at all.
+- Pull-request CI, Commitlint included, runs on pull requests to `release`,
+  `staging` and `main`. A direct push to `release` runs the build and tests but
+  not Commitlint, which is what the husky hook is for.
 
 **Expect `BEHIND` on every promotion, not just at releases.** Both protected
 branches are `strict`, so a pull request must be up to date before it merges,
@@ -126,10 +127,10 @@ additionally bumps `package.json` and `src/server.ts` on `main` only. Either way
 the next promotion is refused. Merge `origin/main` into `release` first — a
 `chore: sync ...` commit — then push and retry.
 
-Dependabot opens grouped weekly npm and Actions updates against `staging`, where
-PR CI runs and nothing deploys. After merging one, synchronize
-that commit into `release` before the next production promotion so branch
-history stays aligned. Automatic major-version PRs are disabled; handle breaking
+Dependabot opens grouped weekly npm and Actions updates against `release`, where
+pull-request CI runs and nothing deploys, and they ship with the next promotion
+like any other work. It used to target `staging`, which nothing merges back
+from, so updates landed on a branch they could never leave (`0de9697`). Automatic major-version PRs are disabled; handle breaking
 upgrades as planned migration work.
 
 ## Publishing

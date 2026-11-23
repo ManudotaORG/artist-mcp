@@ -1,13 +1,13 @@
 import {
   SCOPE,
   TOKEN_TTL_MS,
-  admin,
   hash,
   json,
   newSecret,
   oauthError,
   verifierMatches,
 } from '@/lib/oauth';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 /**
  * Exchange a code for a token, or a refresh token for a fresh one.
@@ -30,7 +30,7 @@ const form = async (request: Request): Promise<URLSearchParams> => {
 };
 
 const issue = async (userId: string, clientId: string) => {
-  const db = admin();
+  const db = supabaseAdmin();
   const accessToken = newSecret('at');
   const refreshToken = newSecret('rt');
 
@@ -59,7 +59,7 @@ const issue = async (userId: string, clientId: string) => {
  * value is never anything that could be replayed.
  */
 const clientOk = async (clientId: string, presented: string | null) => {
-  const { data } = await admin()
+  const { data } = await supabaseAdmin()
     .from('oauth_clients')
     .select('client_id, client_secret_hash')
     .eq('client_id', clientId)
@@ -87,7 +87,7 @@ export const POST = async (request: Request): Promise<Response> => {
     return oauthError('invalid_client', 'The client could not be authenticated.', 401);
   }
 
-  const db = admin();
+  const db = supabaseAdmin();
 
   if (grant === 'authorization_code') {
     const code = params.get('code') ?? '';

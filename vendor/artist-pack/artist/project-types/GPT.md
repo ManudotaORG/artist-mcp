@@ -8,7 +8,7 @@ this category different from every other one.
 
 The working unit is the project as the notebook records it, usually gathered on
 a `CL` page — `CL Aufgaben`, but also `CL Status & Termine`, `CL Konditionen`,
-`CL Abrechnungsoptionen` and others; the notebooks name them differently.
+`CL Abrechnungsoptionen` and others; the notebooks name them differently. Whatever it is gathered on, updates and tasks go on its CL Aufgaben page (`policy:intake`).
 A project without one may still be a full working unit;
 what decides is whether the section records enough to work from. Where it
 records almost nothing, say the project is too thin to classify and ask.
