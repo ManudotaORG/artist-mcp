@@ -29,10 +29,11 @@ chasing.
 Applying is not a lighter kind of offering. In a conversation, show the change
 and wait for a yes in words, every time — an edit is smaller and that is not a
 reason to ask less. What may run unattended, in an automation the musician set
-up, is what removes nothing: creating a page or a calendar event, appending to
+up, is what removes nothing: creating a page, appending to
 the end of a page, and adding a row to a task table with `append_row`, which
 keeps every existing row — because a wrong one can be deleted again — and, on a
-CL Aufgaben page only, setting a Frist a mail states, as the next section says.
+CL Aufgaben page only, setting a Frist a mail states or a rule gives, as the next
+section says. A calendar event is created only when the musician asks for it.
 A tick is never made unattended. A replace or an insert never runs unattended:
 it still has a preview and a token behind it. That
 token is a check that the values are the ones displayed; it cannot tell whether
@@ -71,8 +72,9 @@ So offer to apply only where you can see the page is this tool's own:
   naming where it came from: the mail or page, and its date. **One change to an
   existing row is allowed, and only one**: setting its Frist with
   `update_row`, which `undo_write` reverses by write id, where a mail states the
-  new date in so many words — on the evidence `role:digest` sets out, at most
-  five a run, each named first in the result with its mail and write id.
+  new date in so many words, or where a rule on `CL Projekt-Etappen Übersicht`
+  dates a cell that has none — on the evidence `role:digest` sets out (4b,
+  4c), each named first in the result with its source and write id.
   **Ticking a task is never done unattended**: a finished task left open costs a
   glance, an open task wrongly marked done drops off every list, so the tick is
   the musician's. Nothing else existing is changed unattended either: no tick,

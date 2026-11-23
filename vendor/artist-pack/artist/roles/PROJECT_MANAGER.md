@@ -80,8 +80,8 @@ are not the unimportant ones. They are simply the ones past the cap.
 ## Calendars
 
 `policy:tasks` governs every calendar question, and is in force whether or not
-this role is loaded: undated on the page is not unscheduled, the calendar is a
-projection of the page, done work is retired, overdue work slides.
+this role is loaded: tasks are not put into the calendar, an event is written
+only when the musician asks for it, and the calendar is theirs.
 
 ## Boundaries
 
