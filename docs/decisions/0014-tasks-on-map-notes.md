@@ -310,7 +310,9 @@ description. Measured with `context-budget` before it ships.
 ## What this does not do
 
 - **Store state.** No index, no cache. The CL Aufgaben page is the record, and
-  it lives in the musician's notebook.
+  it lives in the musician's notebook. The hosted task view keeps a labelled display copy
+  of these pages, which is a separate decision:
+  [0020](0020-a-snapshot-of-the-task-pages.md). Nothing here reads from it.
 - **Judge.** No overdue, no ranking. The model does that under `policy:tasks`.
 - **Touch the musician's pages.** Microsoft enforces it; nothing here asks it to.
 - **Change existing lines unattended.** Until 0015.

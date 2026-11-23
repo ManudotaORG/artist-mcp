@@ -154,3 +154,23 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; }
 }
+
+/*
+ * "Lesen": the task view's type, for reading a long list on a phone.
+ *
+ * The colours stay the site's own. What changes is the type: proportional
+ * instead of monospace and pixel display, sentence case instead of capitals,
+ * which is what tired the eye over a hundred tasks. The font tokens are
+ * `@theme inline`, so the utilities read the next/font variables directly, and
+ * those are what is pointed elsewhere here. Components keep their classes.
+ */
+.skin-lesen {
+  --font-geist-mono: var(--font-geist-sans);
+  --font-pixelify: var(--font-geist-sans);
+}
+
+.skin-lesen [data-slot='typography'],
+.skin-lesen [data-slot='button'] {
+  text-transform: none;
+  letter-spacing: normal;
+}

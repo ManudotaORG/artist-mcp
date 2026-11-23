@@ -34,7 +34,8 @@
     "./audit": "./dist/audit.js",
     "./oauth": "./dist/oauth.js",
     "./client": "./dist/client.js",
-    "./tasks": "./dist/tasks.js"
+    "./tasks": "./dist/tasks.js",
+    "./task-pages": "./dist/task-pages.js"
   },
   "files": [
     "dist",

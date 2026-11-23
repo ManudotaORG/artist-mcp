@@ -8,6 +8,7 @@ import { COLOR_NAMES } from "./calendar.js";
 import { GraphError } from "./client.js";
 import { call as localCall, type Operation } from "./dispatch.js";
 import type { DelegatedTask, PageTask, PageTasks } from "./tasks.js";
+import { LEGACY_UPDATE_TARGET, isUpdateTarget, pickTaskPages } from "./task-pages.js";
 import {
   MAP_DEADLINE_MS,
   PAGE_LISTING_CAP,
@@ -484,20 +485,12 @@ const taskDigest = async (
   },
   { since, includeDone, deadlineMs }: { since?: string; includeDone: boolean; deadlineMs: number },
 ): Promise<string> => {
-  const inSection = (page: NoteSummary, sec: SectionSummary) =>
-    page.section === sec.name && (page.notebook ?? null) === (sec.notebook ?? null);
   const where = (sec: { name?: string | null; section?: string | null; notebook?: string | null }) =>
     [sec.notebook, sec.name ?? sec.section].filter(Boolean).join(" / ");
 
-  const toRead: NoteSummary[] = [];
-  const without: SectionSummary[] = [];
-  const several: { sec: SectionSummary; pages: NoteSummary[] }[] = [];
-  for (const sec of chosen.sections) {
-    const targets = chosen.pages.filter((p) => inSection(p, sec) && isUpdateTarget(p.title));
-    if (targets.length === 1) toRead.push(targets[0]);
-    else if (targets.length === 0) without.push(sec);
-    else several.push({ sec, pages: targets });
-  }
+  // Shared with the hosted task view (0020), so the two cannot disagree about
+  // which page is a section's CL Aufgaben page.
+  const { toRead, without, several } = pickTaskPages(chosen.sections, chosen.pages);
 
   const { read, not_reached } =
     toRead.length === 0
@@ -610,13 +603,8 @@ const taskDigest = async (
  *
  * None and several are both said outright. None is a real finding — the update
  * has nowhere to go, and it must not land on a neighbouring page instead.
+ * The title rule itself is `isUpdateTarget`, in task-pages.ts.
  */
-const LEGACY_UPDATE_TARGET = "cl aufgaben";
-const isUpdateTarget = (title: string): boolean => {
-  const key = sectionKey(title);
-  return key === LEGACY_UPDATE_TARGET || /^cl aufgaben [—–-] \S/.test(key);
-};
-
 export const renderUpdateTarget = (pages: readonly NoteSummary[]): string => {
   const targets = pages.filter((p) => isUpdateTarget(p.title));
   if (targets.length === 1) {

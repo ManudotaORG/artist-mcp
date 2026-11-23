@@ -157,11 +157,15 @@ nowhere — see *Staging is parked* in [operations.md](operations.md).
 
 ```bash
 pnpm lint
+pnpm build
 node --test scripts/*.test.mjs
 pnpm --filter @manudota/artist-mcp test
-pnpm build
 git diff --check
 ```
+
+The build comes before the scripts' tests because `scripts/task-view.test.mjs`
+imports the built package: the task view's refresh uses the shared CL Aufgaben
+page rule from `@manudota/artist-mcp/task-pages`, not a copy of it.
 
 If local Turbopack fails because the sandbox cannot bind an internal port, use
 the supported webpack build for verification:

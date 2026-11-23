@@ -36,6 +36,15 @@ const CUSTODY_FUNCTIONS = [
   // A log of what was written on someone's pages, with what it replaced, is as
   // private as the pages (0018).
   'writes_for',
+  // The task view's snapshot holds task text (0020): as private as the pages.
+  'set_task_view_notebooks',
+  'claim_task_refresh',
+  'task_refresh_claim',
+  'store_task_listing',
+  'store_task_pages',
+  'fail_task_notebook',
+  'task_view_for',
+  'mark_task_view_seen',
 ];
 
 const allMigrations = [
@@ -49,6 +58,7 @@ const allMigrations = [
   '20261123120000_write_audit_two_phase.sql',
   '20260824140000_resolve_mcp_key.sql',
   '20260824150000_oauth_server.sql',
+  '20261124120000_task_view.sql',
 ]
   .map(read)
   .join('\n');
@@ -423,4 +433,24 @@ test('the service-role client is built in one file and nowhere else', () => {
 
   const admin = sources.find(([file]) => file === 'lib/supabase/admin.ts')[1];
   assert.match(admin, /^import 'server-only';/m, 'the helper must be server-only');
+});
+
+/**
+ * The task view's snapshot (0020) holds task text. No table of it may be
+ * reachable through PostgREST, the text is encrypted with the per-call key, and
+ * disconnecting Microsoft deletes it.
+ */
+test('the task view snapshot is not exposed, is encrypted, and goes with a disconnect', () => {
+  const view = read('20261124120000_task_view.sql');
+  for (const table of ['task_view_users', 'task_view_notebooks', 'task_view_pages']) {
+    assert.match(view, new RegExp(`alter table public\\.${table}\\s+enable row level security`), `${table} without RLS`);
+  }
+  assert.doesNotMatch(view, /create policy/, 'a policy makes the snapshot reachable by a role other than the service role');
+  assert.match(view, /pgp_sym_encrypt\(\(r->'tasks'\)::text, p_key\)/);
+  assert.doesNotMatch(view, /add column[^;]*encryption_key/);
+  assert.match(view, /if p_provider = 'microsoft' then\s+perform public\.forget_my_task_view\(\)/);
+  // The one function the signed-in user may call takes no argument, so it
+  // cannot name another account.
+  assert.match(view, /create function public\.forget_my_task_view\(\)/);
+  assert.match(view, /revoke execute on function public\.forget_my_task_view\(\) from public, anon/);
 });
