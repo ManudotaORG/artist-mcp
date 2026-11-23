@@ -23,6 +23,10 @@ Where a result names pages it did not reach, call again with `section` for each
 before reporting. A digest missing a project reads as a project with nothing
 open.
 
+Where the prompt allows rule dates (step 4c), also read
+`CL Projekt-Etappen Übersicht` once with `read_note`, for its rules and their
+`Dauer`.
+
 Nothing else is read from OneNote for the report. Which sections changed is
 deliberately not part of it: on this account section dates are the only change
 signal, they cannot tell Ruben's edits from this digest's own rows, and they
@@ -128,8 +132,8 @@ A Frist is set only where all of this holds:
   with `read_thread`, from the person the task concerns or in Ruben's own sent
   reply agreeing it. Written into the cell as the mail says it, with where it
   came from: `15.12.2026 (laut Mail <Absender>, <Datum>)`.
-- **Never a date worked out**, from a rule, a weekday, "next week" or a date the
-  mail only implies. Those are *zu bestätigen*.
+- **Never a date worked out from the mail** — a weekday, "next week", a date
+  it only implies. Those are *zu bestätigen*. A date from a rule is 4c.
 - **Only an open, tagged row**, and only its Frist cell — never another cell,
   never the tick.
 - **At most five a run.** More than five candidates means the reading may be
@@ -137,6 +141,33 @@ A Frist is set only where all of this holds:
 - **Each change opens the digest**, under *Über Nacht geschrieben*: the task,
   the old date and the new, the mail it rests on (subject, sender, date), its
   write id, and one line saying "undo_write <id>" takes it back.
+
+### 4c. Set a Frist from a rule — only where the prompt allows it
+
+Only when the prompt says rule dates are on. A rule on
+`CL Projekt-Etappen Übersicht` dates a task the page leaves undated, written
+with `update_row` like 4b. All of this must hold:
+
+- **The cell has no date**: empty, `UNKNOWN`, or words only. A written date
+  governs; where a rule disagrees, both go under *Zu klären*, cell untouched.
+- **The task plainly is the rule's task**, by its own wording, and the
+  project's type is the rule's (`policy:tasks`). Unsure is *zu bestätigen*,
+  with the date it would get.
+- **The anchor is a full date on the project's pages**: the CL Aufgaben page
+  or the one page holding the schedule. Never from a mail or a calendar. No
+  anchor anywhere: write nothing, and name the missing date under *Fristen*.
+- **The cell, short**, nothing more:
+  - `01.09.2026 (Regel: 2 Mon. vor Konzert)`
+  - `29.09.2026, spät. 13.10.2026 (Regel: vor Probenbeginn)`
+  - with a `Dauer` on the rule: `15.–29.09.2026 (Regel: vor Probenbeginn)`,
+    the span ending on the ideal date. An act (*verschicken*, *anfordern*) is
+    one day whatever the Dauer says.
+- **Re-dating**: a cell in that format that still reads exactly as this tool
+  wrote it is updated when the rule, worked out again from today's anchor,
+  gives another date. A cell anyone has changed is never touched.
+- **At most ten a run**, earliest first; the rest wait for the next run.
+- **One line each** under *Über Nacht geschrieben*: task → cell, then the
+  anchor and its page, then the write id.
 
 ### 5. Create a missing CL Aufgaben page — only where the prompt says so
 
@@ -158,8 +189,10 @@ the morning, not at a desk. The sections are **his views, under his names**, in
 this order, leaving out any part with nothing in it:
 
 1. **Über Nacht geschrieben** — any WARNING first; then Fristen set, each with
-   its mail and write id; then pages created, rows added and lines appended,
-   each with its page. Writing is never left to be
+   its mail and write id; then rule dates (4c), one line each:
+   `Stimmen an Daria → 01.09.2026 (2 Mon. vor Konzert 01.11., Probenplan) · w_8f2c`;
+   then pages created, rows added and lines appended, each with its page. Say
+   once under the heading that `undo_write <id>` takes any of them back. Writing is never left to be
    discovered.
 2. **Zu klären** — every task `map_notes` marks UNSETTLED: the tag says open
    and its own row says done, handed on or unclear. One short line each, as a
@@ -220,7 +253,7 @@ also asks for them.
 
 - Read only what the prompt names. A thin page is not a reason to search mail
   beyond the one search above, or another notebook.
-- Never change an existing line except its Frist as step 4b allows. Never tick,
+- Never change an existing line except its Frist as steps 4b and 4c allow. Never tick,
   reword, reopen, move or remove one.
 - Never write to the calendar, and never send, reply to or draft a mail.
 - Never call a task done because mail only suggests it, or open because a page

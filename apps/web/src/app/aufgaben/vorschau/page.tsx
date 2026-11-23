@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { notFound } from 'next/navigation';
 
 import { Typography } from '@/components/ui/Typography';
+import { buildTimeline, viennaToday } from '@/lib/task-timeline';
 import { buildTaskView, isViewId, type Snapshot } from '@/lib/task-view-model';
 import { TaskScreen } from '../TaskScreen';
 
@@ -24,6 +25,7 @@ const Vorschau = async ({ searchParams }: VorschauProps) => {
   const { ansicht } = await searchParams;
   const snapshot = JSON.parse(await readFile(file, 'utf8')) as Snapshot;
   const view = buildTaskView(snapshot);
+  const timeline = buildTimeline(view.open, viennaToday());
   const note = (
     <Typography variant="small" color="yellow">
       Vorschau aus einer Datei, ohne Konto. Aktualisieren ist hier aus.
@@ -31,6 +33,7 @@ const Vorschau = async ({ searchParams }: VorschauProps) => {
   );
   return (
     <TaskScreen
+      timeline={timeline}
       view={view}
       current={isViewId(ansicht) ? ansicht : 'projekte'}
       refreshControl={note}

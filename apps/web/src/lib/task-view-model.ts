@@ -3,9 +3,10 @@
  *
  * Pure: no database, no network, no `@/` imports, so the node tests in
  * `scripts/` can run it directly. Everything here is arrangement — grouping,
- * counting, comparing with what was last seen. Nothing is judged: no date is
- * read, no task is called overdue, no person or kind of work is inferred. The
- * tasks are what `pageTasks` returned, in the page's own words.
+ * counting, comparing with what was last seen. Nothing is judged: no person or
+ * kind of work is inferred. Dates are read only by `task-timeline.ts`, for the
+ * Zeitplan (0021), and only from a cell. The tasks are what `pageTasks`
+ * returned, in the page's own words.
  */
 import { createHash } from 'node:crypto';
 import type { DelegatedTask, PageTask, PageTasks } from '@manudota/artist-mcp/tasks';
@@ -64,6 +65,7 @@ export const VIEWS = [
   { id: 'taetigkeiten', label: 'Tätigkeiten' },
   { id: 'warten', label: 'Warten / delegiert' },
   { id: 'fristen', label: 'Fristen' },
+  { id: 'zeitplan', label: 'Zeitplan' },
   { id: 'klaeren', label: 'Zu klären' },
 ] as const;
 
@@ -77,16 +79,6 @@ export const isViewId = (value: unknown): value is ViewId =>
  * than hidden, so their absence is not read as nothing to do.
  */
 export const WAITING: Partial<Record<ViewId, string>> = {
-  heute:
-    'Heute braucht die Frist als eigene Zelle. Bisher kommt sie nur als Teil der Zeilenbeschreibung ' +
-    'an, und daraus wird kein Datum herausgelesen. Sobald der gemeinsame Parser die Zellen einzeln ' +
-    'liefert, zeigt Heute die offenen Aufgaben, deren Frist laut Seite heute oder früher ist.',
-  fristen:
-    'Fristen braucht die Frist als eigene Zelle (siehe Heute). Bis dahin steht sie bei jeder Aufgabe ' +
-    'unter Projekte, im Wortlaut der Seite.',
-  menschen:
-    'Menschen braucht die Spalte „Verantwortlich“ als eigene Zelle. Wer eine Aufgabe übernommen hat, ' +
-    'steht schon unter Warten / delegiert.',
   taetigkeiten:
     'Auf den CL Aufgaben-Seiten steht nirgends, welche Art Arbeit eine Aufgabe ist. Das wartet auf ' +
     'die Entscheidung in „CL Aufgaben-Kategorien“, ob es eine Spalte oder ein Tag wird. Geraten wird ' +
@@ -98,6 +90,8 @@ export type ShownTask = {
   key: string;
   text: string;
   details: string | null;
+  /** The row's cells by header; null for a task on a line. */
+  cells: Record<string, string> | null;
   unsettled: string | null;
   stale_status: string | null;
   page: SnapshotPage;
@@ -171,6 +165,8 @@ export const buildTaskView = (snapshot: Snapshot): TaskView => {
       key: taskKey(page.page_id, t.text),
       text: t.text,
       details: t.details,
+      // Absent in a snapshot stored before the parser returned cells.
+      cells: t.cells ?? null,
       unsettled: t.unsettled,
       stale_status: t.stale_status,
       page,
@@ -229,6 +225,7 @@ export const buildTaskView = (snapshot: Snapshot): TaskView => {
       taetigkeiten: null,
       warten: delegated.length,
       fristen: null,
+      zeitplan: null,
       klaeren: unsettled.length,
     },
     oldestRead: reads[0] ?? null,

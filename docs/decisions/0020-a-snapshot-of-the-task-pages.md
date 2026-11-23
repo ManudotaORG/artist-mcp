@@ -1,8 +1,8 @@
 # 0020 — A stored snapshot of the CL Aufgaben pages, shown on the web
 
-Status: **accepted 2026-11-23 and built the same day** (issue #267, phase 1:
-see, read-only). Verified locally, not yet on hosted: see "Built" at the end,
-including where the build departs from what is written here. Builds on [0014](0014-tasks-on-map-notes.md) (the CL Aufgaben
+Status: **accepted 2026-11-23, built and verified on hosted the same day**
+(issue #267, phase 1: see, read-only). See "Built" at the end, including
+where the build departs from what is written here. Builds on [0014](0014-tasks-on-map-notes.md) (the CL Aufgaben
 page is the task record), [0010](0010-two-discovery-paths.md) and
 [0016](0016-one-notebooks-sections.md) (where the requests go). Phase 2, acting
 on a task, is not decided here and waits for 0015's undo.
@@ -331,8 +331,20 @@ yet on the OAuth consent screen).
   returns them, at no extra request; and the CL Aufgaben page rule moved from
   `server.ts` into `task-pages.ts` (`isUpdateTarget`, `pickTaskPages`),
   exported as `@manudota/artist-mcp/task-pages`, with `map_notes` in tasks
-  mode now calling the same function. The `cells` map was not built: Heute,
-  Fristen and Menschen show what they are waiting for.
+  mode now calling the same function. The `cells` map was not built then;
+  it was added for [0021](0021-a-timeline-from-rule-dates.md) on 2026-11-23,
+  once the session owning `tasks.ts` had finished.
+- **Heute, Fristen and Menschen**, built 2026-11-23 from `cells`, in
+  `DateViews.tsx` with the helpers in `task-timeline.ts`. Two departures from
+  the table above, both for brevity and consistency with 0021: a row leads
+  with its date alone (plus "vorbei" or "gerechnet"), and the cell as written
+  is in the row when opened; and Fristen sorts every date 0021's reader
+  accepts, the ideal/latest pair by its ideal date, rather than only a single
+  date. Heute is still "Frist heute oder vorbei, laut Seite", then urgent tasks
+  with no date. Menschen groups the `Verantwortlich` cell exactly as written
+  ("Ruben" and "Rubén" are two groups), then handovers by who has them. On the
+  live read: Heute 13 (11 past, 2 urgent), Fristen 21 plus 30 in words,
+  Menschen 110 for "Ruben" and 20 tasks with no such column. Seen at 375 px.
 - **Migration** `20261124120000_task_view.sql`: the three tables, the
   functions, and `disconnect_provider` deleting the snapshot on a Microsoft
   disconnect. **Applied to production on 2026-11-23** with `supabase db push`,
@@ -413,3 +425,11 @@ staging project deleted on 2026-09-13. So the server actions, the RPC calls
 from `task-view.ts`, the notebook picker and the dashboard sentence have not
 run end to end. That is the next check, on hosted after the migration and a
 promotion, or locally once a Supabase stack runs.
+
+**Verified on hosted after #273**, 2026-11-23: the owner signed in, chose the
+three season notebooks and refreshed. The stored snapshot, checked in
+production by counts only (no task text read): 2026-27 24 pages, 2027-28 4,
+2028-29 none; no page unread or still pending; no notebook error; all 28 with
+both links; 6, 7 and 5 sections without a CL Aufgaben page. That is the same as
+the local run. The first refresh was a full one, as designed. A narrowed
+refresh and "Gesehen" have not been tried on hosted yet.

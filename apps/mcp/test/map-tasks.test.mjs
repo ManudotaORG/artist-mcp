@@ -36,6 +36,7 @@ test('a table task carries its row, labelled by the header row', () => {
     text: 'Arrangements fertigstellen',
     done: false,
     details: 'Verantwortlich: Ruben · Frist: spätestens 01.11.2026 · Status: OFFEN',
+    cells: { Verantwortlich: 'Ruben', Frist: 'spätestens 01.11.2026', Status: 'OFFEN' },
     unsettled: null,
     stale_status: null,
   });
@@ -49,6 +50,7 @@ test('an appended line is a task, after the table, with its source in its words'
     text: 'Probenplan an die Agentur schicken — aus Mail „Re: Probenplan", 21.11.',
     done: false,
     details: null,
+    cells: null,
     unsettled: null,
     stale_status: null,
   });
@@ -101,6 +103,7 @@ test('a tagged first row means no header, and the labels say so', () => {
     '<body><table><tr><td><span data-tag="to-do">Noten kaufen</span></td><td>Ruben</td></tr></table></body>';
   const { tasks, problems } = pageTasks(html);
   assert.equal(tasks[0].details, 'Column 2: Ruben');
+  assert.deepEqual(tasks[0].cells, { 'Column 2': 'Ruben' });
   assert.ok(problems.some((p) => /no header row/.test(p)));
 });
 
@@ -113,6 +116,40 @@ test('a table nested in a cell does not end the outer table early', () => {
   const { tasks } = pageTasks(html);
   assert.deepEqual(tasks.map((t) => t.text), ['Saal klären', 'Hotel buchen']);
   assert.equal(tasks[1].details, 'Notiz: später');
+  assert.deepEqual(tasks[1].cells, { Notiz: 'später' });
+});
+
+test('cells keep a value whole that the joined line could not be split back into', () => {
+  // A live Frist cell, with a dash, a colon and a dot inside it.
+  const frist = 'UNKNOWN — an den Münchner Termin gebunden · siehe: Kalender 13.–14.09.2026';
+  const html =
+    '<body><table><tr><td>Aufgabe</td><td>Frist</td><td>Status</td></tr>' +
+    `<tr><td><span data-tag="to-do">Striche besprechen</span></td><td>${frist}</td><td></td></tr></table></body>`;
+  const [task] = pageTasks(html).tasks;
+  assert.equal(task.cells.Frist, frist);
+  assert.equal(task.cells.Status, '', 'an empty cell is empty, not "(empty)"');
+  assert.match(task.details, /Status: \(empty\)/, 'details is unchanged');
+});
+
+test('a table with no Frist column gives cells without one', () => {
+  const html =
+    '<body><table><tr><td>Aufgabe</td><td>Verantwortlich</td></tr>' +
+    '<tr><td><span data-tag="to-do">Hotel</span></td><td>Ruben</td></tr></table></body>';
+  assert.deepEqual(pageTasks(html).tasks[0].cells, { Verantwortlich: 'Ruben' });
+});
+
+test('a header used twice keeps both cells, the second by its column', () => {
+  const html =
+    '<body><table><tr><td>Aufgabe</td><td>Notiz</td><td>Notiz</td></tr>' +
+    '<tr><td><span data-tag="to-do">Saal</span></td><td>a</td><td>b</td></tr></table></body>';
+  assert.deepEqual(pageTasks(html).tasks[0].cells, { Notiz: 'a', 'Notiz (3)': 'b' });
+});
+
+test('a row shorter than its header, as a merged cell leaves it, gives only the cells it has', () => {
+  const html =
+    '<body><table><tr><td>Aufgabe</td><td>Verantwortlich</td><td>Frist</td></tr>' +
+    '<tr><td><span data-tag="to-do">Saal</span></td><td colspan="2">Ruben, bis 01.12.2026</td></tr></table></body>';
+  assert.deepEqual(pageTasks(html).tasks[0].cells, { Verantwortlich: 'Ruben, bis 01.12.2026' });
 });
 
 // ---------------------------------------------------------------------------

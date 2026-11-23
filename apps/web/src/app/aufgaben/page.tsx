@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Typography } from '@/components/ui/Typography';
 import { supabaseServer } from '@/lib/supabase/server';
+import { buildTimeline, viennaToday } from '@/lib/task-timeline';
 import { buildTaskView, isViewId } from '@/lib/task-view-model';
 import { readTaskView } from '@/lib/task-view';
 import { markAllSeen } from './actions';
@@ -59,6 +60,7 @@ const Aufgaben = async ({ searchParams }: AufgabenProps) => {
   const snapshot = await readTaskView(user.id);
   const chosen = snapshot.notebooks.map((n) => n.notebook);
   const view = buildTaskView(snapshot);
+  const timeline = buildTimeline(view.open, viennaToday());
   const current = isViewId(ansicht) ? ansicht : 'projekte';
 
   const firstVisit =
@@ -86,6 +88,7 @@ const Aufgaben = async ({ searchParams }: AufgabenProps) => {
 
   return (
     <TaskScreen
+      timeline={timeline}
       view={view}
       current={current}
       refreshControl={<RefreshControl disabled={chosen.length === 0} />}
