@@ -79,16 +79,9 @@ export const isViewId = (value: unknown): value is ViewId =>
  * than hidden, so their absence is not read as nothing to do.
  */
 export const WAITING: Partial<Record<ViewId, string>> = {
-  heute:
-    'Heute braucht die Frist als eigene Zelle. Bisher kommt sie nur als Teil der Zeilenbeschreibung ' +
-    'an, und daraus wird kein Datum herausgelesen. Sobald der gemeinsame Parser die Zellen einzeln ' +
-    'liefert, zeigt Heute die offenen Aufgaben, deren Frist laut Seite heute oder früher ist.',
-  fristen:
-    'Fristen braucht die Frist als eigene Zelle (siehe Heute). Bis dahin steht sie bei jeder Aufgabe ' +
-    'unter Projekte, im Wortlaut der Seite.',
-  menschen:
-    'Menschen braucht die Spalte „Verantwortlich“ als eigene Zelle. Wer eine Aufgabe übernommen hat, ' +
-    'steht schon unter Warten / delegiert.',
+  heute: 'Noch nicht gebaut. Die Fristen stehen schon im Zeitplan.',
+  fristen: 'Noch nicht gebaut. Die Fristen stehen schon im Zeitplan.',
+  menschen: 'Noch nicht gebaut. Wer eine Aufgabe übernommen hat, steht unter Warten / delegiert.',
   taetigkeiten:
     'Auf den CL Aufgaben-Seiten steht nirgends, welche Art Arbeit eine Aufgabe ist. Das wartet auf ' +
     'die Entscheidung in „CL Aufgaben-Kategorien“, ob es eine Spalte oder ein Tag wird. Geraten wird ' +
@@ -100,10 +93,7 @@ export type ShownTask = {
   key: string;
   text: string;
   details: string | null;
-  /**
-   * The row's cells by header, once the shared parser returns them (0020's
-   * `cells` request). Null until then, and for a task on a line.
-   */
+  /** The row's cells by header; null for a task on a line. */
   cells: Record<string, string> | null;
   unsettled: string | null;
   stale_status: string | null;
@@ -178,7 +168,8 @@ export const buildTaskView = (snapshot: Snapshot): TaskView => {
       key: taskKey(page.page_id, t.text),
       text: t.text,
       details: t.details,
-      cells: (t as PageTask & { cells?: Record<string, string> | null }).cells ?? null,
+      // Absent in a snapshot stored before the parser returned cells.
+      cells: t.cells ?? null,
       unsettled: t.unsettled,
       stale_status: t.stale_status,
       page,

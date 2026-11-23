@@ -158,8 +158,8 @@ const Zeitplan = ({ timeline }: ZeitplanProps) => {
     return (
       <div className="border border-signal-yellow p-3">
         <Typography variant="small">
-          Zeitplan braucht die Frist als eigene Zelle. Sobald der Parser sie liefert, steht sie
-          hier.
+          Der gespeicherte Stand ist älter als der Zeitplan. Nach der nächsten Aktualisierung stehen
+          die Fristen hier.
         </Typography>
       </div>
     );

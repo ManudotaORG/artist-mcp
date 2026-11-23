@@ -35,6 +35,14 @@ export type PageTask = {
   /** For a task in a table: the rest of its row, labelled by the header row. */
   details: string | null;
   /**
+   * For a task in a table: the other cells of its row by header, each as its
+   * text — the same cells `details` joins, kept apart so a reader can take one
+   * without splitting a line whose cells may themselves hold "·" or ":". An
+   * empty cell is "". A header used twice gets its column number. Null for a
+   * task on a line.
+   */
+  cells: Record<string, string> | null;
+  /**
    * For an open task whose own row or line says it is done, handed on, or
    * unsettled: that clause, in the page's words. `policy:tasks` calls such a
    * task unsettled — neither open nor done — and it stays that way until the
@@ -258,15 +266,20 @@ const readTable = (table: string, ordinal: number): TableRead => {
       .filter(({ cell }) => TAG.test(cell));
     if (tagged.length === 0) continue;
 
+    const others = row
+      .map((cell, index) => ({ index, text: cellText(cell) }))
+      .filter(({ index }) => !tagged.some((t) => t.index === index));
     const details =
-      row
-        .map((cell, index) => ({ index, text: cellText(cell) }))
-        .filter(({ index }) => !tagged.some((t) => t.index === index))
-        .map(({ index, text }) => `${label(index)}: ${text === '' ? '(empty)' : text}`)
-        .join(' · ') || null;
+      others.map(({ index, text }) => `${label(index)}: ${text === '' ? '(empty)' : text}`).join(' · ') ||
+      null;
+    const cells: Record<string, string> = {};
+    for (const { index, text } of others) {
+      const key = label(index) in cells ? `${label(index)} (${index + 1})` : label(index);
+      cells[key] = text;
+    }
 
     for (const { cell } of tagged) {
-      for (const line of taggedLines(cell)) tasks.push({ ...line, details });
+      for (const line of taggedLines(cell)) tasks.push({ ...line, details, cells });
     }
   }
   return { tasks, delegated: [], problems };
@@ -359,7 +372,7 @@ export const pageTasks = (html: string): PageTasks => {
       const mark = line.match(CHECKBOX);
       if (mark) {
         const text = oneLine(line.replace(CHECKBOX, ''));
-        if (text !== '') tasks.push({ text, done: mark[1] === 'x', details: null });
+        if (text !== '') tasks.push({ text, done: mark[1] === 'x', details: null, cells: null });
         leadOpen = false;
       } else if (leadOpen && line.trim() !== '') {
         leadParts.push(line.trim());

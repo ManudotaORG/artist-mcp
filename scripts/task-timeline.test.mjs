@@ -31,6 +31,7 @@ test('a single date, written or from a rule', () => {
   assert.equal(readFrist('1.9.2026')?.end, '2026-09-01');
   assert.equal(readFrist('25.12.2026 (gerechnet)')?.rule, true);
   assert.equal(readFrist('bis zum 11.11.2026')?.end, '2026-11-11');
+  assert.equal(readFrist('vor 05.01.2027')?.end, '2027-01-05');
 });
 
 test('an ideal date with a latest one after it', () => {
@@ -77,13 +78,14 @@ test('undated work is kept beside the timeline: urgent first, words in their own
   const t = buildTimeline(
     [
       shown('Vertrag SOFORT schicken', 'UNKNOWN'),
+      shown('Dispo', 'PRIORITÄT 1 — SEHR DRINGEND; kein Datum'),
       shown('Hotel', undefined),
       shown('Laufend', 'laufend'),
       shown('Datiert', '01.12.2026'),
     ],
     '2026-11-23',
   );
-  assert.deepEqual(t.urgent.map((x) => x.text), ['Vertrag SOFORT schicken']);
+  assert.deepEqual(t.urgent.map((x) => x.text), ['Vertrag SOFORT schicken', 'Dispo']);
   assert.deepEqual(t.undated.map((x) => x.text), ['Hotel']);
   assert.deepEqual(t.unclear.map((x) => x.cell), ['laufend']);
   assert.deepEqual(t.placed.map((x) => x.task.text), ['Datiert']);

@@ -153,8 +153,7 @@ The bar, in `role:digest` beside step 4b:
 
 ### 3. The Zeitplan tab
 
-In 0020's view, built on the `cells` map the shared parser still has to provide.
-Heute and Fristen wait on the same map.
+In 0020's view, built on a `cells` map added to the shared parser.
 
 - **The dates it reads:** a cell whose first date is a full `dd.mm.yyyy`, and
   the `idealerweise … spätestens …` pair. A cell holding anything else is listed
@@ -209,8 +208,8 @@ Heute and Fristen wait on the same map.
   date, sliding) as rules for the timeline, and narrows its calendar boundary
   to the tool's own events; `role:project-manager`'s calendar section follows.
 - **`apps/mcp`**: no new tool or capability. The calendar tool descriptions are
-  checked for any wording that suggests projecting tasks. The `cells` map comes
-  from the session that owns `tasks.ts`.
+  checked for any wording that suggests projecting tasks. The shared parser
+  gains a `cells` map.
 - **`apps/web`**: the Zeitplan tab.
 - **0018**: decision 3 marked as amended here.
 
@@ -242,15 +241,25 @@ longer has to earn its place against being read every morning.
 ## Built, 2026-11-23
 
 - **The Zeitplan tab**: `apps/web/src/lib/task-timeline.ts` reads a `Frist`
-  cell (a date, a span, an ideal date with "spät."/"spätestens", "bis zum"
-  before a date; "(Regel: …)" and the notebook's existing "(gerechnet)" mark a
+  cell (a date, a span, an ideal date with "spät."/"spätestens", "bis zum" or
+  "vor" before a date; "(Regel: …)" and the notebook's existing "(gerechnet)" mark a
   worked-out date) and slides overdue tasks; `Zeitplan.tsx` draws it, and the
   rows every view uses moved to `TaskRows.tsx`. Tested in
-  `scripts/task-timeline.test.mjs`. Seen at 375 px on the 2026-11-23 snapshot
-  with cells filled in from `details` for the preview only: 19 of 162 open
-  tasks placed, sticky project column, span, latest-date tick and overdue all
-  as above. **Until the parser returns `cells`, the tab says it is waiting**,
-  as Heute and Fristen do.
+  `scripts/task-timeline.test.mjs`. A snapshot stored before `cells` existed
+  makes the tab ask for a refresh.
+- **The `cells` map** on `PageTask` in `apps/mcp/src/tasks.ts`: a table task's
+  other cells by header, the same cells `details` joins, kept whole; null for a
+  task on a line. Additive, and never sent to the model, so it costs no
+  tokens. Tested in `map-tasks.test.mjs` on a cell holding "·" and ":", a
+  table without a Frist column, a header used twice, and a merged cell (which
+  is labelled by its first column, so its Frist is not read).
+- **Checked on the live pages**, read-only with local tokens, 80 requests:
+  cells matched the joined `details` on all 142 table tasks. Of 162 open
+  tasks, 21 are placed (11 overdue, 2 already marked "(gerechnet)"), 2 are
+  urgent with no date, 30 have a Frist in words only, and 109 have none or
+  `UNKNOWN`. That is fewer than the 36 counted above, which took any date
+  anywhere in the cell; "vor dem Flug am 16.12.2026" stays in words. Seen at
+  375 px in the preview, rendered from that read.
 - **The pack**, in a clone of the custom-pack repository, not committed:
   `role:digest` 4c (rule dates, unattended, at most ten), 4b no longer
   forbidding rule dates; `policy:patch` lists rule dates as allowed unattended
@@ -273,7 +282,6 @@ Not yet verified: the watched digest run, and anything on hosted.
    and decide once a few weeks show how often it happens.
 2. **The `Dauer` values** are Ruben's to fill in on the reference page. Until
    he does, the timeline is markers.
-3. **The `cells` map** is still owed by the session that owns `tasks.ts`.
 
 Decided 2026-11-23: the format is as short as above; the old calendar events
 are Ruben's to clean up; durations are wanted, from a `Dauer` column.

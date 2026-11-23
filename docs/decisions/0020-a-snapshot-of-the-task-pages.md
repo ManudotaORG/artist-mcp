@@ -331,8 +331,10 @@ yet on the OAuth consent screen).
   returns them, at no extra request; and the CL Aufgaben page rule moved from
   `server.ts` into `task-pages.ts` (`isUpdateTarget`, `pickTaskPages`),
   exported as `@manudota/artist-mcp/task-pages`, with `map_notes` in tasks
-  mode now calling the same function. The `cells` map was not built: Heute,
-  Fristen and Menschen show what they are waiting for.
+  mode now calling the same function. The `cells` map was not built then;
+  it was added for [0021](0021-a-timeline-from-rule-dates.md) on 2026-11-23,
+  once the session owning `tasks.ts` had finished. Heute, Fristen and Menschen
+  can now be built from it and are not yet.
 - **Migration** `20261124120000_task_view.sql`: the three tables, the
   functions, and `disconnect_provider` deleting the snapshot on a Microsoft
   disconnect. **Applied to production on 2026-11-23** with `supabase db push`,

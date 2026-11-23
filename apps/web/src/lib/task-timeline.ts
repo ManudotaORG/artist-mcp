@@ -67,7 +67,9 @@ export const daysBetween = (a: Day, b: Day): number =>
  * "laufend", "UNKNOWN", "Ende Jänner" — so it is never guessed into one.
  */
 export const readFrist = (cell: string): Frist | null => {
-  const text = cell.trim().replace(/^(?:idealerweise|bis(?:\s+zum|\s+spätestens)?)\s+/i, '');
+  const text = cell
+    .trim()
+    .replace(/^(?:idealerweise|bis(?:\s+zum|\s+spätestens)?|vor(?:\s+dem)?)\s+/i, '');
   const rule = /\((?:Regel:[^)]*|gerechnet)\)/i.test(text);
 
   // A span: "15.–29.09.2026", "15.09.–29.09.2026", "15.09.2026–29.09.2026".
@@ -137,8 +139,8 @@ export const buildTimeline = (open: ShownTask[], today: Day): Timeline => {
       continue;
     }
     const words = cell?.trim() ?? '';
-    if (words !== '' && !/^unknown$/i.test(words)) unclear.push({ task, cell: words });
-    else if (isUrgent(task)) urgent.push(task);
+    if (isUrgent(task)) urgent.push(task);
+    else if (words !== '' && !/^unknown$/i.test(words)) unclear.push({ task, cell: words });
     else undated.push(task);
   }
 
