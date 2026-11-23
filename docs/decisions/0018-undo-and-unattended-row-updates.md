@@ -239,6 +239,10 @@ A pack change, once steps 1–3 are verified on hosted:
    date worked out or implied. At most five a run; more means none are set and
    all are listed. (The broader bar discussed for ticks — Ruben's own reply as
    proof for tasks whose verb is the sending — fell away with the tick.)
+   *Amended 2026-11-23 by [0021](0021-a-timeline-from-rule-dates.md), proposed:*
+   a date worked out from a rule the reference page records may be set
+   unattended too, into a cell with no date, marked as worked out by a rule,
+   at most ten a run. Mail dates keep this bar unchanged.
 4. **Removing a line this tool appended** — *decided 2026-11-23: yes, within
    these limits.* The tool may remove a row or line only if the write log holds
    it as this tool's own addition, by `write_id`, and it still reads exactly as

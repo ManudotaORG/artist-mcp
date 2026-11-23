@@ -3,9 +3,10 @@
  *
  * Pure: no database, no network, no `@/` imports, so the node tests in
  * `scripts/` can run it directly. Everything here is arrangement — grouping,
- * counting, comparing with what was last seen. Nothing is judged: no date is
- * read, no task is called overdue, no person or kind of work is inferred. The
- * tasks are what `pageTasks` returned, in the page's own words.
+ * counting, comparing with what was last seen. Nothing is judged: no person or
+ * kind of work is inferred. Dates are read only by `task-timeline.ts`, for the
+ * Zeitplan (0021), and only from a cell. The tasks are what `pageTasks`
+ * returned, in the page's own words.
  */
 import { createHash } from 'node:crypto';
 import type { DelegatedTask, PageTask, PageTasks } from '@manudota/artist-mcp/tasks';
@@ -64,6 +65,7 @@ export const VIEWS = [
   { id: 'taetigkeiten', label: 'Tätigkeiten' },
   { id: 'warten', label: 'Warten / delegiert' },
   { id: 'fristen', label: 'Fristen' },
+  { id: 'zeitplan', label: 'Zeitplan' },
   { id: 'klaeren', label: 'Zu klären' },
 ] as const;
 
@@ -98,6 +100,11 @@ export type ShownTask = {
   key: string;
   text: string;
   details: string | null;
+  /**
+   * The row's cells by header, once the shared parser returns them (0020's
+   * `cells` request). Null until then, and for a task on a line.
+   */
+  cells: Record<string, string> | null;
   unsettled: string | null;
   stale_status: string | null;
   page: SnapshotPage;
@@ -171,6 +178,7 @@ export const buildTaskView = (snapshot: Snapshot): TaskView => {
       key: taskKey(page.page_id, t.text),
       text: t.text,
       details: t.details,
+      cells: (t as PageTask & { cells?: Record<string, string> | null }).cells ?? null,
       unsettled: t.unsettled,
       stale_status: t.stale_status,
       page,
@@ -229,6 +237,7 @@ export const buildTaskView = (snapshot: Snapshot): TaskView => {
       taetigkeiten: null,
       warten: delegated.length,
       fristen: null,
+      zeitplan: null,
       klaeren: unsettled.length,
     },
     oldestRead: reads[0] ?? null,
