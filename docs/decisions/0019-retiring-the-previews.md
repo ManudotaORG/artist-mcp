@@ -62,10 +62,34 @@ and after.
 4. **Showing a deleted event in full** — moved into the result, which shows the
    whole event and its `write_id`.
 
-## The build, in six steps
+## The build, in six steps and a move
 
-OneNote first (steps 1–4), then the calendar (steps 5–6). Each step is verified
-before the next; steps 1–4 ship in one promotion, 5–6 in another.
+OneNote first (steps 0–4), then the calendar (steps 5–6). Each step is verified
+before the next; steps 0–4 ship in one promotion, 5–6 in another.
+
+### 0. Split `onenote-patch.ts` first, changing nothing
+
+`onenote-patch.ts` is 2,627 lines and three modules in one file: element
+editing and its helpers (to about line 1,700), task rows (`appendRows`,
+`updateRow`, `previewRowUpdate`, `readTaskTable`, `asWritten`), and
+`undoWrite`. Steps 1–4 add 300–500 lines of the most security-sensitive code
+here — recording before a replace, `expect`, two more undo kinds — and they
+should land where a reviewer can read them, not at line 2,400.
+
+The layering is already clean: rows and undo use the editing helpers (18 and 16
+of them), and almost nothing points the other way — `cellsOf`, which rows also
+use, moves to the core. So the split is a move:
+
+- `onenote-patch.ts` keeps the core and `applyEdit`, which routes to the others;
+- `onenote-rows.ts` takes the task-row functions;
+- `onenote-undo.ts` takes `undoWrite`, importing from both.
+
+One commit, before step 1, with no behaviour change: the suite passes
+unchanged, and `test/operation-boundary`'s sanctioned `file:function` entries
+move with the functions, in the same commit, as that guard requires. Done only
+as part of this build — on its own it is churn in security code. Found through
+the graphify rebuild on 2026-11-23, where these five functions are five of the
+eight the docs cite most.
 
 ### 1. Replace and insert record before they write
 
