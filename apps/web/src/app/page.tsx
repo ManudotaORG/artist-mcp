@@ -436,6 +436,15 @@ const Connections = ({
         INFRASTRUCTURE SO THIS WORKS WHILE YOUR MACHINE IS OFF. A MAINTAINER CAN TECHNICALLY READ
         WHAT THEY REACH.
       </Typography>
+      {/*
+        What is kept besides the tokens, said where the tokens are (0020). The
+        write record held content from the start and nothing here said so.
+      */}
+      <Typography variant="small" className="mt-3">
+        ALSO KEPT: A RECORD OF EVERY CHANGE THIS TOOL MAKES TO YOUR NOTES OR CALENDAR, INCLUDING
+        WHAT IT REPLACED. IF YOU USE THE TASK VIEW, AN ENCRYPTED COPY OF THE TASKS ON YOUR CL
+        AUFGABEN PAGES, UNTIL THE NEXT REFRESH OR UNTIL YOU DISCONNECT MICROSOFT.
+      </Typography>
 
       <div className="mt-4 grid gap-3">
         {(['microsoft', 'google'] as const).map((provider) => {
@@ -474,6 +483,15 @@ const Connections = ({
       </div>
 
       <Writes granted={writesGranted} connected={new Set(connected.keys())} />
+
+      {connected.has('microsoft') ? (
+        <a
+          href="/aufgaben"
+          className="mt-5 inline-flex min-h-11 items-center font-mono text-sm font-bold text-signal-yellow underline underline-offset-4"
+        >
+          AUFGABEN — YOUR TASKS ACROSS PROJECTS →
+        </a>
+      ) : null}
 
       {connections.length > 0 ? (
         <>

@@ -57,6 +57,9 @@ const nextConfig: NextConfig = {
    */
   outputFileTracingIncludes: {
     '/api/mcp': ['../mcp/agent-pack/**/*', '../mcp/dist/**/*', '../../vendor/artist-pack/**/*'],
+    // The task view's refresh runs the dispatcher on this page (0020). It reads
+    // no playbook, so the package alone.
+    '/aufgaben': ['../mcp/dist/**/*'],
   },
 };
 
