@@ -1,8 +1,8 @@
 # 0020 — A stored snapshot of the CL Aufgaben pages, shown on the web
 
-Status: **accepted 2026-11-23 and built the same day** (issue #267, phase 1:
-see, read-only). Verified locally, not yet on hosted: see "Built" at the end,
-including where the build departs from what is written here. Builds on [0014](0014-tasks-on-map-notes.md) (the CL Aufgaben
+Status: **accepted 2026-11-23, built and verified on hosted the same day**
+(issue #267, phase 1: see, read-only). See "Built" at the end, including
+where the build departs from what is written here. Builds on [0014](0014-tasks-on-map-notes.md) (the CL Aufgaben
 page is the task record), [0010](0010-two-discovery-paths.md) and
 [0016](0016-one-notebooks-sections.md) (where the requests go). Phase 2, acting
 on a task, is not decided here and waits for 0015's undo.
@@ -413,3 +413,11 @@ staging project deleted on 2026-09-13. So the server actions, the RPC calls
 from `task-view.ts`, the notebook picker and the dashboard sentence have not
 run end to end. That is the next check, on hosted after the migration and a
 promotion, or locally once a Supabase stack runs.
+
+**Verified on hosted after #273**, 2026-11-23: the owner signed in, chose the
+three season notebooks and refreshed. The stored snapshot, checked in
+production by counts only (no task text read): 2026-27 24 pages, 2027-28 4,
+2028-29 none; no page unread or still pending; no notebook error; all 28 with
+both links; 6, 7 and 5 sections without a CL Aufgaben page. That is the same as
+the local run. The first refresh was a full one, as designed. A narrowed
+refresh and "Gesehen" have not been tried on hosted yet.
