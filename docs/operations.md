@@ -398,7 +398,7 @@ is what is cheap to keep and expensive to rebuild from memory:
 | --- | --- |
 | The `staging` branch, protected | Still where a dist-tag build comes from |
 | `publish-staging` in `release.yml`, the `staging` GitHub environment, `set-staging-version.mjs` | Publishes `@manudota/artist-mcp@staging`, which needs no website |
-| Dependabot targeting `staging`, CI on `staging` | Unchanged |
+| CI on pull requests to `staging` | Unchanged. Dependabot now targets `release` instead (`0de9697`) |
 | `DEPLOY_ENV=staging` handling in `apps/web` | Harmless with nothing deploying it; the way back |
 
 What was removed: the `artist-mcp-staging` Vercel project and its variables,

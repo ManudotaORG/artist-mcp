@@ -126,10 +126,10 @@ additionally bumps `package.json` and `src/server.ts` on `main` only. Either way
 the next promotion is refused. Merge `origin/main` into `release` first — a
 `chore: sync ...` commit — then push and retry.
 
-Dependabot opens grouped weekly npm and Actions updates against `staging`, where
-PR CI runs and nothing deploys. After merging one, synchronize
-that commit into `release` before the next production promotion so branch
-history stays aligned. Automatic major-version PRs are disabled; handle breaking
+Dependabot opens grouped weekly npm and Actions updates against `release`, where
+pull-request CI runs and nothing deploys, and they ship with the next promotion
+like any other work. It used to target `staging`, which nothing merges back
+from, so updates landed on a branch they could never leave (`0de9697`). Automatic major-version PRs are disabled; handle breaking
 upgrades as planned migration work.
 
 ## Publishing
