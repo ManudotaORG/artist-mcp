@@ -37,9 +37,9 @@
       "id": "policy:local-state",
       "kind": "policy",
       "name": "Local State",
-      "description": "Use local state only when it helps the musician resume work without rereading the same context. The backend remains stateless: it stores connection credentials, never agent memory or copies of OneNote content.",
+      "description": "Use local state only when it helps the musician resume work without rereading the same context. What is stored is connection credentials and a log of what this tool wrote — with what each write replaced, so that it can be undone — and nothing else: never agent memory, and no other copy of OneNote content.",
       "file": ".artist/policies/LOCAL_STATE.md",
-      "sha256": "541c9b297668dd7647e756db4c94242756c12580602d1cf67881a04900514fee"
+      "sha256": "a1fa5297813dbcbac8426c5f5fff63e4b068a82007f1c368939edb38f871adb6"
     },
     {
       "id": "policy:patch",
@@ -47,7 +47,7 @@
       "name": "Patch",
       "description": "Once the musician has decided something, hand them the smallest fragment that records it, and say which part of the page it goes under.",
       "file": ".artist/policies/PATCH.md",
-      "sha256": "0e3fcf2defaf6770070459fcd7638655e63417d1455c09f06faee46a5335a308"
+      "sha256": "8cfd8d71755456b9b2d50d951ce8c174c648bb8dcb896b20443b5b197177fefb"
     },
     {
       "id": "project-type:concert",

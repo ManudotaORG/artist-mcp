@@ -292,7 +292,7 @@ test('an append commits in one call: no token, no read, one PATCH', async () => 
   // The result carries what a preview would have shown, and the way back.
   assert.match(result.note, /Curfew 23:00/);
   assert.match(result.note, /Nothing on the page was changed or removed/);
-  assert.match(result.note, /delete what was added in OneNote/);
+  assert.match(result.note, /To take this back, call undo_write with its write id/);
 
   assert.deepEqual(lines.map((l) => l.status), ['pending', 'done']);
   assert.equal(lines[0].write_id, lines[1].write_id);

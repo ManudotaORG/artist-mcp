@@ -1859,7 +1859,7 @@ export async function appendRows(token: string, params: Record<string, unknown>,
     changed.length === 0 && !unread
       ? `Added to the table headed "${header.join(' · ')}":\n\n${added}\n\n` +
         `The ${oldRows.length - 1} rows already in it were read back unchanged. To take this ` +
-        'back, delete the row in OneNote.'
+        'back, call undo_write with its write id, below.'
       : `Added to the table headed "${header.join(' · ')}":\n\n${added}\n\n` +
         'WARNING: ' +
         (unread
@@ -2475,8 +2475,9 @@ const appendOnly = async (token: string, draft: EditDraft, record: RecordWrite) 
     note:
       `Added to the end of the page${draft.changes.length === 1 ? '' : `, in one write`}:\n\n` +
       added.join('\n\n') +
-      '\n\nNothing on the page was changed or removed. To take this back, delete ' +
-      'what was added in OneNote; this tool cannot remove it yet. ' +
+      '\n\nNothing on the page was changed or removed. To take this back, call ' +
+      'undo_write with its write id; an append of several elements, or of a table, ' +
+      'is removed by hand. ' +
       `Recorded as write ${entries.map((entry) => entry.write_id).join(', ')}.`,
   };
 };
