@@ -115,8 +115,9 @@ trustworthy.
   the `Lint and build` check with `enforce_admins`, so a direct push is rejected
   — and Commitlint runs only on `pull_request`, so a push that did land would
   skip it entirely.
-- Pull-request CI runs only when the target is `staging` or `main`. A pull
-  request against `release` is not checked at all.
+- Pull-request CI, Commitlint included, runs on pull requests to `release`,
+  `staging` and `main`. A direct push to `release` runs the build and tests but
+  not Commitlint, which is what the husky hook is for.
 
 **Expect `BEHIND` on every promotion, not just at releases.** Both protected
 branches are `strict`, so a pull request must be up to date before it merges,
