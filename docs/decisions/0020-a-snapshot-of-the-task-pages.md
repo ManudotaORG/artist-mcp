@@ -335,8 +335,17 @@ yet on the OAuth consent screen).
   Fristen and Menschen show what they are waiting for.
 - **Migration** `20261124120000_task_view.sql`: the three tables, the
   functions, and `disconnect_provider` deleting the snapshot on a Microsoft
-  disconnect. **Not applied to production.** The page needs it, so it goes in
-  before the web deploy that carries this.
+  disconnect. **Applied to production on 2026-11-23** with `supabase db push`,
+  after a dry run showed it was the only migration production lacked, and
+  before any web deploy carrying the page. Checked there: the three tables
+  with RLS and no policies; every service-role function refused to `anon` and
+  `authenticated` and executable by `service_role`; `forget_my_task_view()`
+  executable by `authenticated` only; `disconnect_provider` calling it; no
+  snapshot rows yet, the six connections untouched. The security advisors
+  flag `forget_my_task_view()` as a SECURITY DEFINER function signed-in users
+  can call. That is intended: it takes no argument and deletes only the
+  caller's own snapshot, and the user's own disconnect is what calls it. The
+  only other warnings predate this. The checkout was unlinked afterwards.
 - **`apps/web`**: `/aufgaben` (Projekte, Neu, Warten / delegiert, Zu klären,
   and the other four as placeholders), a link from the dashboard for an
   account with Microsoft connected, and `/aufgaben/vorschau`, which renders a
