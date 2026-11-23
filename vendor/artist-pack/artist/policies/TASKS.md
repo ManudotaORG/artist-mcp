@@ -112,7 +112,8 @@ Three sources, and they are not stated alike.
 1. **A date written on the task line or in the prose around it.** A page fact:
    state it plainly and name the page.
 2. **A rule the notebook itself records**, applied to a date the notebook also
-   records. The rules live on the reference page "CL Projekt-Etappen Übersicht" —
+   records, or, where no page gives it, to an event in the musician's own
+   calendar that names the project and that date (`role:digest` 4c). The rules live on the reference page "CL Projekt-Etappen Übersicht" —
    read them from there. They are not repeated here: a rule written in two
    places is two records that drift, and the musician adds a rule by typing it
    on that page, not by anyone editing this one.
@@ -183,11 +184,13 @@ are seen in time in the task view's Zeitplan, not in the calendar.
   refused there; restoring it is the answer.
 - **The musician's events are evidence** under `policy:evidence`, read only
   when they ask or a prompt names it. An event corroborates a page or fills a
-  gap in it, and never replaces it. A date only the calendar has is offered to
+  gap in it, and never replaces it: it may anchor a rule where the pages give
+  no anchor, and where both give one and disagree, neither is used. A date only the calendar has is offered to
   the page as a patch.
-- **Events this tool created (the `artist` prefix) are not evidence** of
-  anything. Many were projected from pages before this rule, and the musician
-  is clearing them; never offer a cleanup.
+- **Events this tool created earlier (the `artist` prefix) count like any
+  other.** They were projected from pages before this rule and are still
+  valid; none are added now. The musician clears them as they choose; never
+  offer a cleanup.
 - **Completion is never read from a calendar**, and a task with no event is
   not thereby unscheduled.
 

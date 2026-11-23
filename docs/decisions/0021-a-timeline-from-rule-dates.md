@@ -95,8 +95,8 @@ The bar, in `role:digest` beside step 4b:
 - **Only from a rule the reference page records, and an anchor read on a page.**
   The anchor is a full date written on the project's pages — the CL Aufgaben
   page or the one page holding the schedule — and the cell names the page it
-  came from. An anchor from a mail or a calendar is not enough to write on (see
-  open question 2). Where the rule applies and no anchor is written anywhere,
+  came from. Where no page gives the anchor, an event in Ruben's own calendar
+  may (decided 2026-11-23, below). An anchor from a mail is never enough. Where the rule applies and no anchor is written anywhere,
   nothing is written, and the digest names the missing date as the next thing
   to find out. That is the reference page's own rule.
 - **Only where the match is plain.** The task's own wording names the rule's
@@ -145,11 +145,11 @@ The bar, in `role:digest` beside step 4b:
 - **The events already projected stay where they are.** Ruben cleans them up
   himself. No session offers a cleanup or deletes one unasked; if he asks to
   remove a particular one, the existing delete does it.
-- **The calendar becomes evidence the digest may read.** Events without the
-  `artist` prefix are Ruben's, so reading one is reading something he decided.
-  `policy:evidence` still holds: an event corroborates a page or fills a gap
-  in it, and never replaces it. "Never read a deadline back out of a calendar"
-  is narrowed to events the tool created.
+- **The calendar becomes evidence the digest may read.** Every event in it is
+  Ruben's or was made for him, including the `artist` events projected before
+  this record: those stay valid, and only new ones stop. `policy:evidence`
+  still holds: an event corroborates a page or fills a gap in it, and never
+  replaces it. "Never read a deadline back out of a calendar" is dropped.
 
 ### 3. The Zeitplan tab
 
@@ -205,8 +205,8 @@ In 0020's view, built on a `cells` map added to the shared parser.
 - **Custom pack** (its own repository, vendored in at a recorded commit):
   `role:digest` gains the rule-date step beside 4b; `policy:tasks` loses the
   projection and reconciliation, keeps the timing rules (spans end on the ideal
-  date, sliding) as rules for the timeline, and narrows its calendar boundary
-  to the tool's own events; `role:project-manager`'s calendar section follows.
+  date, sliding) as rules for the timeline, and lets a calendar event serve as
+  evidence; `role:project-manager`'s calendar section follows.
 - **`apps/mcp`**: no new tool or capability. The calendar tool descriptions are
   checked for any wording that suggests projecting tasks. The shared parser
   gains a `cells` map.
@@ -264,8 +264,7 @@ longer has to earn its place against being read every morning.
   `role:digest` 4c (rule dates, unattended, at most ten), 4b no longer
   forbidding rule dates; `policy:patch` lists rule dates as allowed unattended
   and calendar events as on request only; `policy:tasks` "Calendars" rewritten
-  (no projection, the musician's events as evidence, the `artist` events not,
-  time rules moved to the Zeitplan) and a "(Regel: …)" cell named as worked
+  (no projection, calendar events as evidence, time rules moved to the Zeitplan) and a "(Regel: …)" cell named as worked
   out; `role:project-manager` follows; the scheduled and watched digest
   prompts gain "Fristen setzen: aus Mails (4b) und aus Regeln (4c)". The
   scheduled prompt is pasted into ChatGPT by hand, so it changes when Ruben
@@ -275,13 +274,22 @@ Not yet verified: the watched digest run, and anything on hosted.
 
 ## Open questions for the owner
 
-1. **Anchors from Ruben's calendar.** Once the calendar holds only his events,
-   a Probenbeginn on it is a date he decided. Should the digest be allowed to
-   count a rule back from it when no page states the anchor, naming the event?
-   Proposed: not yet — list it as *zu bestätigen* with the date it would give,
-   and decide once a few weeks show how often it happens.
-2. **The `Dauer` values** are Ruben's to fill in on the reference page. Until
+1. **The `Dauer` values** are Ruben's to fill in on the reference page. Until
    he does, the timeline is markers.
 
 Decided 2026-11-23: the format is as short as above; the old calendar events
 are Ruben's to clean up; durations are wanted, from a `Dauer` column.
+
+**Decided 2026-11-23, later: a rule may count back from Ruben's calendar.**
+Once the calendar holds only his events, a Probenbeginn on it is a date he
+decided, and the notebook already does this by hand ("gerechnet: mind. 2
+Wochen vor dem 05.10.2026, dem Beginn des Kalenderblocks …"). In `role:digest`
+4c, only where no page gives the anchor and the prompt says "Kalender: lesen":
+every calendar searched; the event's title must name the project and the kind
+of date, or the first day of a named rehearsal block counts as Probenbeginn;
+never a recurring series (an `artist` event projected earlier counts like any
+other, on the owner's word that those remain valid); a page and the
+calendar disagreeing means nothing is written and both go under *Zu klären*,
+as `list_events` already requires reporting both. The digest line names the
+calendar as the anchor's source. This costs Google requests only, one search
+per calendar for each project whose pages lack an anchor.

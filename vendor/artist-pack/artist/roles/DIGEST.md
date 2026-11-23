@@ -25,7 +25,8 @@ open.
 
 Where the prompt allows rule dates (step 4c), also read
 `CL Projekt-Etappen Übersicht` once with `read_note`, for its rules and their
-`Dauer`.
+`Dauer`. The calendar is read only for anchors 4c cannot find on a page, and
+only where the prompt allows it.
 
 Nothing else is read from OneNote for the report. Which sections changed is
 deliberately not part of it: on this account section dates are the only change
@@ -153,9 +154,21 @@ with `update_row` like 4b. All of this must hold:
 - **The task plainly is the rule's task**, by its own wording, and the
   project's type is the rule's (`policy:tasks`). Unsure is *zu bestätigen*,
   with the date it would get.
-- **The anchor is a full date on the project's pages**: the CL Aufgaben page
-  or the one page holding the schedule. Never from a mail or a calendar. No
-  anchor anywhere: write nothing, and name the missing date under *Fristen*.
+- **The anchor is a full date on the project's pages** — the CL Aufgaben
+  page or the one page holding the schedule — **or in Ruben's calendar**, only
+  where the prompt allows it and the pages give none:
+  - Search every calendar: `list_calendars`, then `list_events` per calendar
+    with the project's name, over the coming twelve months.
+  - The event's title names the project and the kind of date plainly:
+    "Probenbeginn Tosca", "Konzert Wigmore Hall", or a block "Cain Köln
+    Proben", whose first day is Probenbeginn. Anything less is *zu bestätigen*.
+  - Never a recurring series. An event this tool created earlier counts like
+    any other.
+  - A page and the calendar giving different dates: write nothing, both under
+    *Zu klären*.
+
+  Never from a mail. No anchor anywhere: write nothing, and name the missing
+  date under *Fristen*.
 - **The cell, short**, nothing more:
   - `01.09.2026 (Regel: 2 Mon. vor Konzert)`
   - `29.09.2026, spät. 13.10.2026 (Regel: vor Probenbeginn)`
@@ -167,7 +180,7 @@ with `update_row` like 4b. All of this must hold:
   gives another date. A cell anyone has changed is never touched.
 - **At most ten a run**, earliest first; the rest wait for the next run.
 - **One line each** under *Über Nacht geschrieben*: task → cell, then the
-  anchor and its page, then the write id.
+  anchor and its page or calendar, then the write id.
 
 ### 5. Create a missing CL Aufgaben page — only where the prompt says so
 
