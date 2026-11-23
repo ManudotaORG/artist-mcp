@@ -2,6 +2,8 @@
 
 Date: 2026-09-15
 
+Status: **accepted and built** (#235). No live verification is recorded.
+
 ## Decision
 
 A new write capability, `onenote-create-section`, registers one tool,

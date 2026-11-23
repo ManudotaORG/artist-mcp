@@ -22,11 +22,13 @@ Open an issue first. Scope here is deliberately narrow and stated in
 default, one OneNote page is one working unit, and Gmail and Calendar are
 supporting evidence rather than working units of their own.
 
-Writes exist, but they are not open ground. Each of the four capabilities
-(`calendar-create`, `calendar-delete`, `onenote-create`, `onenote-edit`) is
-granted by name at install time, registers no tool unless granted, is previewed
-and confirmed before it goes through, and was preceded by a decision record in
-[docs/decisions](docs/decisions). A proposal that adds a write is expected to
+Writes exist, but they are not open ground. Each of the five capabilities
+(`calendar-create`, `calendar-delete`, `onenote-create`,
+`onenote-create-section`, `onenote-edit`) is granted by name at install time,
+registers no tool unless granted, is confirmed before it goes through unless
+this tool can undo it
+([0009](docs/decisions/0009-confirm-by-reversibility.md)), and was preceded by a
+decision record in [docs/decisions](docs/decisions). A proposal that adds a write is expected to
 arrive the same way: as a case for a record, not as a pull request. Proposals
 that add message sending, synchronization, background execution, or any
 capability that deletes a person's content will be declined on principle rather

@@ -99,10 +99,11 @@ request of yours is visible to anyone but you and the provider.
 
 **Google connections currently expire after seven days.** The Google OAuth app
 is in Google's *Testing* publishing status, which caps the life of a refresh
-token; when it lapses, the next Gmail or Calendar call reports that the
-connection needs reconnecting, and `connect google` restores it. Microsoft is
-unaffected. Tracked in
-[#94](https://github.com/ManudotaORG/artist-mcp/issues/94).
+token. `artist-mcp status` warns before it lapses; when it does, the next Gmail
+or Calendar call reports that the connection needs reconnecting, and `connect
+google` restores it. Microsoft is unaffected. Lifting it needs Google's app
+verification, tracked in
+[#167](https://github.com/ManudotaORG/artist-mcp/issues/167).
 
 ## Writes
 
@@ -118,7 +119,8 @@ npx @manudota/artist-mcp init --allow-writes onenote-create,calendar-create
 | `calendar-create` | Add a single event to a Google Calendar |
 | `calendar-delete` | Remove an event. One you made is shown first and removed only after you confirm |
 | `onenote-create` | Add a new page to a section |
-| `onenote-edit` | Change a page this tool itself created — append, or replace part of one. Microsoft enforces this: the scope cannot reach a page you wrote |
+| `onenote-create-section` | Add a new, empty section to a notebook. It cannot rename or delete one |
+| `onenote-edit` | Change a page this tool itself created — append, add or change a row in a task table, undo those, or replace part of the page. Microsoft enforces this: the scope cannot reach a page you wrote |
 
 Granting `calendar-create` and `calendar-delete` together also allows editing
 any event in place (title, times, location, notes, colour) after you confirm the
@@ -126,10 +128,14 @@ change, and rescheduling an event this tool created. Invitations from others and
 whole recurring series are refused, and nobody is emailed.
 
 Three things hold for all of them. A capability you did not grant registers no
-tool at all, so it cannot be invoked, argued for, or reached by mistake. Every
-write is preceded by a preview of the exact change, and the write only goes
-through with the token that preview returns. And every write is recorded in
-`~/.artist-mcp/writes.log`, with the previous content for anything it changed.
+tool at all, so it cannot be invoked, argued for, or reached by mistake.
+Confirmation follows what a write can destroy: one this tool can undo — a
+created event or page, an append, a task row added or changed — goes through in
+one call, and its result says what changed and how to undo it (`undo_write`, by
+the write id it names); one that overwrites or removes your own content is shown
+first and goes through only with the token that preview returns. And every write
+is recorded in `~/.artist-mcp/writes.log` before it is made, with the previous
+content for anything it changed — no record, no write.
 
 **Nothing deletes a OneNote page**, and no message is ever sent. Those are scope
 commitments, not capabilities that happen to be off.

@@ -46,8 +46,9 @@ sets `ARTIST_MCP_AGENTS_DIR` to `vendor/artist-pack`, so the custom pack is
 layered over the bundled one by exactly the mechanism a musician's own directory
 uses: entries shadow by id, and anything the custom pack does not define — plus
 any playbook a later release adds — still comes from the bundle. Today that
-resolves to 21 entries, the 17 bundled ids all shadowed and four project types
-added (BCW, Gastdirigat, Festivalleitung, GPT).
+resolves to 23 entries: the 17 bundled ids all shadowed, and six added — four
+project types (BCW, Gastdirigat, Festivalleitung, GPT), `policy:tasks` and
+`role:digest`.
 
 The pack's home is `ManudotaORG/artist-mcp-custom-pack`, which is **private**.
 That is why the files are committed here rather than pulled in as a git
@@ -137,16 +138,18 @@ pnpm --filter @manudota/artist-mcp context-budget
 
 It prints two numbers that are not the same kind, and the difference between
 them is larger than it looks. The **tool list is re-sent with every request**;
-the briefing is sent **once**, when `list_agent_workflows` is called. As of this
-writing an install with no write grants pays 4,337 tokens per request and 11,584
-once; one holding every grant pays 9,375 per request and 12,713 once.
+the briefing is sent **once**, when `list_agent_workflows` is called. Measured
+on 2026-11-23: an install with no write grants pays about 7,500 tokens per
+request and 11,900 once; one holding every grant pays about 10,400 per request
+and 12,100 once.
 
-So the tool list outweighs the entire briefing after 1.4 turns at full grants,
-and over a twenty-turn session it is roughly 187,000 tokens against 12,700.
-Trimming a policy is worth doing and is not where the budget is: half of every
-request is write tooling.
+So the tool list outweighs the entire briefing after 1.2 turns at full grants,
+and over a twenty-turn session it is roughly 209,000 tokens against 12,100.
+Trimming a policy is worth doing and is not where the budget is: more than a
+quarter of every request at full grants is write tooling, and the read tools
+grew more than the write ones since this was first counted.
 [Decision 0007](decisions/0007-the-token-carries-the-payload.md) is a rejected
-attempt at that half, kept for its measurements — read it before proposing
+attempt at the write half, kept for its measurements — read it before proposing
 anything there, because it also records what would have to change for the
 answer to differ. Measure the wire payload rather than the
 description strings: input schemas are almost exactly as large again as the
@@ -265,7 +268,7 @@ npx @manudota/artist-mcp init --editable [directory]   # default ~/artist-mcp
 ```
 
 Entries there shadow the bundled pack **by id**, so editing one project type does
-not fork the other twelve, and a playbook added by a later package version still
+not fork the other sixteen, and a playbook added by a later package version still
 arrives. A file whose id is not in the bundled pack is **added** rather than
 shadowing anything, so a user can write their own project types and roles, not
 only edit the shipped ones.

@@ -1,6 +1,11 @@
 # 0015 — Recovery replaces confirmation
 
-Status: **proposed, not built.** Written for review before any code. Would amend
+Status: **accepted; being built in parts.** Step 1's first move (an append
+commits in one call) is built and verified on hosted, and the OneNote task-row
+half is built by [0018](0018-undo-and-unattended-row-updates.md). The rest —
+replaces, inserts and the calendar — is planned in
+[0019](0019-retiring-the-previews.md). Originally written for review before any
+code. Amends
 [0004](0004-onenote-page-maintenance.md) (editing a page this tool created),
 [0009](0009-confirm-by-reversibility.md) (confirm by what a write can destroy)
 and [0013](0013-editing-any-calendar-event.md) (editing any calendar event), and
@@ -171,6 +176,9 @@ that would change an existing line goes into the result to be confirmed.
 **Its OneNote half has a build plan**: [0018](0018-undo-and-unattended-row-updates.md),
 proposed on 2026-11-23, which undoes at the level of one table row rather than
 a whole table, following 0017.
+
+The rest — replaces, inserts and the calendar previews — is planned in
+[0019](0019-retiring-the-previews.md), proposed on 2026-11-23.
 
 ## What has to change, and what does not
 

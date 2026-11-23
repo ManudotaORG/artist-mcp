@@ -231,8 +231,9 @@ docs/           the brief
 
   Measure before assuming where the cost is:
   `pnpm --filter @manudota/artist-mcp context-budget`. The tool list is roughly
-  fifteen times the briefing over a session, and half of it is write tooling —
-  which is not where anyone looked first, including twice in
+  seventeen times the briefing over a twenty-turn session at full grants, and
+  more than a quarter of it is write tooling — which is not where anyone looked
+  first, including twice in
   [docs/decisions/0007](docs/decisions/0007-the-token-carries-the-payload.md).
 - **A rule in a role is not in force.** Roles arrive in the briefing as a
   one-line summary; only project types and the policies in the `ALWAYS` array

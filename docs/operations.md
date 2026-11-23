@@ -262,6 +262,8 @@ mistake this section exists to prevent:
 | `connections.refresh_token`, `.access_token` | `pgp_sym_encrypt`; the key is passed per call and never lives in the database |
 | `mcp_keys.key_hash` | sha256 of a maintainer-issued key; the key itself is shown once and never stored |
 | `oauth_clients`, `oauth_codes`, `oauth_tokens` | RLS with **no policies**, so PostgREST exposes nothing; secrets stored as sha256 |
+| `write_grants` | Which write capabilities each hosted user agreed to. RLS with no policies; read and set only through service-role functions (`write_grants_for`) |
+| `write_audit` | Every hosted write, **in plain text**: what was written and, for a change to existing content, what it replaced (`pre_image`). Note and calendar content, not credentials, and since 0018 the only way back for an undo. RLS with no policies, insert-only through `record_write`, read through `writes_for`; both service role only. Kept indefinitely for now (0018, decision 5) |
 
 Two protections doing different jobs, as in the original schema: RLS keeps one
 signed-in user out of another's rows, pgcrypto keeps a stolen dump from yielding

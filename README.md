@@ -10,10 +10,12 @@ Attachments on an evidence email (PDF, image, Word) can be mapped and read the
 same way. Either connection stands alone: connect OneNote, Google, or both, and
 disconnecting one leaves the other working.
 
-Reading is the default, and no message is ever sent. Four write capabilities
+Reading is the default, and no message is ever sent. Five write capabilities
 exist, each granted by name at install time with
-`artist-mcp init --allow-writes <capability>`, and each showing the exact change
-and waiting for your yes before it goes through:
+`artist-mcp init --allow-writes <capability>`. A write this tool can undo goes
+through in one call and its result says how to undo it; one that overwrites or
+removes your own content is shown to you first and waits for your yes
+([0009](docs/decisions/0009-confirm-by-reversibility.md)):
 
 - `calendar-create` — add a single Google Calendar event.
 - `calendar-delete` — remove an event. One it created goes at once; one you
@@ -22,8 +24,11 @@ and waiting for your yes before it goes through:
   confirm the change, and rescheduling an event it created. Invitations from
   others and whole recurring series are refused, and nobody is emailed.
 - `onenote-create` — add a new page to a section.
-- `onenote-edit` — change a page **it created itself**. Microsoft enforces that
-  one: the scope cannot reach a page you wrote.
+- `onenote-create-section` — add a new, empty section to a notebook.
+- `onenote-edit` — change a page **it created itself**: add to the end, add or
+  change a row in a task table, and undo those, in one call; replace or insert
+  anything else after you confirm. Microsoft enforces the boundary: the scope
+  cannot reach a page you wrote.
 
 Without the flag the tools are not there at all — a capability you did not grant
 registers nothing for a client to call. No page is ever deleted, and nothing is

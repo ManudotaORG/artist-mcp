@@ -20,7 +20,7 @@ The product adds narrow, installable musician-workflow playbooks to live OneNote
 
 ## Operating Context
 
-Users move between live performance, studio work, and practical production administration. Their OneNote pages contain project facts, milestones, tasks, and contacts. Claude or Codex coordinates the workflow; the user reviews every change it proposes and performs every other external action themselves.
+Users move between live performance, studio work, and practical production administration. Their OneNote pages contain project facts, milestones, tasks, and contacts. Claude or Codex coordinates the workflow; a change the tool cannot undo itself is shown to the user first, and the user performs every other external action themselves.
 
 ## Capabilities and Constraints
 
@@ -32,10 +32,10 @@ Users move between live performance, studio work, and practical production admin
 - Read-only Google Calendar event listing and reading, as supporting evidence. Recurring occurrences are expanded and flagged; times are always reported with their zone. A calendar entry is never itself a working unit.
 - Where a page and a source disagree, both are reported with their source named. Nothing picks a winner.
 - Either connection stands alone: a user may connect OneNote, Gmail, or both, and disconnecting one leaves the other working.
-- Checksummed runtime registry of seven roles and four starter project types, or a directory of the musician's own layered over it.
+- Checksummed runtime registry of seven roles, four starter project types and six policies, or a directory of the musician's own layered over it.
 - Results appear only in chat.
 - No writes to any source apart from the opt-ins below: no message sending, replying, drafting, labelling, RSVP responses, deletion of anything the musician wrote, background jobs, synchronization, or workflow state in Supabase.
-- Four exceptions, opt-in per install by name and off by default: creating a single Google Calendar event; deleting an event, and editing one in place, including the musician's own, which is shown and confirmed first and never touches an invitation from someone else or a whole recurring series (0013); creating a OneNote page; and editing a OneNote page this tool itself created, which Microsoft enforces rather than this code. Each is previewed and confirmed before it goes through, and a capability that was not granted registers no tool at all. A gig that lives on a page and never reaches the calendar makes the musician the sync layer, which is the thing this product exists to stop being true. It went first because a wrong calendar event is deleted in two seconds and a corrupted OneNote page is not. See [docs/decisions](docs/decisions), records 0001 and 0003 to 0006.
+- Five exceptions, opt-in per install by name and off by default: creating a single Google Calendar event; deleting an event, and editing one in place, including the musician's own, which is shown and confirmed first and never touches an invitation from someone else or a whole recurring series (0013); creating a OneNote page; creating a OneNote section; and editing a OneNote page this tool itself created, which Microsoft enforces rather than this code. Confirmation follows what a write can destroy (0009): a write this tool can undo — a created event or page, an append, a task row added or changed — goes through in one call and says how to undo it, and one that overwrites or removes the musician's own content is shown and confirmed first. A capability that was not granted registers no tool at all. A gig that lives on a page and never reaches the calendar makes the musician the sync layer, which is the thing this product exists to stop being true. It went first because a wrong calendar event is deleted in two seconds and a corrupted OneNote page is not. See [docs/decisions](docs/decisions), records 0001, 0003 to 0006, 0009 and 0015 to 0018.
 - No availability computation or scheduling suggestions; reading a calendar is not planning against it.
 - Operator access is not a limit for the published package: sign-in happens on the user's own machine, the refresh tokens stay there, and no deployed credential can read them. [#22](https://github.com/ManudotaORG/artist-mcp/issues/22) removed the mechanism that made it one.
 - It *is* a limit for the hosted server, deliberately and visibly. [#55](https://github.com/ManudotaORG/artist-mcp/issues/55) added a remote MCP for clients that cannot run a local process, and acting for someone while their machine is off means holding their credentials. Tokens are encrypted at rest with a key the database never holds, and only the service role can decrypt them — which narrows who can read them without reducing it to nobody. Hosted users are told exactly that before they consent, access is arranged directly rather than signed up for, and the published package has no way to be pointed at a hosted server. The two custody models are separate offerings, not one product with a setting.
@@ -59,7 +59,8 @@ Users move between live performance, studio work, and practical production admin
 
 - Keep the artist focused on one useful next action.
 - Read live source context instead of creating a stale copy.
-- Make every external action human-reviewed and human-executed.
+- Never send anything on the musician's behalf; every message and every other external action is theirs to execute.
+- A write that cannot be undone by the tool is reviewed by a person before it goes through.
 - Keep workflow policy legible and changeable as Markdown.
 - Explain trust boundaries in plain language, including the ones not yet solved. Never claim a stronger guarantee than the architecture provides.
 
