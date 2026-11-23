@@ -185,3 +185,10 @@ kinds over calls that already exist — plus its live run.
    it opens.
 5. **Order**: calendar in this round, or after the OneNote half is verified on
    hosted. Recommended: after.
+
+## What would change the plan
+
+MCP elicitation, if the clients in use support it, puts a question in front of
+the musician rather than the model — the one thing 0015 names as better than a
+recovery. [#155](https://github.com/ManudotaORG/artist-mcp/issues/155) is the
+spike. It is worth settling before step 4 removes `preview_onenote_edit`.
