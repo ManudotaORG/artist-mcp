@@ -333,8 +333,18 @@ yet on the OAuth consent screen).
   exported as `@manudota/artist-mcp/task-pages`, with `map_notes` in tasks
   mode now calling the same function. The `cells` map was not built then;
   it was added for [0021](0021-a-timeline-from-rule-dates.md) on 2026-11-23,
-  once the session owning `tasks.ts` had finished. Heute, Fristen and Menschen
-  can now be built from it and are not yet.
+  once the session owning `tasks.ts` had finished.
+- **Heute, Fristen and Menschen**, built 2026-11-23 from `cells`, in
+  `DateViews.tsx` with the helpers in `task-timeline.ts`. Two departures from
+  the table above, both for brevity and consistency with 0021: a row leads
+  with its date alone (plus "vorbei" or "gerechnet"), and the cell as written
+  is in the row when opened; and Fristen sorts every date 0021's reader
+  accepts, the ideal/latest pair by its ideal date, rather than only a single
+  date. Heute is still "Frist heute oder vorbei, laut Seite", then urgent tasks
+  with no date. Menschen groups the `Verantwortlich` cell exactly as written
+  ("Ruben" and "Rubén" are two groups), then handovers by who has them. On the
+  live read: Heute 13 (11 past, 2 urgent), Fristen 21 plus 30 in words,
+  Menschen 110 for "Ruben" and 20 tasks with no such column. Seen at 375 px.
 - **Migration** `20261124120000_task_view.sql`: the three tables, the
   functions, and `disconnect_provider` deleting the snapshot on a Microsoft
   disconnect. **Applied to production on 2026-11-23** with `supabase db push`,

@@ -145,8 +145,18 @@ const DateLead = ({ item }: DateLeadProps) => (
     {item.overdueSince !== null
       ? `überfällig seit ${germanDay(item.overdueSince)}`
       : germanDay(item.end)}
-    {item.rule ? ' (Regel)' : ''}{' '}
+    {item.rule ? ' · gerechnet' : ''}{' '}
   </Typography>
+);
+
+/** A snapshot stored before the parser returned cells has no Frist to read. */
+const NeedsRefresh = () => (
+  <div className="border border-signal-yellow p-3">
+    <Typography variant="small">
+      Der gespeicherte Stand ist zu alt für diese Ansicht. Nach der nächsten Aktualisierung steht
+      sie hier.
+    </Typography>
+  </div>
 );
 
 type ZeitplanProps = {
@@ -154,16 +164,7 @@ type ZeitplanProps = {
 };
 
 const Zeitplan = ({ timeline }: ZeitplanProps) => {
-  if (!timeline.available) {
-    return (
-      <div className="border border-signal-yellow p-3">
-        <Typography variant="small">
-          Der gespeicherte Stand ist älter als der Zeitplan. Nach der nächsten Aktualisierung stehen
-          die Fristen hier.
-        </Typography>
-      </div>
-    );
-  }
+  if (!timeline.available) return <NeedsRefresh />;
   const undated = timeline.urgent.length + timeline.undated.length + timeline.unclear.length;
   return (
     <>
@@ -240,4 +241,4 @@ const Zeitplan = ({ timeline }: ZeitplanProps) => {
   );
 };
 
-export { Zeitplan };
+export { NeedsRefresh, Zeitplan };

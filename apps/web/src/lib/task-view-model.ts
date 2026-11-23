@@ -79,9 +79,6 @@ export const isViewId = (value: unknown): value is ViewId =>
  * than hidden, so their absence is not read as nothing to do.
  */
 export const WAITING: Partial<Record<ViewId, string>> = {
-  heute: 'Noch nicht gebaut. Die Fristen stehen schon im Zeitplan.',
-  fristen: 'Noch nicht gebaut. Die Fristen stehen schon im Zeitplan.',
-  menschen: 'Noch nicht gebaut. Wer eine Aufgabe übernommen hat, steht unter Warten / delegiert.',
   taetigkeiten:
     'Auf den CL Aufgaben-Seiten steht nirgends, welche Art Arbeit eine Aufgabe ist. Das wartet auf ' +
     'die Entscheidung in „CL Aufgaben-Kategorien“, ob es eine Spalte oder ein Tag wird. Geraten wird ' +

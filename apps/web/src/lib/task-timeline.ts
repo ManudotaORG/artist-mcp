@@ -70,7 +70,7 @@ export const readFrist = (cell: string): Frist | null => {
   const text = cell
     .trim()
     .replace(/^(?:idealerweise|bis(?:\s+zum|\s+spätestens)?|vor(?:\s+dem)?)\s+/i, '');
-  const rule = /\((?:Regel:[^)]*|gerechnet)\)/i.test(text);
+  const rule = /\(Regel:|\bgerechnet\b/i.test(text);
 
   // A span: "15.–29.09.2026", "15.09.–29.09.2026", "15.09.2026–29.09.2026".
   const span = new RegExp(String.raw`^${DAY_MONTH}(\d{4})?\s*[–-]\s*${DATE}`).exec(text);
@@ -183,4 +183,44 @@ export const lanes = (items: PlacedTask[]): PlacedTask[][] => {
     else out.push([item]);
   }
   return out;
+};
+
+/** The date the page gives, before any sliding. */
+export const dueOn = (item: PlacedTask): Day => item.overdueSince ?? item.end;
+
+/** Fristen: every placed task, by the date the page gives, earliest first. */
+export const byDue = (timeline: Timeline): PlacedTask[] =>
+  [...timeline.placed].sort((a, b) => dueOn(a).localeCompare(dueOn(b)));
+
+/** Heute (0020): open tasks whose Frist, as the page gives it, is today or earlier. */
+export const dueByToday = (timeline: Timeline): PlacedTask[] =>
+  byDue(timeline).filter((item) => dueOn(item) <= timeline.today);
+
+/** One person, as the `Verantwortlich` cell writes them, and their open tasks. */
+export type PersonGroup = { who: string; tasks: ShownTask[] };
+
+/**
+ * Menschen (0020): open tasks grouped by the `Verantwortlich` cell exactly as
+ * written. Names are not split out of a cell or merged across spellings: "Büro"
+ * and "Ruben, Büro" are two groups, because deciding they overlap is reading.
+ * Tasks with no such cell are counted, not grouped.
+ */
+export const byResponsible = (open: ShownTask[]): { groups: PersonGroup[]; without: number } => {
+  const groups = new Map<string, ShownTask[]>();
+  let without = 0;
+  for (const task of open) {
+    const key = Object.keys(task.cells ?? {}).find((k) => /^verantwortlich/i.test(k.trim()));
+    if (key === undefined) {
+      without++;
+      continue;
+    }
+    const who = (task.cells as Record<string, string>)[key].trim() || '(leer)';
+    groups.set(who, [...(groups.get(who) ?? []), task]);
+  }
+  return {
+    groups: [...groups.entries()]
+      .map(([who, tasks]) => ({ who, tasks }))
+      .sort((a, b) => b.tasks.length - a.tasks.length || a.who.localeCompare(b.who, 'de')),
+    without,
+  };
 };

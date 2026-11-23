@@ -5,8 +5,9 @@ import { Typography } from '@/components/ui/Typography';
 import { cn } from '@/lib/utils';
 import { CurrentTabIntoView } from './CurrentTabIntoView';
 import { Empty, HandoverRow, List, Marker, OneNoteLink, SUMMARY, TaskRow } from './TaskRows';
+import { Fristen, Heute, Menschen } from './DateViews';
 import { Zeitplan } from './Zeitplan';
-import { type Timeline } from '@/lib/task-timeline';
+import { dueByToday, type Timeline } from '@/lib/task-timeline';
 import {
   VIEWS,
   WAITING,
@@ -129,12 +130,13 @@ const Tabs = ({ view, current, timeline }: TabsProps) => (
   >
     <ul className="flex gap-2">
       {VIEWS.map(({ id, label }) => {
-        const count =
-          id === 'zeitplan'
-            ? timeline.available
-              ? timeline.placed.length
-              : null
-            : view.counts[id];
+        const count = !timeline.available
+          ? view.counts[id]
+          : id === 'zeitplan' || id === 'fristen'
+            ? timeline.placed.length
+            : id === 'heute'
+              ? dueByToday(timeline).length + timeline.urgent.length
+              : view.counts[id];
         return (
           <li key={id} className="shrink-0">
             <Link
@@ -171,6 +173,11 @@ type BodyProps = {
 
 const Body = ({ view, current, timeline, seenControl }: BodyProps) => {
   if (current === 'zeitplan') return <Zeitplan timeline={timeline} />;
+  if (current === 'heute') return <Heute timeline={timeline} />;
+  if (current === 'fristen') return <Fristen timeline={timeline} />;
+  if (current === 'menschen') {
+    return <Menschen open={view.open} delegated={view.delegated} available={timeline.available} />;
+  }
 
   const waiting = WAITING[current];
   if (waiting !== undefined) {

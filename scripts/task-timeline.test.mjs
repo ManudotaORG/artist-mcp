@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildTimeline, lanes, readFrist } from '../apps/web/src/lib/task-timeline.ts';
+import {
+  buildTimeline,
+  byDue,
+  byResponsible,
+  dueByToday,
+  lanes,
+  readFrist,
+} from '../apps/web/src/lib/task-timeline.ts';
 
 /**
  * The Zeitplan (0021): which Frist cells are read as dates, and how an overdue
@@ -32,6 +39,7 @@ test('a single date, written or from a rule', () => {
   assert.equal(readFrist('25.12.2026 (gerechnet)')?.rule, true);
   assert.equal(readFrist('bis zum 11.11.2026')?.end, '2026-11-11');
   assert.equal(readFrist('vor 05.01.2027')?.end, '2027-01-05');
+  assert.equal(readFrist('21.09.2026 — gerechnet: mind. 2 Wochen vor dem 05.10.2026')?.rule, true);
 });
 
 test('an ideal date with a latest one after it', () => {
@@ -100,4 +108,30 @@ test('without cells from the parser, nothing is placed and the view says it cann
 test('overlapping tasks of one project get their own lanes', () => {
   const t = buildTimeline([shown('A', '01.–10.12.2026'), shown('B', '05.12.2026'), shown('C', '11.12.2026')], '2026-11-23');
   assert.deepEqual(lanes(t.rows[0].items).map((l) => l.map((i) => i.task.text)), [['A', 'C'], ['B']]);
+});
+
+test('Fristen orders by the date the page gives, and Heute keeps what is due by today', () => {
+  const t = buildTimeline(
+    [shown('Später', '10.12.2026'), shown('Heute', '23.11.2026'), shown('Lange her', '01.10.2026')],
+    '2026-11-23',
+  );
+  assert.deepEqual(byDue(t).map((x) => x.task.text), ['Lange her', 'Heute', 'Später']);
+  assert.deepEqual(dueByToday(t).map((x) => x.task.text), ['Lange her', 'Heute']);
+});
+
+test('Menschen groups by the Verantwortlich cell as written, and never splits or merges it', () => {
+  const who = (text, v) => shown(text, '01.12.2026', { cells: v === null ? { Frist: 'x' } : { Verantwortlich: v } });
+  const { groups, without } = byResponsible([
+    who('a', 'Ruben'),
+    who('b', 'Ruben'),
+    who('c', 'Ruben, Büro'),
+    who('d', ''),
+    who('e', null),
+    shown('f', undefined, { cells: null }),
+  ]);
+  assert.deepEqual(
+    groups.map((g) => [g.who, g.tasks.length]),
+    [['Ruben', 2], ['(leer)', 1], ['Ruben, Büro', 1]],
+  );
+  assert.equal(without, 2);
 });
