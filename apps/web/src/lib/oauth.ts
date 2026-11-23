@@ -1,7 +1,6 @@
 import 'server-only';
 
 import { createHash, randomBytes } from 'node:crypto';
-import { createClient } from '@supabase/supabase-js';
 import { getSiteUrl } from '@/lib/siteUrl';
 
 /**
@@ -35,17 +34,6 @@ export const newSecret = (prefix: string): string =>
 
 /** Stored form. Never the value itself — a dump must not yield anything presentable. */
 export const hash = (value: string): string => createHash('sha256').update(value).digest('hex');
-
-export const admin = () => {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (url === undefined || secret === undefined) {
-    throw new Error('Supabase credentials are not configured on this deployment.');
-  }
-  return createClient(url, secret, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-};
 
 /**
  * A redirect_uri is only acceptable if it was registered, compared whole.

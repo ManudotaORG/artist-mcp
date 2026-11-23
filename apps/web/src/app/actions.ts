@@ -1,7 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getSiteUrl } from '@/lib/siteUrl';
 import { supabaseServer } from '@/lib/supabase/server';
 import { WRITE_CAPABILITIES, type WriteCapability } from '@manudota/artist-mcp/grants';
@@ -107,13 +107,7 @@ export const setWriteGrant = async (formData: FormData) => {
   } = await supabase.auth.getUser();
   if (!user) redirect('/sign-in');
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
-    { auth: { persistSession: false, autoRefreshToken: false } },
-  );
-
-  const { error } = await admin.rpc('set_write_grants', {
+  const { error } = await supabaseAdmin().rpc('set_write_grants', {
     p_user_id: user.id,
     p_capabilities: wanted ? (Object.keys(WRITE_CAPABILITIES) as WriteCapability[]) : [],
   });

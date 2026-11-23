@@ -1,4 +1,5 @@
-import { admin, hash, json, newSecret, oauthError } from '@/lib/oauth';
+import { hash, json, newSecret, oauthError } from '@/lib/oauth';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 /**
  * RFC 7591 dynamic client registration.
@@ -67,7 +68,7 @@ export const POST = async (request: Request): Promise<Response> => {
   const wantsSecret = body.token_endpoint_auth_method === 'client_secret_post';
   const clientSecret = wantsSecret ? newSecret('secret') : null;
 
-  const { error } = await admin()
+  const { error } = await supabaseAdmin()
     .from('oauth_clients')
     .insert({
       client_id: clientId,

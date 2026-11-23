@@ -1,8 +1,9 @@
 import { Typography } from '@/components/ui/Typography';
-import { SCOPE, admin, redirectAllowed } from '@/lib/oauth';
+import { SCOPE, redirectAllowed } from '@/lib/oauth';
 import { supabaseServer } from '@/lib/supabase/server';
 import { approve } from './actions';
 import { SignInToAuthorize } from './sign-in';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 /**
  * The consent screen.
@@ -51,7 +52,7 @@ const AuthorizePage = async ({ searchParams }: { searchParams: Promise<Params> }
     );
   }
 
-  const { data: client } = await admin()
+  const { data: client } = await supabaseAdmin()
     .from('oauth_clients')
     .select('client_id, client_name, redirect_uris')
     .eq('client_id', clientId)

@@ -7,20 +7,8 @@
  * docs/decisions/0002-hosted-writes.md.
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import { isWriteCapability, type WriteCapability } from '@manudota/artist-mcp/grants';
-
-const need = (name: string): string => {
-  const value = process.env[name];
-  if (value === undefined || value === '')
-    throw new Error(`${name} is not set on this deployment.`);
-  return value;
-};
-
-const admin = () =>
-  createClient(need('NEXT_PUBLIC_SUPABASE_URL'), need('SUPABASE_SERVICE_ROLE_KEY'), {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
 
 /**
  * The capabilities this user opted into, or none.
@@ -40,7 +28,7 @@ const admin = () =>
  */
 export const writeGrantsFor = async (userId: string): Promise<WriteCapability[]> => {
   try {
-    const { data, error } = await admin().rpc('write_grants_for', { p_user_id: userId });
+    const { data, error } = await supabaseAdmin().rpc('write_grants_for', { p_user_id: userId });
     if (error) {
       console.error(`[artist-mcp] could not read write grants for ${userId}: ${error.message}`);
       return [];
