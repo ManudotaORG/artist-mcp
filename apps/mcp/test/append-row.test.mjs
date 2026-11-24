@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { appendRows, applyEdit, previewEdit } from '../dist/onenote-patch.js';
+import { applyEdit, previewEdit } from '../dist/onenote-patch.js';
+import { appendRows } from '../dist/onenote-rows.js';
 
 /**
  * append_row (0017): the server adds task rows to a table and carries every

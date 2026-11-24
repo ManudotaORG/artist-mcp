@@ -274,6 +274,10 @@ test('no module outside the sanctioned list exports a write-shaped helper', asyn
     'attachments.ts',
     'onenote-write.ts',
     'onenote-patch.ts',
+    // 0019 step 0 split these two out of onenote-patch.ts; a module absent
+    // from this list is not scanned, so they joined it in the same commit.
+    'onenote-rows.ts',
+    'onenote-undo.ts',
     'tasks.ts',
   ];
   // The sanctioned write path, named in full. Anything else matching the shape
@@ -339,10 +343,10 @@ test('no module outside the sanctioned list exports a write-shaped helper', asyn
     // until `append`, `update` and `undo` joined the pattern: appendRows and
     // updateRow shipped while the guard was blind to both, a fifth way it went
     // blind — a write named for the unit it changes. previewRowUpdate is a read.
-    'onenote-patch.ts:appendRows',
-    'onenote-patch.ts:updateRow',
-    'onenote-patch.ts:previewRowUpdate',
-    'onenote-patch.ts:undoWrite',
+    'onenote-rows.ts:appendRows',
+    'onenote-rows.ts:updateRow',
+    'onenote-rows.ts:previewRowUpdate',
+    'onenote-undo.ts:undoWrite',
   ];
   const found = [];
   for (const file of files) {

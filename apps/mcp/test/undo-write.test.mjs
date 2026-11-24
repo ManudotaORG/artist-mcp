@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createServer } from '../dist/server.js';
-import { appendRows, previewRowUpdate, undoWrite, updateRow } from '../dist/onenote-patch.js';
+import { appendRows, previewRowUpdate, updateRow } from '../dist/onenote-rows.js';
+import { undoWrite } from '../dist/onenote-undo.js';
 
 /**
  * undo_write (0018 step 3). Each kind of write is made with the real code, so

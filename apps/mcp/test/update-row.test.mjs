@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { applyEdit, previewEdit, previewRowUpdate, updateRow } from '../dist/onenote-patch.js';
+import { applyEdit, previewEdit } from '../dist/onenote-patch.js';
+import { previewRowUpdate, updateRow } from '../dist/onenote-rows.js';
 
 /**
  * update_row (0018 step 2): one task row changed by the server — its tick or

@@ -27,7 +27,8 @@ import {
 import { listEmails, readEmail, readThread } from './mail.js';
 import { listNotebooks, listNotes, mapNotes, readNote, type OneNoteSection } from './notes.js';
 import { mapTasks } from './tasks.js';
-import { applyEdit, previewEdit, undoWrite, type ReadWriteLog } from './onenote-patch.js';
+import { applyEdit, previewEdit } from './onenote-patch.js';
+import { undoWrite, type ReadWriteLog } from './onenote-undo.js';
 import { createPage, createSection } from './onenote-write.js';
 import { accessTokenFor } from './oauth.js';
 import { type ProviderName, loadTokens } from './tokens.js';
