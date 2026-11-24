@@ -174,8 +174,11 @@ it; 3 only if Google gives no answer.
   whose operation names the calendar; OneNote rows stay. Guarded in
   `scripts/hosted-custody.test.mjs`. Exercised on a throwaway Postgres 16: a
   Google disconnect left the user's OneNote row, the other user's calendar row
-  and the Microsoft connection, and `anon` was refused. **Not yet applied to
-  production.**
+  and the Microsoft connection, and `anon` was refused. **Applied to production on
+  2026-11-24** with `supabase db push`, after a dry run showed it was the only
+  migration production lacked; checked there: `disconnect_provider` calls
+  `forget_my_google_writes`, which is security definer, refused to `anon` and
+  callable by `authenticated`.
 - **Local:** `artist-mcp disconnect google` removes calendar lines from
   `~/.artist-mcp/writes.log` (temporary file, then rename; a torn line is
   kept), also when no connection is left, so a log an older version left can
