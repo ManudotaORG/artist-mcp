@@ -77,6 +77,49 @@ MCP GA. Unresolved until tried.
   names, is that. Worth stating in the docs rather than assuming.
 - Nothing here trains on data, builds embeddings, or scrapes.
 
+## Mail attachments, which matter most
+
+Checked again 2026-11-24 against the German and English reference pages: the
+same ten tools, `get_message` described as the tool to "examine attachment
+metadata", no attachment tool. The owner calls losing attachments a big deal,
+so the ways to keep them, most reliable first:
+
+1. **Ask Google for an attachment tool** while the server is in Developer
+   Preview, the stage at which gaps are collected. Costs nothing; promises
+   nothing.
+2. **The file on the OneNote page.** Read through Microsoft with
+   `read_page_attachment`, untouched by Google's rules. Ruben drags it from
+   Gmail onto the page, or, if Microsoft still offers it, forwards the mail to
+   `me@onenote.com`. Works for certain; costs Ruben a step per document.
+3. **A button in the web app, outside the AI**, on its own non-agent OAuth
+   client calling Gmail's REST API, as Google's announcement allows for
+   "traditional" features: Ruben clicks to put a mail's attachment on the
+   project page. Two objections, neither settled: the addendum forbids
+   obfuscating to avoid classification, and a copy whose purpose is that the AI
+   reads it may count as that; and it is the first feature to move content
+   between sources, which the repository rule against synchronization stops
+   until decided.
+4. **Google Drive.** Gmail saves an attachment to Drive, and Google has a Drive
+   MCP server. Whether it reads file contents is unchecked, and Drive would be
+   a new source, which is a decision of its own.
+
+5. **Everything on MCP except attachments, which stay on REST** — only with
+   Google's written permission. Technically it probably works: the quota page
+   says agents calling REST directly "stay on Standard Tier limits", which
+   reads as throttled rather than blocked, and usage here is tiny. Under the
+   addendum it does not: clause 1 makes no exception for what the MCP server
+   lacks, and a second "non-agent" client for the same call is the
+   obfuscation it forbids. The cost of being wrong is not one feature but the
+   OAuth client or the project, which is every Google tool for every user. So
+   the attachment path is built as its own module with its own transport:
+   switched to Google's tool if one comes, kept on REST if Google says so in
+   writing, switched off on 1 February otherwise, answering with the file's
+   name and a pointer to the OneNote page.
+
+Proposed: 1 now, with the question that decides 5 in the same request; 4
+checked in the spike; 2 as the floor that certainly works; 5 if Google allows
+it; 3 only if Google gives no answer.
+
 ## Options
 
 1. **Call Google's MCP servers from inside artist-mcp** (proposed). The tools
@@ -139,6 +182,6 @@ MCP GA. Unresolved until tried.
 
 1. Option 1, 2, or a mix (reads through artist-mcp, writes left to the
    assistant's own Google connector)?
-2. Is losing Gmail attachments acceptable, if Google's server cannot read them?
+2. Attachments: which of the routes above, given that losing them is not acceptable?
 3. Is a read-then-write edit guard acceptable for `edit_calendar_event`, or
    should editing events not created by this tool be withdrawn?
