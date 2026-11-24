@@ -188,6 +188,101 @@ it; 3 only if Google gives no answer.
   The rows stay until the person disconnects, or the refresh fails and nobody
   notices. Detecting a revoked grant and forgetting on it is a later step.
 
+## Spike: step 3, started 2026-11-24
+
+`scripts/spike-google-mcp.mjs`, a standalone probe in the style of
+`spike-pkce.mjs`. It uses a new Desktop OAuth client in the production project,
+and the existing clients are left untouched. It asks for the product's scopes
+plus `calendar.events`, keeps the refresh token in `~/.artist-mcp-spike/`
+(mode 600), and writes its results there. The results hold no tokens and no
+mail bodies.
+
+### Run A, agent setting off, 2026-11-24
+
+- **Sign-in, refresh and connecting work with the setting off.** `initialize`
+  and `tools/list` were answered on both servers with the unflagged client's
+  token. Both servers call themselves `StatelessServer`. Connecting and listing
+  took 1,818 ms for Gmail (the first contact) and 418 ms for Calendar.
+- **Developer Preview membership is required, per project.** Every tool call
+  (`search_threads`, `list_calendars`, `list_events`) was refused in
+  70–780 ms with "Access to this tool requires that your Google Cloud project
+  (993381632576) is enrolled in the Google Workspace Developer Preview
+  Program". The quota page's "GA" does not hold for this project today. The
+  refusal is about the project, not the client, so the agent setting's own
+  effect cannot be seen until the project is enrolled. Nothing below comes
+  from a successful tool call yet.
+- **The live tool lists are longer than the reference pages.**
+  - **Gmail: 23 tools, where the pages list 10.** The extra ones include
+    `trash_thread`, `trash_message`, `mark_*_spam`, `update_message_labels`,
+    `create_label`, `apply_sensitive_*_label` and `get_draft`. That matters to
+    option 2: an assistant connected to this server directly holds tools to
+    trash mail.
+  - **Calendar: 9 tools**: `list_events`, `get_event`, `list_calendars`,
+    `search_events`, `suggest_time`, `create_event`, `update_event`,
+    `delete_event`, `respond_to_event`.
+- **Attachments.** No tool reads one. `AttachmentMetadata` holds `id`,
+  `mimeType`, `filename` and `partId`. But **`get_message` takes
+  `messageFormat: RAW`**, described as "Returns the raw MIME message content",
+  and it is absent from the reference pages. Raw MIME carries attachments as
+  base64 parts, so this may be the way to read one. The probe now checks
+  whether a listed attachment's part is in the RAW output, without printing
+  any of it. Unconfirmed until a call succeeds. `get_thread` does not offer
+  RAW, and both default to `PLAIN_TEXT`.
+- **Custom event id: not in the schema.** `create_event` has no `id` or
+  `eventId` input. The write probe sends one anyway, to see whether the server
+  refuses it or ignores it.
+- **The edit guard.** `update_event` takes no etag, `If-Match`, sequence or
+  precondition parameter. `get_event`'s output schema has no `etag` and no
+  `sequence`, only `updated`. Its parameters ("New title", `addedAttendees`
+  and `removedAttendees`) read as a patch rather than a replace. That leaves
+  only one guard: re-read and compare `updated` and the fields being changed
+  just before the write. That narrows the race and does not close it.
+- **Cost per call, as seen from the client.** One HTTP request per tool call.
+  Connecting and listing tools took 4 more requests per server. Whether those
+  count against the 5,000 a day is only visible in Cloud Console's metrics.
+
+**Blocked:** the remaining questions need the project enrolled in the
+Developer Preview Program. Those are the reconnect test, a successful read,
+RAW, the custom id and the writes. **Enrolment needs a Google Workspace
+account, and the owner has only a consumer Google account** (2026-11-24).
+
+That is a finding for the migration, not only for the spike. Google's servers
+refuse tool calls from a project outside the preview, and only a Workspace
+account can enrol one. So this project cannot call Google's MCP servers at
+all, for testing or in production. Meanwhile, from 1 February 2027 it may no
+longer call REST. Unless Google opens the tools to every project before then,
+or enrols consumer-account projects, there is no compliant path to build
+against. The question goes to Google before any building starts.
+
+Enrolment would not be enough either. The preview programme's terms say
+features "may not be included in public applications prior to the General
+Availability (GA) announcement", and forbid giving pre-GA access to end users
+outside your own domain. The published package and hosted both serve Ruben, so
+neither could use the servers until GA, whatever the spike shows. The guide
+gives no GA date. The preview page says features "usually stay in the program
+for 3-6 months". The guide's "personal mode" quick setup creates a client for
+your own account. It does not say it lifts the preview requirement, and Run
+A's refusal named the project, not the client. (Read 2026-11-24.)
+
+### Run P, personal mode, 2026-11-24
+
+To rule personal mode out, the owner ran the guide's quick setup for personal
+use. That created a new project (280025240565) and a client with "Use this
+client for an AI-powered agent" ticked. Sign-in, refresh, connecting and
+listing tools all worked, and the tool lists were the same as in Run A. Every
+tool call was refused with the same message, naming the new project:
+**personal mode does not lift the preview requirement.** With the agent
+setting on and the client made by Google's own quick setup, the one thing
+missing is enrolment. **No path open to a consumer account reaches a tool
+call** as of 2026-11-24.
+
+**Owner's decision, 2026-11-24: wait for GA.** No further question goes to
+Google. The spike resumes when Google announces GA for the Gmail and Calendar
+MCP servers, by running the probe again: the reconnect test, RAW, the custom
+id and the writes. The risk is accepted knowingly. If GA has not come by
+1 February 2027, there is no compliant path, and every Google tool here should
+be assumed to stop.
+
 ## Open questions for the owner
 
 1. Option 1, 2, or a mix (reads through artist-mcp, writes left to the
