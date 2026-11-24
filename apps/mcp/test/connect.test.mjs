@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -30,11 +30,15 @@ const withTempStore = async (body) => {
   const dir = await mkdtemp(join(tmpdir(), 'artist-mcp-connect-'));
   process.env.ARTIST_MCP_TOKENS = join(dir, 'tokens.json');
   process.env.ARTIST_MCP_CONFIG = join(dir, 'claude_desktop_config.json');
+  // A Google disconnect clears calendar lines from the write log (0022): never
+  // the developer's own.
+  process.env.ARTIST_MCP_AUDIT = join(dir, 'writes.log');
   try {
     await body(dir);
   } finally {
     delete process.env.ARTIST_MCP_TOKENS;
     delete process.env.ARTIST_MCP_CONFIG;
+    delete process.env.ARTIST_MCP_AUDIT;
   }
 };
 
@@ -87,6 +91,51 @@ test('disconnecting one provider leaves the other connected', async () => {
 
     assert.equal(await readProvider('google'), undefined);
     assert.notEqual(await readProvider('microsoft'), undefined);
+  });
+});
+
+/**
+ * Google's Workspace AI Tools Addendum, 2(d): nothing obtained through Google
+ * is kept after it is disconnected (0022). The calendar lines of the write log
+ * hold event content, so they go; OneNote lines and a torn line stay.
+ */
+test('disconnecting Google removes the calendar lines of the write log, and only those', async () => {
+  await withTempStore(async () => {
+    await saveProvider('google', sample);
+    const log = process.env.ARTIST_MCP_AUDIT;
+    const line = (operation) => JSON.stringify({ at: '2026-11-20T10:00:00Z', operation, summary: 's', target: 't' });
+    await writeFile(
+      log,
+      [line('create_calendar_event'), line('append_table_row'), '{torn', line('edit_calendar_event'), ''].join('\n'),
+      'utf8',
+    );
+
+    const out = await capture(() => runDisconnect('google'));
+
+    assert.match(out, /Removed 2 calendar entries/);
+    const left = (await readFile(log, 'utf8')).trim().split('\n');
+    assert.deepEqual(left, [line('append_table_row'), '{torn']);
+  });
+});
+
+test('disconnecting Google again clears a log an older version left, with no connection', async () => {
+  await withTempStore(async () => {
+    const log = process.env.ARTIST_MCP_AUDIT;
+    await writeFile(log, JSON.stringify({ at: 'x', operation: 'delete_calendar_event', summary: 's', target: 't' }) + '\n', 'utf8');
+    const out = await capture(() => runDisconnect('google'));
+    assert.match(out, /Removed 1 calendar entry/);
+    assert.match(out, /Nothing to do/);
+  });
+});
+
+test('disconnecting Microsoft leaves the calendar lines alone', async () => {
+  await withTempStore(async () => {
+    await saveProvider('microsoft', sample);
+    const log = process.env.ARTIST_MCP_AUDIT;
+    const text = JSON.stringify({ at: 'x', operation: 'create_calendar_event', summary: 's', target: 't' }) + '\n';
+    await writeFile(log, text, 'utf8');
+    await capture(() => runDisconnect('microsoft'));
+    assert.equal(await readFile(log, 'utf8'), text);
   });
 });
 

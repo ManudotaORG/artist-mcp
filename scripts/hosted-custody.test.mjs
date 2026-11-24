@@ -59,6 +59,7 @@ const allMigrations = [
   '20260824140000_resolve_mcp_key.sql',
   '20260824150000_oauth_server.sql',
   '20261124120000_task_view.sql',
+  '20261125120000_forget_google_writes.sql',
 ]
   .map(read)
   .join('\n');
@@ -453,4 +454,23 @@ test('the task view snapshot is not exposed, is encrypted, and goes with a disco
   // cannot name another account.
   assert.match(view, /create function public\.forget_my_task_view\(\)/);
   assert.match(view, /revoke execute on function public\.forget_my_task_view\(\) from public, anon/);
+});
+
+/**
+ * Google's Workspace AI Tools Addendum, 2(d): nothing obtained through Google
+ * is kept after the person disconnects it (0022). The calendar rows of the
+ * write log hold event content, so a Google disconnect deletes them, through a
+ * function that takes no argument and so can only reach the caller's own rows.
+ */
+test('a Google disconnect deletes that user\'s calendar rows of the write log', () => {
+  const forget = read('20261125120000_forget_google_writes.sql');
+  assert.match(forget, /if p_provider = 'google' then\s+perform public\.forget_my_google_writes\(\)/);
+  assert.match(forget, /if p_provider = 'microsoft' then\s+perform public\.forget_my_task_view\(\)/, 'the Microsoft side is kept');
+  assert.match(forget, /create function public\.forget_my_google_writes\(\)/);
+  assert.match(forget, /where user_id = me\s+and operation like '%calendar%'/);
+  assert.match(forget, /revoke execute on function public\.forget_my_google_writes\(\) from public, anon/);
+  // The latest definition of disconnect_provider is this one: no later
+  // migration may replace it without carrying the Google branch.
+  const later = readdirSync(new URL('../supabase/migrations/', import.meta.url)).filter((f) => f > '20261125120000_forget_google_writes.sql');
+  for (const f of later) assert.doesNotMatch(read(f), /function public\.disconnect_provider/, `${f} replaces disconnect_provider`);
 });
