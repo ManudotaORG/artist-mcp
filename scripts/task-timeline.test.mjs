@@ -4,7 +4,9 @@ import test from 'node:test';
 import {
   buildTimeline,
   byDue,
+  byPerson,
   byResponsible,
+  personKey,
   dueByToday,
   lanes,
   readFrist,
@@ -119,19 +121,36 @@ test('Fristen orders by the date the page gives, and Heute keeps what is due by 
   assert.deepEqual(dueByToday(t).map((x) => x.task.text), ['Lange her', 'Heute']);
 });
 
-test('Menschen groups by the Verantwortlich cell as written, and never splits or merges it', () => {
+test('Menschen groups by the Verantwortlich cell, merging only spellings of one name', () => {
   const who = (text, v) => shown(text, '01.12.2026', { cells: v === null ? { Frist: 'x' } : { Verantwortlich: v } });
   const { groups, without } = byResponsible([
     who('a', 'Ruben'),
     who('b', 'Ruben'),
-    who('c', 'Ruben, Büro'),
-    who('d', ''),
-    who('e', null),
-    shown('f', undefined, { cells: null }),
+    who('c', 'Rubén'),
+    who('d', ' ruben '),
+    who('e', 'Ruben, Büro'),
+    who('f', ''),
+    who('g', null),
+    shown('h', undefined, { cells: null }),
   ]);
   assert.deepEqual(
     groups.map((g) => [g.who, g.tasks.length]),
-    [['Ruben', 2], ['(leer)', 1], ['Ruben, Büro', 1]],
+    [
+      ['Ruben', 4],
+      ['(leer)', 1],
+      ['Ruben, Büro', 1],
+    ],
   );
   assert.equal(without, 2);
+});
+
+test('a person key ignores accents, case and spacing, and nothing else', () => {
+  assert.equal(personKey('Rubén'), personKey('ruben'));
+  assert.equal(personKey('Katharina  Würgau'), personKey('Katharina Wurgau'));
+  assert.notEqual(personKey('Ruben'), personKey('Ruben, Büro'));
+  assert.notEqual(personKey('Daria'), personKey('Dario'));
+  const label = (...names) => byPerson(names.map((name, item) => ({ name, item })))[0].who;
+  assert.equal(label('Rubén', 'Rubén', 'Ruben'), 'Ruben', 'the spelling without accents, even when used less');
+  assert.equal(label('Würgau'), 'Würgau', 'a name only written with an umlaut keeps it');
+  assert.equal(label('Ruben', 'ruben', 'Ruben'), 'Ruben', 'then the most used');
 });

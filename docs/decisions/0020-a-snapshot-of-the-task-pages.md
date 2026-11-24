@@ -341,10 +341,14 @@ yet on the OAuth consent screen).
   is in the row when opened; and Fristen sorts every date 0021's reader
   accepts, the ideal/latest pair by its ideal date, rather than only a single
   date. Heute is still "Frist heute oder vorbei, laut Seite", then urgent tasks
-  with no date. Menschen groups the `Verantwortlich` cell exactly as written
-  ("Ruben" and "Rubén" are two groups), then handovers by who has them. On the
+  with no date. Menschen groups the `Verantwortlich` cell as written, then
+  handovers by who has them. **Amended 2026-11-25:** spellings of one name are
+  merged, ignoring accents, case and spacing, because the owner reported
+  "Ruben" and "Rubén" showing as two people. The group shows one name, the
+  spelling without accents where the pages use one; nothing else is merged, so "Ruben,
+  Büro" stays its own group. On the
   live read: Heute 13 (11 past, 2 urgent), Fristen 21 plus 30 in words,
-  Menschen 110 for "Ruben" and 20 tasks with no such column. Seen at 375 px.
+  Menschen 114 for "Ruben" (110 plus 4 "Rubén") and 20 tasks with no such column. Seen at 375 px.
 - **Migration** `20261124120000_task_view.sql`: the three tables, the
   functions, and `disconnect_provider` deleting the snapshot on a Microsoft
   disconnect. **Applied to production on 2026-11-23** with `supabase db push`,

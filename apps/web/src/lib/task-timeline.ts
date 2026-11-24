@@ -196,17 +196,51 @@ export const byDue = (timeline: Timeline): PlacedTask[] =>
 export const dueByToday = (timeline: Timeline): PlacedTask[] =>
   byDue(timeline).filter((item) => dueOn(item) <= timeline.today);
 
+/**
+ * The same name typed with or without its accents, in another case, or with
+ * extra spaces: "Ruben" and "Rubén" are one person. Nothing else is merged —
+ * "Ruben, Büro" stays apart from "Ruben", because deciding those overlap is
+ * reading, not spelling.
+ */
+export const personKey = (name: string): string =>
+  name.normalize('NFD').replace(/\p{M}/gu, '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('de');
+
+const hasAccent = (name: string): boolean =>
+  name.normalize('NFD') !== name.normalize('NFD').replace(/\p{M}/gu, '');
+
+/**
+ * Group by `personKey`, labelled with one spelling: one without accents where
+ * the pages use one ("Ruben" over "Rubén"), then the most used, then the first
+ * seen. A name only ever written with an umlaut keeps it.
+ */
+export const byPerson = <T>(items: { name: string; item: T }[]): { who: string; items: T[] }[] => {
+  const groups = new Map<string, { counts: Map<string, number>; items: T[] }>();
+  for (const { name, item } of items) {
+    const key = personKey(name);
+    const group = groups.get(key) ?? { counts: new Map<string, number>(), items: [] as T[] };
+    group.counts.set(name, (group.counts.get(name) ?? 0) + 1);
+    group.items.push(item);
+    groups.set(key, group);
+  }
+  return [...groups.values()].map(({ counts, items }) => {
+    const [who] = [...counts.entries()]
+      .sort((a, b) => Number(hasAccent(a[0])) - Number(hasAccent(b[0])) || b[1] - a[1])
+      .map(([name]) => name);
+    return { who, items };
+  });
+};
+
 /** One person, as the `Verantwortlich` cell writes them, and their open tasks. */
 export type PersonGroup = { who: string; tasks: ShownTask[] };
 
 /**
- * Menschen (0020): open tasks grouped by the `Verantwortlich` cell exactly as
- * written. Names are not split out of a cell or merged across spellings: "Büro"
- * and "Ruben, Büro" are two groups, because deciding they overlap is reading.
- * Tasks with no such cell are counted, not grouped.
+ * Menschen (0020): open tasks grouped by the `Verantwortlich` cell as written,
+ * with only spelling variants merged (`personKey`). Names are not split out of
+ * a cell: "Büro" and "Ruben, Büro" are two groups. Tasks with no such cell are
+ * counted, not grouped.
  */
 export const byResponsible = (open: ShownTask[]): { groups: PersonGroup[]; without: number } => {
-  const groups = new Map<string, ShownTask[]>();
+  const named: { name: string; item: ShownTask }[] = [];
   let without = 0;
   for (const task of open) {
     const key = Object.keys(task.cells ?? {}).find((k) => /^verantwortlich/i.test(k.trim()));
@@ -214,12 +248,14 @@ export const byResponsible = (open: ShownTask[]): { groups: PersonGroup[]; witho
       without++;
       continue;
     }
-    const who = (task.cells as Record<string, string>)[key].trim() || '(leer)';
-    groups.set(who, [...(groups.get(who) ?? []), task]);
+    named.push({
+      name: (task.cells as Record<string, string>)[key].trim() || '(leer)',
+      item: task,
+    });
   }
   return {
-    groups: [...groups.entries()]
-      .map(([who, tasks]) => ({ who, tasks }))
+    groups: byPerson(named)
+      .map(({ who, items }) => ({ who, tasks: items }))
       .sort((a, b) => b.tasks.length - a.tasks.length || a.who.localeCompare(b.who, 'de')),
     without,
   };

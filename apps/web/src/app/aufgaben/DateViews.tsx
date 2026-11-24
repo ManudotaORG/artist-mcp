@@ -1,6 +1,7 @@
 import { Typography } from '@/components/ui/Typography';
 import {
   byDue,
+  byPerson,
   byResponsible,
   dueByToday,
   dueOn,
@@ -139,12 +140,11 @@ type MenschenProps = {
 const Menschen = ({ open, delegated, available }: MenschenProps) => {
   if (!available) return <NeedsRefresh />;
   const { groups, without } = byResponsible(open);
-  const handedTo = new Map<string, ShownHandover[]>();
-  for (const h of delegated) handedTo.set(h.to, [...(handedTo.get(h.to) ?? []), h]);
+  const handedTo = byPerson(delegated.map((h) => ({ name: h.to, item: h })));
   return (
     <>
       <Typography variant="small" color="muted">
-        Verantwortlich laut Seite, wie dort geschrieben.
+        Verantwortlich laut Seite.
         {without > 0 ? ` ${without} ohne diese Spalte.` : ''}
       </Typography>
       {groups.length === 0 ? <Empty>Keine Spalte „Verantwortlich“ gefunden.</Empty> : null}
@@ -165,15 +165,15 @@ const Menschen = ({ open, delegated, available }: MenschenProps) => {
           </List>
         </details>
       ))}
-      {handedTo.size > 0 ? (
+      {handedTo.length > 0 ? (
         <>
           <Typography as="h2" variant="label" color="muted" className="mt-4">
             Übergeben an
           </Typography>
-          {[...handedTo.entries()].map(([to, items]) => (
-            <div key={to} className="mt-2">
+          {handedTo.map(({ who, items }) => (
+            <div key={who} className="mt-2">
               <Typography variant="small" color="cyan">
-                {to} ({items.length})
+                {who} ({items.length})
               </Typography>
               <List>
                 {items.map((h) => (
