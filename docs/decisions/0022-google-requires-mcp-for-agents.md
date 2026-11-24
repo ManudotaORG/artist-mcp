@@ -116,6 +116,13 @@ so the ways to keep them, most reliable first:
    writing, switched off on 1 February otherwise, answering with the file's
    name and a pointer to the OneNote page.
 
+**Sent 2026-11-24, [issue 590205343](https://issuetracker.google.com/issues/590205343):** the feature request for a `get_attachment` tool, with
+the question whether an agent may read an asked-for attachment over REST
+meanwhile, filed through the Developer Preview "Send feedback" template for the
+Gmail MCP server (Issue Tracker component 2090367). No answer yet; if none
+comes within a week, the programme's FAQ says to write to
+workspace-dpp-mod@google.com.
+
 Proposed: 1 now, with the question that decides 5 in the same request; 4
 checked in the spike; 2 as the floor that certainly works; 5 if Google allows
 it; 3 only if Google gives no answer.
