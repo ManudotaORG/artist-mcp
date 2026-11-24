@@ -12,7 +12,7 @@
  * since it defends against forgetting rather than against the user.
  */
 
-import { appendFile, mkdir, readFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { GraphError } from './client.js';
@@ -158,3 +158,50 @@ export const readWriteLog = async (
   return lines.reverse().slice(0, limit);
 };
 
+
+/**
+ * Whether a write log line holds Google data: every Google write this tool can
+ * make is a calendar write, and Gmail is read-only here. The hosted migration
+ * 20261125120000_forget_google_writes.sql uses the same rule.
+ */
+export const isGoogleWrite = (operation: string): boolean => operation.includes('calendar');
+
+/**
+ * Remove the calendar lines from this install's write log, when Google is
+ * disconnected. Google's Workspace AI Tools Addendum, 2(d): nothing obtained
+ * through Google is kept after it is disconnected (0022). The only removal from
+ * this log, and the person's own: the record was never meant to outrank them.
+ *
+ * Written to a temporary file and renamed over the log, so a crash leaves the
+ * old log or the new one and never half of each. A line that does not parse is
+ * kept, since what it held cannot be told. Returns how many lines went.
+ */
+export const forgetGoogleWrites = async (): Promise<number> => {
+  const path = auditPath();
+  let text: string;
+  try {
+    text = await readFile(path, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return 0;
+    throw err;
+  }
+  let removed = 0;
+  const kept = text.split('\n').filter((raw) => {
+    if (raw.trim() === '') return false;
+    try {
+      const { operation } = JSON.parse(raw) as { operation?: unknown };
+      if (typeof operation === 'string' && isGoogleWrite(operation)) {
+        removed++;
+        return false;
+      }
+    } catch {
+      // Kept: see above.
+    }
+    return true;
+  });
+  if (removed === 0) return 0;
+  const temporary = `${path}.${process.pid}.tmp`;
+  await writeFile(temporary, kept.map((line) => line + '\n').join(''), 'utf8');
+  await rename(temporary, path);
+  return removed;
+};

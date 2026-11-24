@@ -12,6 +12,7 @@
  */
 
 import { access } from 'node:fs/promises';
+import { forgetGoogleWrites } from './audit.js';
 import { resolveRegistry, setLocalAgentRoot } from './agents.js';
 import { ENTRY_NAME, configPath, readConfig } from './config.js';
 import { parseGrants, type WriteCapability } from './grants.js';
@@ -130,6 +131,15 @@ export const runReconnect = async (): Promise<void> => {
 export const runDisconnect = async (input?: string): Promise<void> => {
   const provider = parseProvider(input);
   const config = PROVIDERS[provider];
+
+  // Before the connection check, so a log left by an older version's
+  // disconnect is cleared by running it again (0022).
+  const forgotten = provider === 'google' ? await forgetGoogleWrites() : 0;
+  if (forgotten > 0) {
+    console.log(
+      `Removed ${forgotten} calendar ${forgotten === 1 ? 'entry' : 'entries'} from this machine's write log.`,
+    );
+  }
 
   if ((await readProvider(provider)) === undefined) {
     console.log(`No ${config.label} connection on this machine. Nothing to do.`);
