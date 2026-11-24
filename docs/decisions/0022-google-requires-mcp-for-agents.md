@@ -77,6 +77,34 @@ MCP GA. Unresolved until tried.
   names, is that. Worth stating in the docs rather than assuming.
 - Nothing here trains on data, builds embeddings, or scrapes.
 
+## Availability: preview-only for personal accounts, so far
+
+Found 2026-11-25: the Gmail MCP server is open only through the Workspace
+Developer Preview Program, which needs a Workspace account. Ruben and the owner
+use personal (@gmail.com) accounts, so the spike cannot run on them yet.
+
+The signs that it opens before enforcement: Google's notice speaks of the
+"general availability of MCP servers and CLI"; the announcement gives about two
+weeks for GA items to roll out; the quota page already calls the Gmail and
+Calendar servers GA; and requiring a route from 1 February that consumer
+accounts cannot use would make little sense. Against: none of it says
+consumer accounts are included, and the reference pages still say preview.
+
+So, not assumed:
+
+- **Check again around 8 December 2026**, the end of the stated rollout: is the
+  preview banner gone, and can a personal account connect?
+- **To ask in [issue 590205343](https://issuetracker.google.com/issues/590205343)**
+  whether consumer accounts get the servers before 1 February 2027.
+- **The spike can run on a Workspace account meanwhile** (a single Business
+  Starter seat or a trial). The technical answers — the client flag, event
+  ids, the edit guard, request counts — carry over.
+- **Fallback, if nothing has opened by mid-January 2027:** Gmail and Calendar
+  stay on REST for personal accounts, with Google's answer, or its silence,
+  recorded here as the reason. A tool cannot be required to use a route Google
+  has not opened to its users; if Google says otherwise in writing, that
+  decides it.
+
 ## Mail attachments, which matter most
 
 Checked again 2026-11-24 against the German and English reference pages: the
