@@ -141,9 +141,15 @@ migration applied and Supabase's default grants reproduced:
 
 The custody test now reads whichever migration defines `disconnect_provider`
 last, and requires both branches there; it fails with the Microsoft line
-removed. **Not yet applied to production.** The deployed code does not
-depend on it, so it can go in before or after the deploy, but the decision is
-not true on hosted until it does.
+removed. **Applied to production on 2026-11-25** with `supabase db push`,
+after a dry run showed it was the only migration production lacked. Checked
+there:
+- `forget_my_onenote_writes` exists, and `disconnect_provider` calls it beside
+  `forget_my_google_writes`;
+- `anon` cannot execute it, `authenticated` can;
+- `write_audit`'s 337 rows are intact, and the migration is recorded.
+
+The checkout was unlinked afterwards.
 
 ### 2. The stale-state guard without a token
 
@@ -384,8 +390,7 @@ rebuilt dispatcher:
 The run also caught one awkwardly worded result line, about the formatting
 kept, which is fixed.
 
-**Still to do for this step:**
-- **The production migration** from step 1.
+**Still to do for this step:** a run on hosted, after the promotion.
 
 ### 5. Calendar edit and delete record before they write, and can be undone
 
