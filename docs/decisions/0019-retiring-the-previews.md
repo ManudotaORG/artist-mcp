@@ -166,6 +166,33 @@ text and nothing is added to `read_note`, whose element index has already once
 cost more than it saved. If `expect` turns out to cost too much on large tables,
 a fingerprint per table is the fallback, measured first.
 
+**Built on 2026-11-25, alongside the token rather than in place of it.** The
+token stays required until step 4, because 0015 says the previews go only
+once undo exists (step 3). Until then `expect` is optional and, when given,
+checked. In step 4 it becomes required.
+
+`edit_onenote_page` takes `expect` on a single change and on each change in
+a batch. For a paragraph, heading or list item it is the element's text as
+read. For a table, or an insert anchored on one, it is the table's rows, each
+a list of cell texts. The re-read page is compared with whitespace collapsed,
+and a line break inside a cell counts as a space. Any difference refuses the
+whole batch, with what each moved element says now. The shape is checked
+against the target: an append refuses an `expect`, a table refuses a string,
+and a paragraph refuses rows. `expect` is outside the token, so a preview
+made without it still confirms. The preview checks it too, but its tool
+schema does not take it, and the preview tool goes in step 4.
+
+Tests (`edit-expect.test.mjs`) hold the token fixed and vary only `expect`,
+so the token cannot be what catches the change:
+- a paragraph, a whole table and an insert anchor are each refused when they
+  have moved;
+- a table that has lost a row is refused;
+- a batch is refused whole, naming only the change that moved.
+
+Each refusal test fails with the check disabled. The tool list grew by a few
+hundred characters, the `expect` parameter on one tool; the before-and-after
+measurement is taken across the whole promotion in step 4.
+
 ### 3. `undo_write` for inserts and replaces
 
 - **Insert**: remove the inserted element by what was written, exactly as an

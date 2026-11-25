@@ -526,6 +526,14 @@ export type EditChange = {
   html: string | null;
   /** Which side of the anchor an insert lands on. Null otherwise. */
   position: 'before' | 'after' | null;
+  /**
+   * What the caller read in the element a replace overwrites, or an insert sits
+   * beside: its text, or for a table its rows. Checked against the page as it
+   * is re-read just before the write, so a page that moved since it was read is
+   * a refusal rather than an overwrite (0019 step 2). Null when not given; an
+   * append has none, since it overwrites nothing and has no anchor.
+   */
+  expect: string | string[][] | null;
 };
 
 export type EditDraft = {
@@ -878,7 +886,54 @@ const changeFrom = (params: Record<string, unknown>, where: string): EditChange 
     text,
     html,
     position: action === 'insert' ? (position as 'before' | 'after') : null,
+    expect: expectFrom(params.expect, action, targetsTable, where),
   };
+};
+
+/** The most rows an `expect` may carry, as generous as a table the house shape allows. */
+const MAX_EXPECT_ROWS = 200;
+
+/**
+ * `expect` as given, shape-checked against what it is for: plain text for a
+ * paragraph, heading or list item, a list of rows (each a list of cell texts)
+ * for a table. Refused rather than coerced, because a mismatch in shape would
+ * otherwise be reported as the page having changed when it had not.
+ */
+const expectFrom = (
+  raw: unknown,
+  action: EditChange['action'],
+  table: boolean,
+  where: string,
+): string | string[][] | null => {
+  if (raw === undefined || raw === null) return null;
+  if (action === 'append') {
+    throw failure(
+      `${where}: an append takes no expect. It overwrites nothing and sits beside nothing, ` +
+        'so there is nothing on the page for it to check.',
+    );
+  }
+  if (table) {
+    const rows =
+      Array.isArray(raw) &&
+      raw.length > 0 &&
+      raw.length <= MAX_EXPECT_ROWS &&
+      raw.every(
+        (row) =>
+          Array.isArray(row) &&
+          row.every((cell) => typeof cell === 'string' && cell.length <= MAX_TEXT_CHARS),
+      );
+    if (!rows) {
+      throw failure(
+        `${where}: for a table, expect is its rows as you read them — a list of rows, each a ` +
+          'list of its cells as text, header row first.',
+      );
+    }
+    return raw as string[][];
+  }
+  if (typeof raw !== 'string' || raw.trim() === '' || raw.length > MAX_TEXT_CHARS) {
+    throw failure(`${where}: expect is the element's text as you read it, as one string.`);
+  }
+  return raw;
 };
 
 /**
@@ -1472,6 +1527,7 @@ const resolveChanges = (
   const captured = draft.changes.map((change) =>
     change.action === 'append' ? '' : preImage(html, change.element_id as string),
   );
+  checkExpected(draft, captured);
 
   const content = draft.changes.map((change, index) =>
     change.html === null
@@ -1482,6 +1538,47 @@ const resolveChanges = (
   );
 
   return { captured, content };
+};
+
+/**
+ * Text as compared by `expect`: whitespace collapsed, and a line break inside a
+ * cell — which `tableRows` shows as " / " — treated as a space. The same on both
+ * sides, so a real slash in the text compares equal to itself.
+ */
+const comparable = (text: string): string =>
+  text.replace(/\s+\/\s+/g, ' ').replace(/\s+/g, ' ').trim();
+
+/**
+ * Refuse every change whose `expect` no longer matches the element it names,
+ * as captured from the page just read. A batch fails as a whole, as with the
+ * token: the changes are one decision about one state of the page. The refusal
+ * carries what each element says now, so the caller can read it and decide
+ * again rather than read the page a second time.
+ */
+const checkExpected = (draft: EditDraft, captured: string[]): void => {
+  const moved = draft.changes
+    .map((change, index) => ({ change, index, element: captured[index] }))
+    .filter(({ change, element }) => {
+      if (change.expect === null) return false;
+      if (typeof change.expect === 'string') {
+        return comparable(asText(element)) !== comparable(change.expect);
+      }
+      const now = tableRows(element).map((row) => row.map(comparable));
+      const read = change.expect.map((row) => row.map(comparable));
+      return JSON.stringify(now) !== JSON.stringify(read);
+    });
+  if (moved.length === 0) return;
+  throw failure(
+    'The page has changed since it was read, so nothing was written. ' +
+      moved
+        .map(
+          ({ change, index, element }) =>
+            `${draft.changes.length === 1 ? 'The element' : `Change ${index + 1}'s element`} ` +
+            `(${change.element_id}) now reads:\n\n${readable(element, change.element_id as string)}`,
+        )
+        .join('\n\n') +
+      '\n\nDecide again against what it says now. If the musician changed it, their change stands.',
+  );
 };
 
 /**

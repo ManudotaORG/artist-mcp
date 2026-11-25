@@ -1065,6 +1065,15 @@ const EVIDENCE_GATE =
  * applies, and a tool's own output outranks a playbook.
  */
 /** The parameters of update_row, shared by the preview and the edit so they cannot differ. */
+/**
+ * What a replace or insert read in the element it overwrites or sits beside
+ * (0019 step 2): checked against the page as re-read before the write, so a
+ * page that moved since it was read is refused rather than overwritten.
+ */
+const EXPECT = z.union([z.string(), z.array(z.array(z.string()))]);
+const EXPECT_TEXT =
+  "For replace and insert: what you read in that element — its text, or for a table its rows as lists of cell texts. Refused, with what it says now, if the page changed since";
+
 const ROW_UPDATE_PARAMS = {
   row: z
     .string()
@@ -3107,6 +3116,7 @@ const createServer = async (
           .enum(["before", "after"])
           .optional()
           .describe("For insert: the same position the preview was given"),
+        expect: EXPECT.optional().describe(EXPECT_TEXT),
         changes: z
           .array(
             z.object({
@@ -3115,6 +3125,7 @@ const createServer = async (
               position: z.enum(["before", "after"]).optional(),
               text: z.string().optional(),
               html: z.string().optional(),
+              expect: EXPECT.optional(),
             }),
           )
           .optional()
