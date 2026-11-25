@@ -2707,8 +2707,8 @@ const createServer = async (
           .string()
           .optional()
           .describe(
-            "Only when the musician named a different section. Otherwise omit it and " +
-              "let source_page place the page",
+            "A section's id, never its name — only create_onenote_section returns one. For a " +
+              "section the musician named, pass one of its pages as source_page instead",
           ),
         // Optional, so a client holding the schema from before 0012 keeps working.
         images: z
