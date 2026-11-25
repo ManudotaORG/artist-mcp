@@ -1753,19 +1753,19 @@ export async function applyEdit(
         : replaceCommand(change.element_id as string, content[index]),
   );
 
-  await onenotePatchPage(draft.page_id, commands, token, etag);
-
-  // After the write, and carrying what each change destroyed. For a replace
-  // this line is the only copy of the previous content that exists anywhere, so
-  // a batch is logged as one line per change rather than one line for the
-  // batch — a restore is per element, and a summary of five changes is not
-  // something anybody can put back.
-  for (const [index, change] of draft.changes.entries()) {
+  // Recorded before the write, one pending line per change, and the write
+  // refused if any of them cannot be made (0019 step 1, the form 0018 gave the
+  // other writes). For a replace this line is the only copy of the previous
+  // content that will exist anywhere, so it has to be on record before the
+  // PATCH destroys it: a replace whose log line failed used to land anyway,
+  // with its pre-image nowhere. A batch is one line per change rather than one
+  // for the batch, because a restore is per element, and a summary of five
+  // changes is not something anybody can put back.
+  const entries: WriteRecord[] = draft.changes.map((change, index) => {
     const wrote = change.html === null ? (change.text as string).trim() : change.html;
     const destroyed =
       change.action === 'replace' ? readable(captured[index], change.element_id as string) : '';
-
-    await record({
+    return {
       operation:
         change.action === 'append'
           ? 'append_onenote_page'
@@ -1792,14 +1792,26 @@ export async function applyEdit(
       // put content in the log that is still on the page — which is the one thing
       // a reader of this log must be able to trust it does not do.
       pre_image: change.action === 'replace' ? captured[index] : null,
-    });
-  }
+      write_id: randomUUID(),
+      // The element as sent, which is what an undo finds it by: generated ids
+      // move after any page update, so the id cannot be what it looks for.
+      wrote: content[index],
+    };
+  });
+  for (const entry of entries) await record({ ...entry, status: 'pending' });
+
+  await onenotePatchPage(draft.page_id, commands, token, etag);
+
+  for (const entry of entries) await record({ ...entry, status: 'done' });
 
   const replaced = draft.changes.filter((change) => change.action === 'replace').length;
+
+  const ids = entries.map((entry) => entry.write_id as string);
 
   return {
     changed: true,
     page_id: draft.page_id,
+    write_ids: ids,
     note:
       (draft.changes.length === 1
         ? ''
@@ -1807,6 +1819,7 @@ export async function applyEdit(
       (replaced === 0
         ? 'The page now carries this. Nothing was removed.'
         : "The previous text is only in this install's write log; OneNote cannot " +
-          'undo it.'),
+          'undo it.') +
+      ` Recorded as write ${ids.join(', ')}.`,
   };
 }

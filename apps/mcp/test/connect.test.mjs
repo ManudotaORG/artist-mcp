@@ -140,6 +140,39 @@ test('disconnecting Microsoft leaves the calendar lines alone', async () => {
 });
 
 /**
+ * 0019 decision 4: the write log is the only way back for every OneNote
+ * overwrite, and it does not outlive the consent behind it. A Microsoft
+ * disconnect removes every OneNote line, the undo of one included; calendar
+ * lines and a torn line stay.
+ */
+test('disconnecting Microsoft removes the OneNote lines of the write log, and only those', async () => {
+  await withTempStore(async () => {
+    await saveProvider('microsoft', sample);
+    const log = process.env.ARTIST_MCP_AUDIT;
+    const line = (operation) => JSON.stringify({ at: '2026-11-25T10:00:00Z', operation, summary: 's', target: 't' });
+    await writeFile(
+      log,
+      [
+        line('replace_onenote_element'),
+        line('create_calendar_event'),
+        line('append_table_row'),
+        '{torn',
+        line('undo_append_onenote_page'),
+        line('create_onenote_page'),
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const out = await capture(() => runDisconnect('microsoft'));
+
+    assert.match(out, /Removed 4 OneNote entries/);
+    const left = (await readFile(log, 'utf8')).trim().split('\n');
+    assert.deepEqual(left, [line('create_calendar_event'), '{torn']);
+  });
+});
+
+/**
  * Removing the token stops this machine using the connection; it does not
  * revoke the grant. Implying otherwise would leave someone believing they had
  * withdrawn an access they had not.

@@ -118,6 +118,33 @@ hosted through a migration alongside `forget_my_google_writes`, locally in
 `artist-mcp disconnect microsoft` — because the log is about to become the
 only way back and should not outlive the consent behind it (decision 4).
 
+**Built on 2026-11-25.** A replace, an insert, and an append in a batch with
+either now record a `pending` line per change, before the `PATCH`. Each line
+carries its own `write_id`, the pre-image (a replace only) and `wrote`, the
+element as sent. If any of those lines cannot be made, nothing is sent. A
+`done` line follows each one, and the result names the write ids. The token
+is unchanged until step 2. Tests check the order (pending, `PATCH`, done)
+and that nothing is sent when the pending line fails, for both a replace and
+an insert; each fails with the pending line moved after the `PATCH`. Two
+older tests that counted one line per change now count pending and done.
+
+The disconnect half: `forgetMicrosoftWrites` removes every line that is not
+a calendar line from the local log, on `artist-mcp disconnect microsoft`, the
+undo of a OneNote write included. Migration `20261125130000_forget_onenote_writes.sql`
+adds `forget_my_onenote_writes()` and a Microsoft branch to
+`disconnect_provider`. Exercised on a throwaway Postgres 16 with every
+migration applied and Supabase's default grants reproduced:
+- a Microsoft disconnect removed exactly one user's three OneNote rows,
+  leaving their calendar row and another user's rows;
+- a Google disconnect then removed the calendar row;
+- `anon` is refused the function, and a caller with no user is refused too.
+
+The custody test now reads whichever migration defines `disconnect_provider`
+last, and requires both branches there; it fails with the Microsoft line
+removed. **Not yet applied to production.** The deployed code does not
+depend on it, so it can go in before or after the deploy, but the decision is
+not true on hosted until it does.
+
 ### 2. The stale-state guard without a token
 
 Today the token binds the captured pre-image, so a page Ruben edited between

@@ -205,7 +205,10 @@ test('what a replace destroyed is written to the audit line, and nowhere else', 
     ),
   );
 
-  assert.equal(lines.length, 1);
+  // Pending before the write, done after, under one write id (0019 step 1).
+  assert.deepEqual(lines.map((l) => l.status), ['pending', 'done']);
+  assert.equal(lines[0].write_id, lines[1].write_id);
+  assert.equal(lines[0].wrote, '<p>Fee: 1400</p>', 'the element as sent, which an undo finds it by');
   assert.equal(lines[0].operation, 'replace_onenote_element');
   // Both halves of the change, because the line is read back by someone who
   // cannot see the page as it was and can no longer see what replaced it.
@@ -403,4 +406,59 @@ test('an append whose pending record fails sends nothing', async () => {
     ),
   );
   assert.deepEqual(s.sent, []);
+});
+
+/**
+ * 0019 step 1: a replace or insert is recorded before it writes. The pre-image
+ * is the only copy of what a replace destroys, so a replace whose record cannot
+ * be made must not happen at all — it used to land, with its pre-image nowhere.
+ */
+for (const change of [
+  { action: 'replace', element_id: para, text: 'Fee: 1400' },
+  { action: 'insert', element_id: para, position: 'after', html: '<p>Curfew 23:00</p>' },
+]) {
+  test(`${change.action === "insert" ? "an" : "a"} ${change.action} is recorded as pending before the PATCH, and done after`, async () => {
+    const s = server();
+    const preview = await withFetch(s.fetchImpl, () => previewEdit('t', { page_id: 'p1', ...change }));
+    const order = [];
+    const fetchImpl = async (url, init = {}) => {
+      if ((init.method ?? 'GET') !== 'GET') order.push('PATCH');
+      return s.fetchImpl(url, init);
+    };
+    const result = await withFetch(fetchImpl, () =>
+      applyEdit('t', { page_id: 'p1', ...change, confirmation_token: preview.confirmation_token }, async (entry) =>
+        void order.push(entry.status),
+      ),
+    );
+    assert.deepEqual(order, ['pending', 'PATCH', 'done']);
+    assert.equal(result.write_ids.length, 1);
+    assert.match(result.note, new RegExp(`Recorded as write ${result.write_ids[0]}`));
+  });
+
+  test(`${change.action === "insert" ? "an" : "a"} ${change.action} whose pending record fails sends nothing`, async () => {
+    const s = server();
+    const preview = await withFetch(s.fetchImpl, () => previewEdit('t', { page_id: 'p1', ...change }));
+    await withFetch(s.fetchImpl, () =>
+      assert.rejects(
+        applyEdit('t', { page_id: 'p1', ...change, confirmation_token: preview.confirmation_token }, async (entry) => {
+          if (entry.status === 'pending') throw new Error('disk full');
+        }),
+        /disk full/,
+      ),
+    );
+    assert.deepEqual(s.sent, []);
+  });
+}
+
+test('an insert records what it wrote and no pre-image', async () => {
+  const s = server();
+  const change = { action: 'insert', element_id: para, position: 'after', html: '<p>Curfew 23:00</p>' };
+  const preview = await withFetch(s.fetchImpl, () => previewEdit('t', { page_id: 'p1', ...change }));
+  const { lines, record } = audit();
+  await withFetch(s.fetchImpl, () =>
+    applyEdit('t', { page_id: 'p1', ...change, confirmation_token: preview.confirmation_token }, record),
+  );
+  assert.equal(lines[0].operation, 'insert_onenote_element');
+  assert.equal(lines[0].pre_image, null);
+  assert.equal(lines[0].wrote, '<p>Curfew 23:00</p>');
 });

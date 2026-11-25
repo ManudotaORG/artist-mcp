@@ -167,16 +167,28 @@ export const readWriteLog = async (
 export const isGoogleWrite = (operation: string): boolean => operation.includes('calendar');
 
 /**
- * Remove the calendar lines from this install's write log, when Google is
- * disconnected. Google's Workspace AI Tools Addendum, 2(d): nothing obtained
- * through Google is kept after it is disconnected (0022). The only removal from
- * this log, and the person's own: the record was never meant to outrank them.
+ * Whether a write log line holds Microsoft data: every write that is not a
+ * calendar write is a OneNote one, the undo of one included. The complement of
+ * `isGoogleWrite` on purpose, so that a line is always one provider's or the
+ * other's and a disconnect of both leaves nothing behind. The hosted migration
+ * 20261125130000_forget_onenote_writes.sql uses the same rule.
+ */
+export const isMicrosoftWrite = (operation: string): boolean => !isGoogleWrite(operation);
+
+/**
+ * Remove one provider's lines from this install's write log, when it is
+ * disconnected. For Google that is the Workspace AI Tools Addendum, 2(d) (0022);
+ * for Microsoft it is the owner's decision in 0019 (decision 4), since the log
+ * is about to be the only way back for every overwrite and should not outlive
+ * the consent behind it. The only removal from this log, and the person's own:
+ * the record was never meant to outrank them. An undo is lost with its line; it
+ * could not have run without that provider's token anyway.
  *
  * Written to a temporary file and renamed over the log, so a crash leaves the
  * old log or the new one and never half of each. A line that does not parse is
  * kept, since what it held cannot be told. Returns how many lines went.
  */
-export const forgetGoogleWrites = async (): Promise<number> => {
+const forgetWrites = async (belongs: (operation: string) => boolean): Promise<number> => {
   const path = auditPath();
   let text: string;
   try {
@@ -190,7 +202,7 @@ export const forgetGoogleWrites = async (): Promise<number> => {
     if (raw.trim() === '') return false;
     try {
       const { operation } = JSON.parse(raw) as { operation?: unknown };
-      if (typeof operation === 'string' && isGoogleWrite(operation)) {
+      if (typeof operation === 'string' && belongs(operation)) {
         removed++;
         return false;
       }
@@ -205,3 +217,9 @@ export const forgetGoogleWrites = async (): Promise<number> => {
   await rename(temporary, path);
   return removed;
 };
+
+/** The calendar lines, when Google is disconnected. */
+export const forgetGoogleWrites = (): Promise<number> => forgetWrites(isGoogleWrite);
+
+/** The OneNote lines, when Microsoft is disconnected. */
+export const forgetMicrosoftWrites = (): Promise<number> => forgetWrites(isMicrosoftWrite);

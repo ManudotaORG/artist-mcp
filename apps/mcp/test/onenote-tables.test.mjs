@@ -552,12 +552,14 @@ test('several changes ride in one write, and are approved as one', async () => {
     ],
   );
 
-  // One log line per change: a restore is per element, and a summary of three
-  // changes is not something anybody can put back.
-  assert.equal(lines.length, 3);
+  // One log line per change, pending then done: a restore is per element, and
+  // a summary of three changes is not something anybody can put back.
+  assert.equal(lines.length, 6);
+  assert.deepEqual(lines.map((l) => l.status), ['pending', 'pending', 'pending', 'done', 'done', 'done']);
   assert.match(lines[0].summary, /^\[1\/3\]/);
   assert.equal(lines[1].pre_image, null, 'an insert destroys nothing');
   assert.ok(lines[0].pre_image.startsWith('<table id='));
+  assert.equal(new Set(lines.slice(0, 3).map((l) => l.write_id)).size, 3, 'a write id per change');
 });
 
 test('a batch fails closed as a whole, not change by change', async () => {
