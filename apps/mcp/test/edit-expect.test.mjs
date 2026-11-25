@@ -1,16 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { applyEdit, editFrom, previewEdit } from '../dist/onenote-patch.js';
+import { applyEdit, editFrom } from '../dist/onenote-patch.js';
 
 /**
  * 0019 step 2: the stale-state guard without a person. A replace or insert
  * names what it read in the element it overwrites or sits beside, and the
  * server re-reads the page and refuses if that is no longer what it says.
- *
- * The token still binds the pre-image until step 4 removes it, so most tests
- * here hold the token fixed and vary only `expect`: a test that let the token
- * catch the change would pass with this guard deleted.
+ * Since step 4 removed the token it is the only such guard, and required.
  */
 
 const GUID = '33f8a242-7c33-4bb2-90c5-8425a68cc5bf';
@@ -60,17 +57,8 @@ const ROWS = [
   ['Anreise', 'Zug, / ab Basel'],
 ];
 
-/** Preview without `expect` (the preview tool's schema has none), then apply with it. */
-const previewThenApply = async (s, change, expect) => {
-  const preview = await withFetch(s.fetchImpl, () => previewEdit('t', { page_id: 'p1', ...change }));
-  return withFetch(s.fetchImpl, () =>
-    applyEdit(
-      't',
-      { page_id: 'p1', ...change, expect, confirmation_token: preview.confirmation_token },
-      record,
-    ),
-  );
-};
+const previewThenApply = (s, change, expect) =>
+  withFetch(s.fetchImpl, () => applyEdit('t', { page_id: 'p1', ...change, expect }, record));
 
 const paragraphReplace = { action: 'replace', element_id: loose, text: 'Programm 2027' };
 const tableReplace = { action: 'replace', element_id: table, html: newTable('1450') };
@@ -123,12 +111,9 @@ test('a batch is refused whole when one change no longer matches', async () => {
     { ...paragraphReplace, expect: 'Programm' },
     { ...tableReplace, expect: ROWS },
   ];
-  const preview = await withFetch(s.fetchImpl, () =>
-    previewEdit('t', { page_id: 'p1', changes: changes.map(({ expect, ...c }) => c) }),
-  );
   await assert.rejects(
     withFetch(s.fetchImpl, () =>
-      applyEdit('t', { page_id: 'p1', changes, confirmation_token: preview.confirmation_token }, record),
+      applyEdit('t', { page_id: 'p1', changes }, record),
     ),
     (err) => {
       assert.match(err.message, /Change 2's element/);
@@ -148,15 +133,30 @@ test('expect is refused on an append, and in the wrong shape for its target', ()
   assert.throws(() => editFrom({ page_id: 'p1', ...paragraphReplace, expect: [['Programm']] }), /as one string/);
 });
 
-test('expect does not change the token, so a preview without it still confirms', async () => {
+test('a replace or insert without expect writes nothing, and does not read the page', async () => {
+  for (const change of [paragraphReplace, { action: 'insert', element_id: loose, position: 'after', html: '<p>x</p>' }]) {
+    let reads = 0;
+    const s = server();
+    const counting = async (url, init = {}) => {
+      if ((init.method ?? 'GET') === 'GET') reads += 1;
+      return s.fetchImpl(url, init);
+    };
+    await assert.rejects(
+      withFetch(counting, () => applyEdit('t', { page_id: 'p1', ...change }, record)),
+      /needs expect, and nothing was written/,
+    );
+    assert.equal(reads, 0);
+    assert.deepEqual(s.sent, []);
+  }
+});
+
+test('a batch names each change that lacks expect', async () => {
   const s = server();
-  const preview = await withFetch(s.fetchImpl, () => previewEdit('t', { page_id: 'p1', ...paragraphReplace }));
-  await withFetch(s.fetchImpl, () =>
-    applyEdit(
-      't',
-      { page_id: 'p1', ...paragraphReplace, expect: 'Programm', confirmation_token: preview.confirmation_token },
-      record,
+  await assert.rejects(
+    withFetch(s.fetchImpl, () =>
+      applyEdit('t', { page_id: 'p1', changes: [{ ...paragraphReplace, expect: 'Programm' }, tableReplace] }, record),
     ),
+    /^.*Change 2 \(replace\) needs expect/,
   );
-  assert.equal(s.sent.length, 1);
+  assert.deepEqual(s.sent, []);
 });

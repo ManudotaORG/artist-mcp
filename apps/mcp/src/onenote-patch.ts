@@ -33,7 +33,7 @@ import { onenotePageContent, onenotePatchPage } from './api.js';
 import { randomUUID } from 'node:crypto';
 import { type RecordWrite, type WriteRecord } from './audit.js';
 import { GraphError } from './client.js';
-import { appendRows, previewRowUpdate, updateRow } from './onenote-rows.js';
+import { appendRows, updateRow } from './onenote-rows.js';
 
 export const failure = (message: string): GraphError => new GraphError(message, false);
 
@@ -833,8 +833,8 @@ const changeFrom = (params: Record<string, unknown>, where: string): EditChange 
   } else if (!named || !isGeneratedId(elementId as string)) {
     throw failure(
       `${where}: a ${action} needs element_id — the generated id of the part to ` +
-        `${action === 'replace' ? 'change' : 'sit beside'}, as preview_onenote_edit ` +
-        'reports it. Read the page again if you do not have one.',
+        `${action === 'replace' ? 'change' : 'sit beside'}, as read_note lists it. ` +
+        'Read the page again if you do not have one.',
     );
   }
 
@@ -1021,62 +1021,6 @@ export const editFrom = (params: Record<string, unknown>): EditDraft => {
     changes: [changeFrom(params, 'this change')],
     source_page: typeof source === 'string' && source !== '' ? source : null,
   };
-};
-
-const base32hex = (bytes: Uint8Array): string => {
-  const alphabet = '0123456789abcdefghijklmnopqrstuv';
-  let bits = 0;
-  let value = 0;
-  let out = '';
-  for (const byte of bytes) {
-    value = (value << 8) | byte;
-    bits += 8;
-    while (bits >= 5) {
-      out += alphabet[(value >>> (bits - 5)) & 31];
-      bits -= 5;
-    }
-  }
-  return out;
-};
-
-/**
- * The token a preview returns and an edit must carry back.
- *
- * Derived from the payload **and from what the change would destroy**, which is
- * the one difference from the create token and the reason this is not shared
- * with `onenote-write.ts`. A create can only be wrong about what it writes. A
- * replace can also be wrong about what it overwrites — and the id naming that
- * content moves after every page update, so an id that was correct at preview
- * may point at something else by the time the edit is applied.
- *
- * Hashing the pre-image makes that case fail closed: the edit is refused unless
- * the element still holds exactly what the musician was shown.
- */
-export const editToken = async (draft: EditDraft, preImages: string[]): Promise<string> => {
-  // Every change and every pre-image, in order. A batch is approved as one
-  // thing, so it fails closed as one thing: if any element it would overwrite
-  // has moved or changed since the preview, the whole batch stops. Hashing them
-  // separately would let a batch apply the changes whose targets still match,
-  // which is the partial application the atomicity of the PATCH exists to
-  // prevent — the guarantee has to hold in our code too, not only in Graph's.
-  const canonical = draft.changes
-    .map((change, index) =>
-      [
-        change.action,
-        change.element_id ?? '',
-        change.position ?? '',
-        change.text ?? '',
-        // The markup itself, not a rendering of it. The preview shows a table as
-        // rows because that is what can be read, but two different tables can
-        // render to the same rows — so what the token binds is what is sent.
-        change.html ?? '',
-        preImages[index] ?? '',
-      ].join(' '),
-    )
-    .join(' | ');
-
-  const data = new TextEncoder().encode(`confirm-edit ${draft.page_id} ${canonical}`);
-  return base32hex(new Uint8Array(await crypto.subtle.digest('SHA-256', data)));
 };
 
 /**
@@ -1337,6 +1281,80 @@ export const renderFragment = (html: string): string => {
   return blocks.filter((block) => block !== '').join('\n');
 };
 
+/**
+ * The house shape for a OneNote table, sent with the one refusal that is about
+ * a table written wrong (0019 step 4). It used to come back from
+ * preview_onenote_edit on every table edit; now it arrives when a table is
+ * actually being written wrong, which is when it is read — the economics
+ * `CLAUDE.md` asks of any rule moved into a tool's output.
+ */
+export const HOUSE_TABLE =
+  "A table cannot be edited a cell at a time — OneNote supports no update to a " +
+  "row or a cell, so changing one value rewrites the whole table, and EVERY cell " +
+  "that is not changing has to be carried across exactly as it reads. A cell " +
+  "left out of the markup is a value destroyed. A task table is changed with " +
+  "append_row and update_row instead, which carry every row for you. Send a " +
+  "table through `html`, never `text`. Formatting the table on the page carries " +
+  "and the replacement omits is inherited, until your markup specifies styling " +
+  "of its own. The house shape for a NEW table:\n" +
+  '  table: <table border="1" style="border-collapse:collapse"> (the border ' +
+  "attribute is added for you if it is missing)\n" +
+  '  cell:  <td style="border:1px solid #A3A3A3;padding:4px"> with its content in a <p>\n' +
+  "  header row, where there is one: background-color:#EFEFEF on each cell, " +
+  "text in <b>, and kept exactly as it reads\n" +
+  "  a free-text section is a single-cell table with NO header row\n" +
+  "  never set column widths\n" +
+  '  a task is a to-do tag on the paragraph that states it: <p data-tag="to-do">, ' +
+  'and <p data-tag="to-do:completed"> once done — never on a header or a heading';
+
+/**
+ * The one normalisation applied to a table on its way out rather than refused:
+ * OneNote acts on the `border` ATTRIBUTE and returns a CSS border alone as
+ * border:0px, found in 0017. Everything else 0017's `asWritten` does is already
+ * refused by `validateFragment` for markup a caller composes — an `id`, a to-do
+ * tag on a `<span>` — so this is all there is left to apply.
+ */
+const bordered = (html: string): string => html.replace(/<table\b(?![^>]*\bborder=)/gi, '<table border="1"');
+
+/**
+ * The header row of a table, as its cells' text, or null when it has none: a
+ * first row, followed by at least one more, whose every cell is bold or shaded,
+ * which is how the house shape and OneNote's own tables mark one. A single-cell
+ * free-text table has none, and is rewritten freely.
+ */
+const headerOf = (table: string): string[] | null => {
+  const rows = childElements(table, 'tr');
+  if (rows.length < 2) return null;
+  const cells = childElements(rows[0], 'td|th');
+  const marked = (cell: string) =>
+    /^<th\b/i.test(cell) || /<(?:b|strong)\b|font-weight:\s*bold|background(?:-color)?:/i.test(cell);
+  if (cells.length === 0 || !cells.every(marked)) return null;
+  return cells.map((cell) => asText(cell).replace(/\s+/g, ' ').trim());
+};
+
+/**
+ * Refuse a whole-table replace that changes the table's header row: what is not
+ * mechanical is refused, and the refusal carries the house shape (0019 step 4).
+ * A header names what every row below it means, so a header rewritten in
+ * passing silently re-labels the musician's values.
+ */
+const checkHeaders = (draft: EditDraft, captured: string[], content: string[]): void => {
+  for (const [index, change] of draft.changes.entries()) {
+    if (change.action !== 'replace' || !isTableId(change.element_id as string)) continue;
+    const was = headerOf(captured[index]);
+    if (was === null) continue;
+    const now = cellsOf(childElements(content[index], 'tr')[0] ?? '');
+    if (JSON.stringify(now) === JSON.stringify(was)) continue;
+    throw failure(
+      `${draft.changes.length === 1 ? 'That table' : `Change ${index + 1}'s table`} is headed ` +
+        `"${was.join(' | ')}" on the page, and the replacement's first row reads ` +
+        `"${now.join(' | ')}". A whole-table replace keeps the header row as it is, so ` +
+        'nothing was written.\n\n' +
+        HOUSE_TABLE,
+    );
+  }
+};
+
 /** Whether a generated id names a table, which decides what may be done to it. */
 export const isTableId = (id: string): boolean => id.startsWith('table:');
 
@@ -1350,34 +1368,17 @@ const readable = (elementHtml: string, id: string): string =>
   isTableId(id) ? renderTable(elementHtml) : asText(elementHtml);
 
 /**
- * What the page currently says, element by element, so a caller can name the
- * part to change without guessing an id.
+ * What the page currently says, element by element, derived from page HTML
+ * `read_note` already fetched, so a caller can name the part to change without
+ * guessing an id and without a second call to Graph — the only difference is
+ * `includeIDs=true`.
  *
  * Every id here is read in this call and is only good for the next one. They
  * are not stable identifiers and must never be stored, handed to a musician, or
  * quoted back in a later session — Microsoft says they "might change after a
- * page update", and that was observed rather than merely read.
- */
-export const readEditableParts = async (
-  token: string,
-  pageId: string,
-  { full = true }: { full?: boolean } = {},
-): Promise<{ html: string; etag: string | null; parts: EditablePart[] }> => {
-  const { html, etag } = await onenotePageContent(pageId, token);
-  return { html, etag, parts: editablePartsFrom(html, { full }) };
-};
-
-/**
- * The same index, derived from page HTML somebody else already fetched.
- *
- * Split out so `read_note` can return the ids without a second call to Graph.
- * Both paths ask `/content` for the same page; the only difference is
- * `includeIDs=true`, so making the reader ask for ids too turns what used to be
- * a whole extra round trip — preview once for the index, preview again for the
- * change — into a query parameter. The ids are as fresh as the read they came
- * with, and a stale one still fails closed: `editToken` binds the pre-image, so
- * an element that has moved produces a different one and the write is refused
- * before it happens.
+ * page update", and that was observed rather than merely read. A stale one
+ * still fails closed: the edit carries `expect`, what it read there, and an
+ * element that has moved no longer says it (0019 step 2).
  */
 export const editablePartsFrom = (
   html: string,
@@ -1464,7 +1465,7 @@ const showChange = (
 
   if (change.action === 'append') {
     return {
-      preview: `Add to the end of the page:\n\n${
+      preview: `Added to the end of the page:\n\n${
         change.html === null ? (change.text as string).trim() : rendered(change.html)
       }`,
       inherited: [],
@@ -1476,9 +1477,9 @@ const showChange = (
   if (change.action === 'insert') {
     return {
       preview:
-        `Put this ${change.position} the ${
+        `Put ${change.position} the ${
           isTableId(change.element_id as string) ? 'table' : 'paragraph'
-        } that currently reads:\n\n${anchor}\n\nNew block:\n\n${rendered(change.html as string)}`,
+        } that reads:\n\n${anchor}\n\nThis new block:\n\n${rendered(change.html as string)}`,
       inherited: [],
     };
   }
@@ -1493,19 +1494,19 @@ const showChange = (
 
     return {
       preview:
-        `Replace this:\n\n${renderTable(captured, marks.before)}\n\n` +
+        `Replaced this:\n\n${renderTable(captured, marks.before)}\n\n` +
         `With this:\n\n${renderTable(carriedHtml, marks.after)}\n\n` +
         (touched === 0 && dropped === 0
-          ? 'Every row reads exactly as it does now; only the markup differs.'
-          : `Marked rows are the ones that differ: ${dropped} going, ${touched} arriving. ` +
-            'Every unmarked row is being rewritten too — a table is replaced whole — ' +
-            'and is only safe because it is carried across unchanged.'),
+          ? 'Every row reads exactly as it did; only the markup differs.'
+          : `Marked rows are the ones that differ: ${dropped} gone, ${touched} arrived. ` +
+            'Every unmarked row was rewritten too — a table is replaced whole — and ' +
+            'was sent as it read.'),
       inherited: carried.notes,
     };
   }
 
   return {
-    preview: `Replace this:\n\n${anchor}\n\nWith this:\n\n${
+    preview: `Replaced this:\n\n${anchor}\n\nWith this:\n\n${
       change.html === null ? (change.text as string).trim() : rendered(carriedHtml)
     }`,
     inherited: carried.notes,
@@ -1532,10 +1533,9 @@ const resolveChanges = (
   const content = draft.changes.map((change, index) =>
     change.html === null
       ? paragraph(change.text as string)
-      : change.action === 'replace'
-        ? inherit(captured[index], change.html).html
-        : change.html,
+      : bordered(change.action === 'replace' ? inherit(captured[index], change.html).html : change.html),
   );
+  checkHeaders(draft, captured, content);
 
   return { captured, content };
 };
@@ -1581,124 +1581,6 @@ const checkExpected = (draft: EditDraft, captured: string[]): void => {
   );
 };
 
-/**
- * Show the change that would be made, and hand back the token making it needs.
- *
- * A read despite the name, exactly as the calendar and create previews are.
- */
-export async function previewEdit(token: string, params: Record<string, unknown>) {
-  if (params.action === 'append_row') {
-    throw failure(
-      'append_row needs no preview: it changes no existing cell and commits in one call. ' +
-        'Call edit_onenote_page with it directly.',
-    );
-  }
-  if (params.action === 'update_row') return previewRowUpdate(token, params);
-  // Naming a part to change requires knowing its id, and an id is only knowable
-  // by reading the page. So a replace with no element_id is not a malformed
-  // call — it is the first half of the only workflow available, and the tool
-  // text says so. It used to be refused here, which meant a model following that
-  // text got an error and had to guess its way out.
-  //
-  // No confirmation token comes back from this branch. Nothing has been chosen
-  // yet, and a token would be one for a change nobody has described.
-  const wantsPart =
-    params.changes === undefined &&
-    (params.action === 'replace' || params.action === 'insert') &&
-    (params.element_id === undefined || params.element_id === null || params.element_id === '');
-
-  if (wantsPart) {
-    const pageId = params.page_id;
-    if (typeof pageId !== 'string' || !ONENOTE_ID.test(pageId)) {
-      throw failure('page_id is required, and must name the page to change.');
-    }
-
-    // In full: this is the call whose whole purpose is showing what the page
-    // holds, and the one place the cost is the point.
-    const { parts } = await readEditableParts(token, pageId);
-    return {
-      preview: null,
-      page_id: pageId,
-      parts,
-      abbreviated: false,
-      confirmation_token: null,
-      note:
-        parts.length === 0
-          ? 'This page has no separately editable parts, so nothing on it can be ' +
-            'replaced. An append can still add to the end of it.'
-          : 'Nothing has been previewed yet. These are the parts of the page as it ' +
-            'stands. Name one as element_id and preview again to see the change ' +
-            'itself — or list several changes at once as `changes`, which are ' +
-            'applied together in one write. The ids were read just now and are ' +
-            'good only for the next call.',
-    };
-  }
-
-  const draft = editFrom(params);
-
-  // An index rather than the page: the caller has named what it is changing, so
-  // what it needs back is the diff for that, plus enough to look up an id it
-  // did not have. Returning every table in full on every call is the dominant
-  // cost of patching one page in several steps.
-  const { html, parts } = await readEditableParts(token, draft.page_id, { full: false });
-  const { captured, content } = resolveChanges(html, draft);
-
-  const shown = draft.changes.map((change, index) =>
-    showChange(change, captured[index], content[index]),
-  );
-
-  const inherited = [...new Set(shown.flatMap((one) => one.inherited))];
-  const inheritedNote =
-    inherited.length === 0
-      ? ''
-      : `\n\nKeeping ${inherited.join(', ')}, which this change does not specify. ` +
-        'Without that it would land as ordinary body text.';
-
-  const body =
-    draft.changes.length === 1
-      ? shown[0].preview
-      : `${draft.changes.length} changes, applied together in one write — all of them ` +
-        'or none:\n\n' +
-        shown.map((one, index) => `${index + 1}. ${one.preview}`).join('\n\n');
-
-  const destroys = draft.changes.some((change) => change.action === 'replace');
-
-  // Kept per-kind rather than folded into the general wording: this is the
-  // sentence that tells a musician a table replace takes every row with it, and
-  // it stopped being said when the note started describing a batch instead of a
-  // change. A note that covers several changes still has to say the strongest
-  // thing true of any of them.
-  const wholeTable = draft.changes.some(
-    (change) => change.action === 'replace' && isTableId(change.element_id ?? ''),
-  );
-
-  return {
-    preview: `${body}${inheritedNote}`,
-    page_id: draft.page_id,
-    parts,
-    // Said plainly, because a shortened list that does not announce itself is a
-    // list a reader will treat as the whole page.
-    abbreviated: true,
-    confirmation_token: await editToken(draft, captured),
-    note:
-      'Show this to the musician and wait for their yes. ' +
-      (destroys
-        ? 'This overwrites what is quoted above' +
-          (wholeTable
-            ? ' — a table is replaced whole, every row of it, because OneNote supports ' +
-              'no change to a single row or cell'
-            : '') +
-          ', and OneNote keeps no version of a ' +
-          "page — what it replaces is kept in this install's own write log and " +
-          'nowhere else.'
-        : 'Nothing on the page is overwritten or removed by this.') +
-      (draft.changes.length === 1
-        ? ''
-        : ' They are one confirmation: applied in a single write, and if any one of ' +
-          'them cannot be applied then none of them is.'),
-  };
-}
-
 /** A row's cells as text, whitespace collapsed — shared by the row writes and their undo. */
 export const cellsOf = (row: string): string[] =>
   childElements(row, 'td|th').map((cell) => asText(cell).replace(/\s+/g, ' ').trim());
@@ -1712,7 +1594,7 @@ export const cellsOf = (row: string): string[] =>
  */
 const appendOnly = async (token: string, draft: EditDraft, record: RecordWrite) => {
   const content = draft.changes.map((change) =>
-    change.html === null ? paragraph(change.text as string) : (change.html as string),
+    change.html === null ? paragraph(change.text as string) : bordered(change.html as string),
   );
 
   // Recorded before the write, and the write refused if that fails (0018): an
@@ -1765,22 +1647,28 @@ const appendOnly = async (token: string, draft: EditDraft, record: RecordWrite) 
 };
 
 /**
- * Apply the change, or the batch of them, having shown it.
+ * Apply the change, or the batch of them, in one call (0019 step 4).
  *
- * The page is read again here rather than trusted from the preview, and that is
- * not caution: generated ids move after any page update, so an id that was right
- * at preview may name something else by now. Re-reading also produces the ETag
- * that goes out as `If-Match`, which is what makes the musician typing in
- * OneNote between the two calls a refusal rather than a silent overwrite.
+ * No preview and no token: the musician's request is the yes, and a change the
+ * model derived itself is asked about in words first, which `policy:patch` says
+ * and no tool can check. What the token used to guard is guarded here instead,
+ * without a person. Every replace and insert names what it read in its target
+ * (`expect`), and the page is read again here and refused if the target no
+ * longer says it. That re-read is not caution: generated ids move after any page
+ * update, so an id that was right when the caller read the page may name
+ * something else by now. It also produces the ETag that goes out as `If-Match`,
+ * so the musician typing in OneNote between the read and the write is a refusal
+ * rather than a silent overwrite.
  *
- * The confirmation token is checked against every change *and* every pre-image,
- * so a batch fails closed if any element it would overwrite has changed since
- * the preview — not merely the one that moved.
+ * A batch fails closed as a whole if any target it would overwrite has moved —
+ * not merely the one that moved — and all the commands go out in one `PATCH`,
+ * which is what Graph's array is for. A batch containing an unresolvable target
+ * applies nothing at all, verified against a real page, so there is no state in
+ * which half a batch is on the page.
  *
- * All the commands go out in one `PATCH`, which is what Graph's array is for.
- * A batch containing an unresolvable target applies nothing at all, verified
- * against a real page, so there is no state in which half a confirmed batch is
- * on the page.
+ * Every change is recorded before the write, with what it destroys, and the
+ * result says exactly what changed, before and after, and the write id that
+ * undo_write reverses it by — 0009's rule for every one-call write.
  */
 export async function applyEdit(
   token: string,
@@ -1792,51 +1680,37 @@ export async function applyEdit(
 
   const draft = editFrom(params);
 
-  // An append destroys nothing, so under 0009's rule it commits in one call:
-  // no preview, no token, and no read of the page either. The read exists to
-  // capture what a change would overwrite and to produce the ETag that guards
-  // it, and an append overwrites nothing — so it would spend one of the
-  // musician's OneNote requests to protect nothing. A token passed anyway is
-  // ignored rather than checked, so a client following the old two-step flow
-  // keeps working. See docs/decisions/0015-recovery-replaces-confirmation.md.
+  // An append destroys nothing and has no anchor, so it needs no read of the
+  // page either: the read exists to check what a change overwrites or sits
+  // beside, and to produce the ETag that guards it. See 0015.
   //
-  // Known and accepted: without a token or a read, a caller that retries after
-  // a timeout in which the write actually landed appends the line twice. Left
-  // until it is seen to happen, by the owner's decision on 2026-11-21.
+  // Known and accepted: without a read, a caller that retries after a timeout
+  // in which the write actually landed appends the line twice. Left until it is
+  // seen to happen, by the owner's decision on 2026-11-21.
   if (draft.changes.every((change) => change.action === 'append')) {
     return appendOnly(token, draft, record);
   }
 
-  if (typeof params.confirmation_token !== 'string' || params.confirmation_token === '') {
-    const needing = draft.changes
-      .map((change, index) => ({ change, index }))
-      .filter(({ change }) => change.action !== 'append')
-      .map(({ change, index }) =>
-        draft.changes.length === 1 ? `This ${change.action}` : `Change ${index + 1} (${change.action})`,
-      );
+  const unchecked = draft.changes
+    .map((change, index) => ({ change, index }))
+    .filter(({ change }) => change.action !== 'append' && change.expect === null);
+  if (unchecked.length > 0) {
     throw failure(
-      `${needing.join(', ')} needs a confirmation_token, and nothing was written. ` +
-        'Only an append commits in one call, because it removes nothing. Call ' +
-        'preview_onenote_edit with these values, show the musician what it returns, ' +
-        'and after their yes call this again with the token it gives.',
+      `${unchecked
+        .map(({ change, index }) =>
+          draft.changes.length === 1 ? `This ${change.action}` : `Change ${index + 1} (${change.action})`,
+        )
+        .join(', ')} needs expect, and nothing was written: what you read in the element it ` +
+        `${unchecked.some(({ change }) => change.action === 'replace') ? 'overwrites' : 'sits beside'} — ` +
+        'its text, or for a table its rows as lists of cell texts. read_note with its edit ids ' +
+        'gives both. It is how a page that changed since you read it is refused rather than ' +
+        'overwritten.',
     );
   }
 
   const { html, etag } = await onenotePageContent(draft.page_id, token);
   const { captured, content } = resolveChanges(html, draft);
-
-  const expected = await editToken(draft, captured);
-  if (params.confirmation_token !== expected) {
-    throw failure(
-      draft.changes.some((change) => change.action !== 'append')
-        ? 'That part of the page is not what was previewed — either the values ' +
-          'changed, or the page did since it was shown. Nothing was written. Call ' +
-          'preview_onenote_edit again and show the musician what it returns now.'
-        : 'The confirmation token does not match these values. Call ' +
-          'preview_onenote_edit again with exactly what should be written, show the ' +
-          'musician what it returns, then apply it with those same values.',
-    );
-  }
+  const shown = draft.changes.map((change, index) => showChange(change, captured[index], content[index]));
 
   const commands = draft.changes.map((change, index) =>
     change.action === 'append'
@@ -1884,7 +1758,7 @@ export async function applyEdit(
             : `Replaced "${destroyed}" with "${wrote}"`),
       target: draft.page_id,
       source_page: draft.source_page,
-      // Only a replace has one. An insert captured the anchor to bind its token,
+      // Only a replace has one. An insert captured the anchor to check its `expect`,
       // but nothing of it was destroyed, and recording it as a pre-image would
       // put content in the log that is still on the page — which is the one thing
       // a reader of this log must be able to trust it does not do.
@@ -1901,9 +1775,8 @@ export async function applyEdit(
 
   for (const entry of entries) await record({ ...entry, status: 'done' });
 
-  const replaced = draft.changes.filter((change) => change.action === 'replace').length;
-
   const ids = entries.map((entry) => entry.write_id as string);
+  const inherited = [...new Set(shown.flatMap((one) => one.inherited))];
 
   return {
     changed: true,
@@ -1911,12 +1784,17 @@ export async function applyEdit(
     write_ids: ids,
     note:
       (draft.changes.length === 1
+        ? shown[0].preview
+        : `${draft.changes.length} changes, applied together in one write:\n\n` +
+          shown.map((one, index) => `${index + 1}. ${one.preview}`).join('\n\n')) +
+      (inherited.length === 0
         ? ''
-        : `${draft.changes.length} changes were applied in one write. `) +
-      (replaced === 0
-        ? 'The page now carries this. Nothing was removed.'
-        : "OneNote keeps no version of what was replaced; this install's write log " +
-          'does, and undo_write puts it back by its write id while it still reads as written.') +
-      ` Recorded as write ${ids.join(', ')}.`,
+        : `\n\nKept from what was there, since the change did not specify it: ${inherited.join(', ')}.`) +
+      '\n\nOneNote keeps no version of a page. To take ' +
+      (draft.changes.length === 1 ? 'this' : 'one of these') +
+      ' back, call undo_write with its write id: it puts back what a replace overwrote ' +
+      'and removes an inserted paragraph, while it still reads as written. ' +
+      `Recorded as write ${ids.join(', ')}.`,
   };
 }
+

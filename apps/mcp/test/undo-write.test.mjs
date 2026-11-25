@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createServer } from '../dist/server.js';
-import { appendRows, previewRowUpdate, updateRow } from '../dist/onenote-rows.js';
+import { appendRows, updateRow } from '../dist/onenote-rows.js';
 import { undoWrite } from '../dist/onenote-undo.js';
 
 /**
@@ -132,10 +132,7 @@ const tickRow = async (l) => {
   const before = page(table([...base, task('Vertrag zur&#252;cksenden')]));
   const after = page(table([...base, task('Vertrag zur&#252;cksenden', { done: true, status: 'ERLEDIGT' })]));
   const params = { page_id: 'p1', action: 'update_row', element_id: TABLE_ID, row: 'Vertrag zurücksenden', done: true, set: { Status: 'ERLEDIGT' } };
-  const shown = await withFetch(notebook(before).fetchImpl, () => previewRowUpdate('t', params));
-  const r = await withFetch(notebook(before, after).fetchImpl, () =>
-    updateRow('t', { ...params, confirmation_token: shown.confirmation_token }, l.record),
-  );
+  const r = await withFetch(notebook(before, after).fetchImpl, () => updateRow('t', params, l.record));
   return r.write_ids[0];
 };
 

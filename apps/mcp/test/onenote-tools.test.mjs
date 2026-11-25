@@ -196,12 +196,18 @@ const callTool = async (name, args, flags) => {
   }
 };
 
-test('a batch of changes is a call the schema actually accepts', async () => {
-  // No Microsoft connection in CI, so this gets as far as the connection and
-  // stops. That is the point: anything about arguments means the batch cannot
-  // be expressed, which is what happened when `action` stayed required.
+/** Whether the answer is the server's own, not the SDK refusing the call. */
+const reachedTheServer = (answer) =>
+  !/Invalid arguments|Required at|validation error/i.test(answer) && !/not found|unknown tool/i.test(answer);
+
+test('a batch of changes, expect included, is a call the schema actually accepts', async () => {
+  // No Microsoft connection here (the spawned server gets an empty token file),
+  // so this gets as far as the connection and stops. That is the point:
+  // anything about arguments means the batch cannot be expressed, which is what
+  // happened when `action` stayed required. Since 0019 step 4 there is one
+  // tool for this, not a preview and an edit whose schemas had to agree.
   const answer = await callTool(
-    'preview_onenote_edit',
+    'edit_onenote_page',
     {
       page_id: 'a-page-id',
       changes: [
@@ -209,46 +215,31 @@ test('a batch of changes is a call the schema actually accepts', async () => {
           action: 'replace',
           element_id: 'table:{33f8a242-7c33-4bb2-90c5-8425a68cc5bf}{50}',
           html: '<table><tr><td><p>Honorar</p></td><td><p>1450</p></td></tr></table>',
+          expect: [['Honorar', '1200']],
         },
         { action: 'append', text: 'Stand Mai 2026' },
       ],
     },
     ['--allow-writes', 'onenote-edit'],
   );
-
-  assert.ok(
-    !/Invalid arguments|Required at|validation error/i.test(answer),
-    `the schema refused a batch: ${answer}`,
-  );
+  assert.ok(reachedTheServer(answer), `the schema refused a batch: ${answer}`);
 });
 
-test('the edit half accepts the same batch shape the preview does', async () => {
-  // The two schemas have to agree, or a batch can be previewed and not applied.
+test('a single replace takes expect as text', async () => {
   const answer = await callTool(
     'edit_onenote_page',
-    {
-      page_id: 'a-page-id',
-      confirmation_token: 'whatever-the-preview-said',
-      changes: [{ action: 'append', text: 'Stand Mai 2026' }],
-    },
+    { page_id: 'a-page-id', action: 'replace', element_id: 'p:{33f8a242-7c33-4bb2-90c5-8425a68cc5bf}{40}', text: 'Fee: 1400', expect: 'Fee: 1200' },
     ['--allow-writes', 'onenote-edit'],
   );
-
-  assert.ok(
-    !/Invalid arguments|Required at|validation error/i.test(answer),
-    `the schema refused a batch: ${answer}`,
-  );
+  assert.ok(reachedTheServer(answer), `the schema refused expect: ${answer}`);
 });
 
 test('a call with neither a single action nor changes says which to give', async () => {
-  const answer = await callTool(
-    'preview_onenote_edit',
-    { page_id: 'a-page-id' },
-    ['--allow-writes', 'onenote-edit'],
-  );
+  const answer = await callTool('edit_onenote_page', { page_id: 'a-page-id' }, ['--allow-writes', 'onenote-edit']);
+  assert.ok(reachedTheServer(answer), 'the schema should let this through so the server can explain it');
+});
 
-  assert.ok(
-    !/Invalid arguments|Required at/i.test(answer),
-    'the schema should let this through so the server can explain it',
-  );
+test('preview_onenote_edit is gone', async () => {
+  const answer = await callTool('preview_onenote_edit', { page_id: 'a-page-id' }, ['--allow-writes', 'onenote-edit']);
+  assert.ok(!reachedTheServer(answer), `a removed tool answered: ${answer}`);
 });

@@ -1054,18 +1054,6 @@ const EVIDENCE_GATE =
   "a standing licence to keep reading. ";
 
 /**
- * The house shape for a OneNote table, returned by preview_onenote_edit at the
- * moment a table is in play rather than carried in policy:patch for every
- * session that will never write one.
- *
- * It lived in the pack, loaded in full on every install including those with no
- * onenote-edit grant, where the tools it describes are not even registered. It
- * is worth more here than it was there: a rule that arrives with the parts
- * index, one call before the markup is composed, is read at the moment it
- * applies, and a tool's own output outranks a playbook.
- */
-/** The parameters of update_row, shared by the preview and the edit so they cannot differ. */
-/**
  * What a replace or insert read in the element it overwrites or sits beside
  * (0019 step 2): checked against the page as re-read before the write, so a
  * page that moved since it was read is refused rather than overwritten.
@@ -1074,6 +1062,7 @@ const EXPECT = z.union([z.string(), z.array(z.array(z.string()))]);
 const EXPECT_TEXT =
   "For replace and insert: what you read in that element — its text, or for a table its rows as lists of cell texts. Refused, with what it says now, if the page changed since";
 
+/** The parameters of update_row, shared by the edit tool's single change and its schema. */
 const ROW_UPDATE_PARAMS = {
   row: z
     .string()
@@ -1088,36 +1077,6 @@ const ROW_UPDATE_PARAMS = {
     .optional()
     .describe("For update_row: cells to change, by header name, as text — never the task text itself"),
 };
-
-const TABLE_MARKUP =
-  "\n\nThis page has tables. A table cannot be edited a cell at a time — " +
-  "OneNote supports no update to a row or a cell, so changing one value " +
-  "rewrites the whole table, and EVERY cell that is not changing has to be " +
-  "carried across exactly as it reads above. A cell left out of the markup is " +
-  "not a cell left alone: it is a value destroyed. Send tables through `html`, " +
-  "never `text`, which arrives entity-escaped as literal angle brackets.\n" +
-  "Formatting the original carries and the replacement omits is inherited for " +
-  "you, and the preview says what it is keeping — but that stops the moment " +
-  "your markup specifies any styling of its own, so styling one cell makes you " +
-  "responsible for all of them. Write the house shape explicitly for a NEW " +
-  "table, and let inheritance cover one you are editing in place:\n" +
-  '  table: <table border="1" style="border-collapse:collapse">  — the ' +
-  "`border` ATTRIBUTE is the part OneNote acts on; a CSS border in the style " +
-  "alone comes back as border:0px\n" +
-  '  cell:  <td style="border:1px solid #A3A3A3;padding:4px"> with its content in a <p>\n' +
-  "  header row, where there is one: additionally background-color:#EFEFEF on " +
-  "each cell, text wrapped in <b>\n" +
-  "  a free-text section is a single-cell table with NO header row\n" +
-  "  never set column widths — OneNote sizes them, and one guessed from a " +
-  "preview is worse than none\n" +
-  // Found live (#193): a filled task table went out as plain text, because the
-  // tag rule lived in 0008 and a page footnote, and neither is in front of the
-  // model at the moment it composes the markup. This is.
-  '  a task is a to-do tag on the paragraph that states it: <p data-tag="to-do"> ' +
-  'in its cell, and <p data-tag="to-do:completed"> once it is done. Every task ' +
-  "row gets one, new rows included, and a tag the table already carries is " +
-  "carried across like any other value. Only those two values; never on a " +
-  "header, a heading or a cell that is not a task";
 
 /**
  * What is true of reading any attachment, wherever it came from.
@@ -1929,8 +1888,20 @@ const createServer = async (
             "page has no page numbers, so parts are lengths of text, not " +
             "anything the page itself records.",
         ),
+      // Only where an edit can follow. The index is capped because it is paid
+      // on every read; this is the one read that pays for all of it, asked for
+      // when the part to change is among those the cap left out. It is what
+      // preview_onenote_edit's full listing did until 0019 retired it.
+      ...(isGranted(grants, "onenote-edit")
+        ? {
+          all_parts: z
+            .boolean()
+            .optional()
+            .describe("List every editable part, not only the first ones: for an edit to a part the list left out"),
+        }
+        : {}),
     },
-    async ({ note_id, from_part }) => {
+    async ({ note_id, from_part, all_parts }) => {
       try {
         const {
           title,
@@ -2007,11 +1978,12 @@ const createServer = async (
         // one would spend more here than the discovery call this replaced ever
         // cost. Tables come first and are never dropped: most of a filled-in
         // page lives in them, and a table is the one thing that cannot be
-        // edited any other way. preview_onenote_edit still lists everything.
+        // edited any other way. all_parts lists everything.
         const all = editable ?? [];
         const tables = all.filter((e) => e.kind === "table");
         const textElements = all.filter((e) => e.kind !== "table");
-        const shownText = textElements.slice(0, Math.max(0, INDEX_ENTRIES - tables.length));
+        const shownText =
+          all_parts === true ? textElements : textElements.slice(0, Math.max(0, INDEX_ENTRIES - tables.length));
         const editableParts = [...tables, ...shownText];
         const omitted = all.length - editableParts.length;
         const index = editableParts.length
@@ -2020,7 +1992,7 @@ const createServer = async (
             "",
             "## Editable parts of this page",
             "",
-            "Element ids for preview_onenote_edit, valid until the next write. " +
+            "Element ids for edit_onenote_page, valid until the next write. " +
               "A table is replaced whole.",
             "",
             ...editableParts.map(
@@ -2033,7 +2005,7 @@ const createServer = async (
               ? [
                 "",
                 `${omitted} further part${omitted === 1 ? "" : "s"} of this page ` +
-                  "are not listed. preview_onenote_edit returns all of them.",
+                  "are not listed. Read again with all_parts to list them.",
               ]
               : []),
           ].join("\n")
@@ -2707,7 +2679,7 @@ const createServer = async (
         "is no bulk form, and it never changes an existing page, so it is not a " +
         "way to add a line to one: " +
         (isGranted(grants, "onenote-edit")
-          ? "use preview_onenote_edit and edit_onenote_page for that. "
+          ? "use edit_onenote_page for that. "
           : "paste that for the musician as always. ") +
         "A title the notebook has not settled (UNKNOWN, TBC, a disputed name) is " +
         "refused; the body may say a fee is still TBC, because that records an " +
@@ -2888,222 +2860,28 @@ const createServer = async (
    */
   if (isGranted(grants, "onenote-edit")) {
     server.tool(
-      "preview_onenote_edit",
-      "Call this before edit_onenote_page for a replace or an insert — it is the only way to obtain the confirmation_token those require, and it is what puts the exact change in front of the musician. SHOW THE MUSICIAN WHAT IT RETURNS AND WAIT FOR THEIR YES. An append, append_row or update_row needs no preview, though update_row can be previewed to show the row before and after. " +
-        "Reads the page as it stands right now and shows what the change would " +
-        "do to it. Changes nothing. For a replace it quotes what would be " +
-        "overwritten — a table as its rows — which is the part the musician has " +
-        "to agree to. read_note lists the page's editable parts with an " +
-        "element_id for each, so take the id from there rather than calling " +
-        "this once just to find it; this returns the same list if you have not " +
-        "read the page. Those ids are good only until the next write to the " +
-        "page — never store one, repeat one to the musician, or reuse one from " +
-        "earlier in the conversation. A page needing several changes takes ONE call with " +
-        "`changes`: they are previewed together, confirmed together and written " +
-        "together, and the ids stay valid because they only move once the write " +
-        "happens. Changing one thing at a time re-reads the page every time and " +
-        "is what makes patching a page expensive. " +
-        "Most of a filled-in page lives in tables, and a cell " +
-        "cannot be changed on its own: OneNote supports no update to a row or a " +
-        "cell, so changing one value means replacing that whole table with html " +
-        "carrying every other cell unchanged. Copy them from the rows this " +
-        "returns rather than retyping them from memory.",
-      {
-        page_id: z
-          .string()
-          .describe("The page to change, by id from list_notes or read_note. The id, not the title"),
-        action: z
-          .enum(["append", "replace", "insert", "update_row"])
-          .optional()
-          .describe(
-            "One change. Leave it out when passing `changes`, which carries several. " +
-              "update_row changes one task row of a table, built by this tool: give element_id (the table), row, and done and/or set. " +
-              "append adds to the end of the page and removes nothing. replace " +
-              "overwrites one existing element — a paragraph, or a whole table — and " +
-              "is the destructive one. insert puts a new block before or after an " +
-              "existing paragraph, heading or table, which is one of the two ways to " +
-              "add a section in the middle of a page rather than at the end",
-          ),
-        text: z
-          .string()
-          .optional()
-          .describe(
-            "The new text, plain. Markdown and HTML are NOT interpreted. For a " +
-              "paragraph. Give either this or html, never both",
-          ),
-        html: z
-          .string()
-          .optional()
-          .describe(
-            "The new content as markup. A table has to be written this way, as one " +
-              "whole <table>. A paragraph may be too, and may become SEVERAL elements " +
-              "at once — replacing an intro paragraph with itself plus a heading plus " +
-              "a table is how a section is added in the middle of a page. Tables, " +
-              "rows, cells, paragraphs, headings, lists and simple emphasis only; " +
-              "anything else is refused and nothing is written. Formatting the target " +
-              "has and this does not specify is carried across, and the preview says " +
-              "when that happened — a heading on these pages is a paragraph holding a " +
-              "styled span, so markup that specifies none of its own keeps it",
-          ),
-        element_id: z
-          .string()
-          .optional()
-          .describe(
-            "For replace and insert: which part to overwrite or sit beside, using an " +
-              "element_id this tool reported in the parts list on a previous call",
-          ),
-        position: z
-          .enum(["before", "after"])
-          .optional()
-          .describe("For insert only: which side of that element the new block goes on"),
-        ...ROW_UPDATE_PARAMS,
-        changes: z
-          .array(
-            z.object({
-              action: z.enum(["append", "replace", "insert"]),
-              element_id: z.string().optional(),
-              position: z.enum(["before", "after"]).optional(),
-              text: z.string().optional(),
-              html: z.string().optional(),
-            }),
-          )
-          .optional()
-          .describe(
-            "SEVERAL changes to one page, applied together in ONE write and approved " +
-              "as one thing. Prefer this whenever a page needs more than one change: " +
-              "the ids move after every write, so changes applied one at a time mean " +
-              "re-reading the page between each. A batch resolves every id against a " +
-              "single read, and if any one change cannot be applied then none of them " +
-              "is. Give this OR a single action, never both",
-          ),
-        source_page: z
-          .string()
-          .optional()
-          .describe(SOURCE_PAGE),
-      },
-      async (params) => {
-        try {
-          const { preview, confirmation_token, parts, note, abbreviated } = await call<{
-            preview: string | null;
-            confirmation_token: string | null;
-            abbreviated: boolean;
-            parts: {
-              element_id: string;
-              kind: "text" | "table";
-              text: string;
-              inside_table: string | null;
-            }[];
-            note: string;
-          }>("preview_onenote_edit", params);
-
-          // A table is listed as its rows, already laid out, so it goes in
-          // unindented. A paragraph sitting in a cell says so and names the
-          // table to replace instead: without that line a model reads a cell as
-          // separately editable, aims a replace at it, and gets a refusal it
-          // cannot interpret.
-          const listed =
-            parts.length === 0
-              ? ""
-              : `\n\n${
-                  abbreviated
-                    ? "Where the rest of the page's parts are, shortened to one line each " +
-                      "so this call does not return the whole page. Preview a part to see " +
-                      "it in full"
-                    : "The editable parts of this page right now"
-                }:\n` +
-                parts
-                  .map((p) =>
-                    p.kind === "table"
-                      ? `  ${p.element_id}  (a table — replace it whole, with html)\n${
-                          // Rendered rows lay themselves out; a one-line label
-                          // has to be indented under its id like every other
-                          // entry, or the index reads as a broken table.
-                          abbreviated ? `    ${p.text}` : p.text
-                        }`
-                      : `  ${p.element_id}${
-                          p.inside_table === null
-                            ? ""
-                            : `  (in table ${p.inside_table} — a cell cannot be changed on its own; replace that table)`
-                        }\n    ${p.text}`,
-                  )
-                  .join("\n");
-
-          // No token means nothing has been chosen yet: this was the call that
-          // asks which part to change. Saying "wait for their yes" here would
-          // be asking the musician to approve a change nobody has described.
-          if (confirmation_token === null) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `${note}${listed}${
-                    parts.some((p) => p.kind === "table") ? TABLE_MARKUP : ""
-                  }`,
-                },
-              ],
-            };
-          }
-
-          return {
-            content: [
-              {
-                type: "text",
-                text:
-                  `${preview}${listed}${
-                    /<table[\s>]/i.test(
-                      `${params.html ?? ""}${(params.changes ?? [])
-                        .map((c) => c.html ?? "")
-                        .join("")}`,
-                    )
-                      ? TABLE_MARKUP
-                      : ""
-                  }\n\n` +
-                  "Show this to the musician and wait for their yes. If they agree, " +
-                  "call edit_onenote_page with the SAME values and:\n" +
-                  `  confirmation_token: ${confirmation_token}`,
-              },
-            ],
-          };
-        } catch (err) {
-          return errorResult(err);
-        }
-      },
-    );
-
-    server.tool(
       "edit_onenote_page",
-      "A replace or an insert: only after preview_onenote_edit AND after the musician has said yes to what the preview showed. Never call it to find out whether it would work. An append, append_row or update_row commits in one call with no token: in a conversation, show the musician the change and wait for their yes first; in an automation they set up, append and append_row, and update_row only to set a Frist a mail states — never a tick, which is the musician's. Each result names a write id that undo_write can reverse. " +
-        "append_row adds task rows to the end of a task table — give element_id (the table's, from read_note) and rows, each row its cells by header name as plain text; this tool carries every existing row across and checks them afterwards, so never rewrite a table to add a row. " +
-        "Changes ONE page that artist-mcp itself created. It CANNOT touch a page " +
-        "the musician wrote or one another app created — Microsoft refuses those, " +
-        "not this tool — and it cannot delete anything. 'append' adds to the end " +
-        "and removes nothing. 'insert' adds a block before or after an existing " +
-        "paragraph, heading or table and removes nothing. 'replace' overwrites one element and is " +
-        "destructive: OneNote keeps no page version, so never describe it as " +
-        "undoable in OneNote; undo_write puts it back from this install's own write " +
-        "log while it still reads as written. Replacing a TABLE overwrites every row of it at " +
-        "once, because OneNote supports no change to a single row or cell — so " +
-        "the html must carry the cells that are staying exactly as they read now, " +
-        "and a cell left out is a value destroyed. A replace or insert requires the confirmation_token from a preview " +
-        "of these exact values; if the page changed since that preview the token " +
-        "stops matching and nothing is written, which means preview again and " +
-        "show the musician the new version. Never write a value the musician " +
-        "chose in chat to break a tie between pages that still disagree.",
+      "Changes ONE page that artist-mcp itself created, in one call — it CANNOT touch a page the musician wrote or one another app created (Microsoft refuses those) and it never deletes a page. " +
+        "In a conversation the musician's request is the yes: do it and report what the result says. Ask first, in words, only for a change you worked out yourself (a value from a mail, a tidy-up nobody asked for) or when the request does not pin down the target — two elements that could be the one meant, or a table replace that would change more than they named. " +
+        "In an automation they set up: append and append_row, and update_row only to set a Frist a mail states — never a tick, which is the musician's, and never a replace or an insert. " +
+        "'append' adds to the end; 'insert' adds a block before or after a paragraph, heading or table; neither removes anything. 'replace' overwrites one element. A replace or insert carries expect, what you read in that element, and is refused with what it says now if the page changed since — then decide again; if the musician changed it, their change stands. " +
+        "Replacing a TABLE rewrites every row of it, because OneNote supports no change to a single row or cell: carry every cell that is not changing exactly as it reads, and keep the header row. A task table is changed with append_row (element_id the table's, rows by header name, plain text) and update_row instead, which carry every row for you. " +
+        "OneNote keeps no page version, so never call a replace undoable in OneNote: each result names a write id, and undo_write reverses it while it still reads as written. Never write a value the musician chose in chat to break a tie between pages that still disagree.",
       {
-        page_id: z.string().describe("Exactly what the preview showed"),
+        page_id: z.string().describe("The page, as read_note or list_notes named it"),
         action: z
           .enum(["append", "replace", "insert", "append_row", "update_row"])
           .optional()
           .describe(
-            "Exactly what the preview showed, or append_row or update_row, which need no preview. Leave it out when passing `changes`",
+            "One change. Leave it out when passing `changes`",
           ),
-        text: z.string().optional().describe("Exactly what the preview was given"),
-        html: z.string().optional().describe("Exactly what the preview was given, byte for byte"),
+        text: z.string().optional().describe("Plain text, written as one paragraph"),
+        html: z.string().optional().describe("Markup: what a table, a heading or a tagged task has to be written as"),
         element_id: z
           .string()
           .optional()
           .describe(
-            "For replace and insert: the same element_id the preview was given. For append_row: the table's",
+            "For replace and insert: the element's id, from read_note. For append_row and update_row: the table's",
           ),
         ...ROW_UPDATE_PARAMS,
         rows: z
@@ -3115,7 +2893,7 @@ const createServer = async (
         position: z
           .enum(["before", "after"])
           .optional()
-          .describe("For insert: the same position the preview was given"),
+          .describe("For insert: which side of element_id"),
         expect: EXPECT.optional().describe(EXPECT_TEXT),
         changes: z
           .array(
@@ -3129,17 +2907,11 @@ const createServer = async (
             }),
           )
           .optional()
-          .describe("Exactly the list the preview was given, in the same order"),
+          .describe("Several changes to one page, applied together in ONE write — all or none. Prefer it when a page needs more than one change: ids move after every write"),
         source_page: z
           .string()
           .optional()
           .describe(SOURCE_PAGE),
-        confirmation_token: z
-          .string()
-          .optional()
-          .describe(
-            "For a replace or insert: the token preview_onenote_edit returned for these exact values. Not needed when every change is an append",
-          ),
       },
       async (params) => {
         try {

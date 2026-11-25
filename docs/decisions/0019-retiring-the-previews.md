@@ -292,6 +292,101 @@ changes deliberately. `onenote-edit`'s grant text (decision 3) and
 `policy:patch`, bundled and custom, with the conversation rule (decision 1),
 change with it.
 
+**Built on 2026-11-25, and verified live locally the same day.**
+
+- **The edit:** `edit_onenote_page` takes no token. A replace or insert
+  without `expect` is refused before the page is read, and a token sent by a
+  client following the old flow is ignored. The result carries what the
+  preview did, now after the write: before and after (a table as marked
+  rows), what formatting was kept, and the write ids, with how `undo_write`
+  reverses them. `update_row`'s result now shows the row before as well as
+  after, for the same reason.
+- **The table rule:** two parts.
+  - The `border` attribute is added to any table sent without one. It is the
+    only part of 0017's normalisation left to apply, because
+    `validateFragment` already refuses an `id` and a to-do tag on a `<span>`
+    in markup a caller writes.
+  - A whole-table replace that rewrites the header row is refused, and the
+    refusal carries the house shape (`HOUSE_TABLE`, moved from the server
+    into the core). A header row is a first row, with another row below it,
+    whose cells are all bold or shaded. A single-cell free-text table has
+    none and is rewritten freely; checking its first row would refuse every
+    edit.
+- **What went:**
+  - `preview_onenote_edit`, its operation (so `test/operation-boundary`
+    changed deliberately), `previewEdit`, `editToken`, the preview's
+    parts reader, `previewRowUpdate` and its token;
+  - `TABLE_MARKUP`, the preview's copy of the house shape.
+- **What replaced the preview's parts listing:** `read_note` gained
+  `all_parts`, registered only with `onenote-edit`. The index stays capped,
+  and the preview was the only way to an id the cap left out; without it, a
+  paragraph past the twelfth could not have been edited at all.
+- **Text:** the `onenote-edit` grant text is as decision 3 records, and the
+  consent line printed after `connect` follows it. The bundled
+  `policy:patch` carries the conversation rule (decision 1), `expect`, the
+  header rule and the wider undo, and its registry was regenerated.
+  `CLAUDE.md`'s paragraph on confirmation now says only the calendar keeps
+  a preview.
+- **Tests:** rewritten around the one-call edit, so each that used a preview
+  now passes `expect`. The table rendering is checked in the result rather
+  than the preview. New tests:
+  - a replace or insert without `expect` refused, with no read made;
+  - a header rewrite refused with the house shape, and a table without a
+    header rewritten freely;
+  - the border added, and a table's own border left alone;
+  - `all_parts` listing every part;
+  - the spawned-server tests calling `edit_onenote_page` with `expect`.
+
+  Those spawned-server tests had called `preview_onenote_edit` and passed
+  vacuously once it was gone, because an unknown tool is not a schema
+  refusal. They now fail on an unknown tool, and one checks that the preview
+  is gone. With the header check off, the header test fails; with the border
+  fix off, two tests fail.
+- **Size,** with `context-budget`, against `2a2670c` (before 0019): with
+  `onenote-edit` alone the tool list is 25,407 characters a request, down
+  from 30,188 (−4,781, 16%). With every grant it is 36,929, down from 41,735.
+  That covers all of steps 0–4: `expect` and `all_parts` added, the preview
+  tool removed, and the edit tool's description rewritten shorter.
+
+**The custom pack, done the same day.** Every Markdown file in both packs was
+searched for previews, tokens, confirmation, undo and edits. Outside
+`policy:patch`, only the custom `policy:tasks` needed changing: a handover is a
+table replace carrying `expect`, and a tag added in passing is mentioned when
+the change is reported. The custom `policy:patch` got the bundled pack's
+changes, along with its own: "An update from chat" reads the page right before
+the edit and passes `expect`, and one edit covers a date and a task together.
+Its rules for automations are unchanged. Committed to
+`artist-mcp-custom-pack` as `8e8e7f6` and synced into `vendor/artist-pack`.
+Loaded through the resolver, the four new rules came back in force and nothing
+names `preview_onenote_edit` or a token. Left as they were, deliberately:
+`role:digest` step 5, where lifting the cap on new pages needs each one shown
+first (a guard on bulk creation, not a preview of an edit), and the
+`ORCHESTRATOR` line about showing a change to a calendar event first, since the
+calendar keeps its preview.
+
+**Live, locally, on `artist-mcp live test 0009 (delete me)`**, through the
+rebuilt dispatcher:
+- **One-call replace:** a paragraph replaced with `expect` and no token, its
+  result showing before, after and the write id.
+- **Refusals:** a replace without `expect`, and one with a stale `expect`, each
+  refused with nothing written.
+- **The border:** a table appended without a `border` attribute went out with
+  one. OneNote stored `style="border:1px solid"`, not the `border:0px` 0017
+  found without the attribute, so it took effect.
+- **The header rule** recognised the header in OneNote's own stored markup: a
+  bold `<span>` in a shaded cell, not the `<b>` that was sent. Rewriting it was
+  refused with the house shape; keeping it went through, and was undone.
+- **`update_row`:** a Frist changed on a task table, its result showing the
+  row before and after, every other row read back unchanged, then undone.
+- **Cleanup:** every paragraph and table replace undone. The two appended
+  test tables stay on the page, to be removed by hand.
+
+The run also caught one awkwardly worded result line, about the formatting
+kept, which is fixed.
+
+**Still to do for this step:**
+- **The production migration** from step 1.
+
 ### 5. Calendar edit and delete record before they write, and can be undone
 
 - Two-phase, as step 1. `wrote` holds the event as Google returned it.

@@ -6,7 +6,7 @@
  * of it applies.
  */
 
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { onenotePageContent, onenotePatchPage } from './api.js';
 import { type RecordWrite, type WriteRecord } from './audit.js';
 import {
@@ -436,12 +436,6 @@ const resolveRowChange = (
   };
 };
 
-const rowToken = (pageId: string, tableId: string, change: RowChange, rowBefore: string): string =>
-  createHash('sha256')
-    .update(JSON.stringify({ pageId, tableId, change, row: rowFacts(rowBefore) }))
-    .digest('hex')
-    .slice(0, 32);
-
 const describeRow = (header: string[], cells: string[], done: boolean): string =>
   `${done ? '[x]' : '[ ]'} ${header.map((name, at) => `${name}: ${cells[at] ?? ''}`).join(' · ')}`;
 
@@ -463,24 +457,6 @@ const rowCallFrom = (params: Record<string, unknown>) => {
   }
   return { pageId, tableId, change: rowChangeFrom(params) };
 };
-
-/** Show a row change and hand back the token that makes it — until undo exists, 0018 step 3. */
-export async function previewRowUpdate(token: string, params: Record<string, unknown>) {
-  const { pageId, tableId, change } = rowCallFrom(params);
-  const { table, rows, header, taskAt } = await readTaskTable(token, pageId, tableId, '');
-  const resolved = resolveRowChange(table, rows, header, taskAt, change);
-  return {
-    preview:
-      `Change this row:\n\n  ${describeRow(header, resolved.before.cells, resolved.before.done)}\n\n` +
-      `to:\n\n  ${describeRow(header, resolved.after.cells, resolved.after.done)}\n\n` +
-      'Every other row of the table is carried across unchanged by this tool and checked afterwards.',
-    page_id: pageId,
-    parts: [],
-    abbreviated: false,
-    confirmation_token: rowToken(pageId, tableId, change, resolved.row),
-    note: 'Show this to the musician and wait for their yes.',
-  };
-}
 
 /**
  * Change one task row: read the table, find the row by its task text, apply
@@ -565,7 +541,11 @@ export async function updateRow(token: string, params: Record<string, unknown>, 
     problems = ['the table could not be read back'];
   }
 
-  const shown = describeRow(header, resolved.after.cells, resolved.after.done);
+  // Before and after, because since 0019 retired the preview this result is the
+  // only place the change is shown (0009's rule for a one-call write).
+  const shown =
+    `  ${describeRow(header, resolved.before.cells, resolved.before.done)}\n\nto:\n\n` +
+    `  ${describeRow(header, resolved.after.cells, resolved.after.done)}`;
   return {
     changed: true,
     page_id: pageId,
@@ -573,10 +553,10 @@ export async function updateRow(token: string, params: Record<string, unknown>, 
     write_ids: [entry.write_id as string],
     note:
       (problems.length === 0
-        ? `Changed the row to:\n\n  ${shown}\n\nEvery other row was read back unchanged.`
-        : `Changed the row to:\n\n  ${shown}\n\nWARNING: after the write, ${problems.join(', ')} ` +
+        ? `Changed the row:\n\n${shown}\n\nEvery other row was read back unchanged.`
+        : `Changed the row:\n\n${shown}\n\nWARNING: after the write, ${problems.join(', ')} ` +
           "did not read back as expected. Tell the musician now. The table as it was before is in this install's write log.") +
-      `\n\nRecorded as write ${entry.write_id}.`,
+      ` To take it back, call undo_write with its write id.\n\nRecorded as write ${entry.write_id}.`,
   };
 }
 

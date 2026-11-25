@@ -62,24 +62,14 @@ test('a span carrying no tag is left alone', () => {
  * neither is in front of the model when it composes the markup — the table
  * guidance returned with the preview is.
  */
-test('the table guidance a preview returns says how to write a task', async () => {
-  const { createServer } = await import('../dist/server.js');
-  const dispatch = async (op) => {
-    if (op !== 'preview_onenote_edit') throw new Error(`unexpected ${op}`);
-    return { preview: 'Replace this: …', confirmation_token: 'tok', parts: [], note: '', abbreviated: false };
-  };
-  const server = await createServer(dispatch, ['onenote-edit']);
-  const result = await server._registeredTools.preview_onenote_edit.handler({
-    page_id: 'p1',
-    action: 'replace',
-    element_id: 'table:{x}{1}',
-    html: '<table><tr><td><p>Aufgabe</p></td></tr></table>',
-  });
-  const text = result.content.map((c) => c.text).join('\n');
-
-  assert.match(text, /<p data-tag="to-do">/);
-  assert.match(text, /<p data-tag="to-do:completed">/);
-  assert.match(text, /Every task row gets one, new rows included/);
+test('the table guidance a refusal carries says how to write a task', async () => {
+  // It came back from preview_onenote_edit until 0019 step 4; now it comes with
+  // the one refusal about a table written wrong, which is when it is read.
+  const { HOUSE_TABLE } = await import('../dist/onenote-patch.js');
+  assert.match(HOUSE_TABLE, /<p data-tag="to-do">/);
+  assert.match(HOUSE_TABLE, /<p data-tag="to-do:completed">/);
+  assert.match(HOUSE_TABLE, /never on a header or a heading/);
+  assert.match(HOUSE_TABLE, /append_row and update_row/);
 });
 
 test('the markup that guidance describes is accepted inside a table cell', async () => {

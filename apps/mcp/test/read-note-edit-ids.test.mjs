@@ -154,7 +154,7 @@ const pageOf = (paragraphs, tables) => [
   })),
 ];
 
-const indexFor = async (editable) => {
+const indexFor = async (editable, args = {}) => {
   const server = await createServer(
     async () => ({
       title: 'Concert',
@@ -168,7 +168,7 @@ const indexFor = async (editable) => {
     }),
     ['onenote-edit'],
   );
-  return (await server._registeredTools.read_note.handler({ note_id: 'p1' })).content
+  return (await server._registeredTools.read_note.handler({ note_id: 'p1', ...args })).content
     .map((c) => c.text)
     .join('');
 };
@@ -179,7 +179,19 @@ test('a long page lists a bounded index and says what it left out', async () => 
 
   assert.ok(text.length < 2200, `index should stay bounded, was ${text.length}`);
   assert.match(text, /further parts of this page are not listed/);
-  assert.match(text, /preview_onenote_edit returns all of them/);
+  assert.match(text, /Read again with all_parts to list them/);
+});
+
+/**
+ * 0019 step 4: with preview_onenote_edit gone, all_parts is the only way to an
+ * id the cap left out, and without it a paragraph past the twelfth could not be
+ * edited at all.
+ */
+test('all_parts lists every part, so one the cap left out can still be edited', async () => {
+  const parts = pageOf(30, 4);
+  const text = await indexFor(parts, { all_parts: true });
+  for (const part of parts) assert.ok(text.includes(part.element_id), `missing ${part.element_id}`);
+  assert.doesNotMatch(text, /not listed/);
 });
 
 test('every table survives the cap, because a table cannot be edited any other way', async () => {

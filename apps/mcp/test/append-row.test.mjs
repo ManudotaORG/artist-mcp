@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { applyEdit, previewEdit } from '../dist/onenote-patch.js';
+import { applyEdit } from '../dist/onenote-patch.js';
 import { appendRows } from '../dist/onenote-rows.js';
 
 /**
@@ -214,12 +214,11 @@ test('a cell named for a column the table does not have, or a row with no task, 
   await refused(page(tableAsRead()), call({ rows: [{ Frist: '15.12.2026' }] }), /has no task/);
 });
 
-test('append_row commits through applyEdit with no token, and preview turns it away', async () => {
+test('append_row commits through applyEdit with no token', async () => {
   const s = server({ after: goodAfter });
   const { record } = audit();
   await withFetch(s.fetchImpl, () => applyEdit('t', call(), record));
   assert.equal(s.sent.length, 1);
-  await assert.rejects(previewEdit('t', call()), /needs no preview/);
 });
 
 test('the pending record goes in before the write, and a failed one means nothing is written', async () => {

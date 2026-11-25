@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { applyEdit, previewEdit } from '../dist/onenote-patch.js';
+import { applyEdit } from '../dist/onenote-patch.js';
 import { undoWrite } from '../dist/onenote-undo.js';
 
 /**
@@ -64,13 +64,10 @@ const log = () => {
   return { lines, record, readLog };
 };
 
-/** Preview and apply one change against `before`, through the real edit path; returns its write id. */
+/** Apply one change against `before`, through the real edit path; returns its write id. */
 const edit = async (l, before, change) => {
   const n = notebook(before);
-  const preview = await withFetch(n.fetchImpl, () => previewEdit('t', { page_id: 'p1', ...change }));
-  const result = await withFetch(n.fetchImpl, () =>
-    applyEdit('t', { page_id: 'p1', ...change, confirmation_token: preview.confirmation_token }, l.record),
-  );
+  const result = await withFetch(n.fetchImpl, () => applyEdit('t', { page_id: 'p1', ...change }, l.record));
   return result.write_ids[0];
 };
 
@@ -80,7 +77,7 @@ const BEFORE = page(p(40, 'Fee: 1200', ' style="font-size:11pt"') + p(45, 'Load-
 
 test('a replaced paragraph is put back from its pre-image, found by what was written', async () => {
   const l = log();
-  const writeId = await edit(l, BEFORE, { action: 'replace', element_id: id('p', 40), text: 'Fee: 1400' });
+  const writeId = await edit(l, BEFORE, { action: 'replace', element_id: id('p', 40), text: 'Fee: 1400', expect: 'Fee: 1200' });
 
   // After the write OneNote gave the paragraph a new id; after the undo, another.
   const written = page(p(60, 'Fee: 1400', ' style="font-size:11pt"') + p(45, 'Load-in 18:00'));
@@ -107,7 +104,7 @@ test('a replaced paragraph is put back from its pre-image, found by what was wri
 
 test('a replaced paragraph edited since is not put back, and nothing is sent', async () => {
   const l = log();
-  const writeId = await edit(l, BEFORE, { action: 'replace', element_id: id('p', 40), text: 'Fee: 1400' });
+  const writeId = await edit(l, BEFORE, { action: 'replace', element_id: id('p', 40), text: 'Fee: 1400', expect: 'Fee: 1200' });
   const n = notebook(page(p(60, 'Fee: 1450') + p(45, 'Load-in 18:00')));
   await assert.rejects(undo(l, n, writeId), /no longer reads as written[\s\S]*It read: Fee: 1400/);
   assert.deepEqual(n.sent, []);
@@ -116,7 +113,7 @@ test('a replaced paragraph edited since is not put back, and nothing is sent', a
 
 test('text the replace wrote that now appears twice is refused, not guessed at', async () => {
   const l = log();
-  const writeId = await edit(l, BEFORE, { action: 'replace', element_id: id('p', 40), text: 'Fee: 1400' });
+  const writeId = await edit(l, BEFORE, { action: 'replace', element_id: id('p', 40), text: 'Fee: 1400', expect: 'Fee: 1200' });
   const n = notebook(page(p(60, 'Fee: 1400') + p(61, 'Fee: 1400')));
   await assert.rejects(undo(l, n, writeId), /appears 2 times/);
   assert.deepEqual(n.sent, []);
@@ -139,6 +136,7 @@ test('a replaced table goes back whole while every row reads as the replace left
     action: 'replace',
     element_id: id('table', 5),
     html: markup(NEW_ROWS),
+    expect: ROWS,
   });
 
   const n = notebook(page(p(40, 'Programm') + tbl(6, NEW_ROWS)), page(p(40, 'Programm') + tbl(7, ROWS)));
@@ -155,7 +153,7 @@ test('a replaced table goes back whole while every row reads as the replace left
 
 test('a replaced table with one cell edited since is refused whole', async () => {
   const l = log();
-  const writeId = await edit(l, page(tbl(5, ROWS)), { action: 'replace', element_id: id('table', 5), html: markup(NEW_ROWS) });
+  const writeId = await edit(l, page(tbl(5, ROWS)), { action: 'replace', element_id: id('table', 5), html: markup(NEW_ROWS), expect: ROWS });
   const n = notebook(page(tbl(6, [['Honorar', '1450'], ['Anreise', 'Auto']])));
   await assert.rejects(undo(l, n, writeId), /no longer reads as this tool left it[\s\S]*1450/);
   assert.deepEqual(n.sent, []);
@@ -168,6 +166,7 @@ test('an inserted paragraph is removed, found by what was written', async () => 
     element_id: id('p', 40),
     position: 'after',
     html: '<p>Mitschnitt: ja</p>',
+    expect: 'Fee: 1200',
   });
   const n = notebook(
     page(p(40, 'Fee: 1200') + p(62, 'Mitschnitt: ja') + p(45, 'Load-in 18:00')),
@@ -181,7 +180,7 @@ test('an inserted paragraph is removed, found by what was written', async () => 
 
 test('an inserted table is removed by hand until that has been tried on a real page', async () => {
   const l = log();
-  const writeId = await edit(l, BEFORE, { action: 'insert', element_id: id('p', 40), position: 'after', html: markup(ROWS) });
+  const writeId = await edit(l, BEFORE, { action: 'insert', element_id: id('p', 40), position: 'after', html: markup(ROWS), expect: 'Fee: 1200' });
   const n = notebook(page(tbl(8, ROWS)));
   await assert.rejects(undo(l, n, writeId), /not a single paragraph or heading, so it is removed by hand/);
   assert.deepEqual(n.sent, []);
@@ -206,7 +205,7 @@ test('a replace whose pre-image this tool would not write is shown, not restored
 
 test('a replace undone once is not undone again', async () => {
   const l = log();
-  const writeId = await edit(l, BEFORE, { action: 'replace', element_id: id('p', 40), text: 'Fee: 1400' });
+  const writeId = await edit(l, BEFORE, { action: 'replace', element_id: id('p', 40), text: 'Fee: 1400', expect: 'Fee: 1200' });
   await undo(l, notebook(page(p(60, 'Fee: 1400')), page(p(70, 'Fee: 1200'))), writeId);
   const n = notebook(page(p(70, 'Fee: 1200')));
   await assert.rejects(undo(l, n, writeId), /already undone/);

@@ -66,10 +66,14 @@ export const WRITE_CAPABILITIES = {
   // the confusion 0003 exists to prevent. What makes a replace survivable is
   // the pre-image, not the name it was granted under.
   // See docs/decisions/0004-onenote-page-maintenance.md.
+  //
+  // Widened by 0019 without asking again, by the owner's decision: a change to
+  // one of these pages is no longer shown first, and each one can be undone
+  // instead. The third exception of the kind 0009 and 0015 made, and on 0009's
+  // condition — one hosted musician holds this — so not a precedent.
   'onenote-edit':
-    'add to the end of a page that artist-mcp itself created, or add a row to a task ' +
-    'table on one, and change anything else on one only after showing it to you first. ' +
-    'It cannot touch a page you wrote, and it cannot delete anything.',
+    'add to or change a page that artist-mcp itself created, reporting each change ' +
+    'with how to undo it. It cannot touch a page you wrote, and it never deletes a page.',
 } as const;
 
 export type WriteCapability = keyof typeof WRITE_CAPABILITIES;
