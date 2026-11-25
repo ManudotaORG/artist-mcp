@@ -71,9 +71,8 @@ const SANCTIONED = {
   // Under Notes.Create as well, which cannot rename or delete a section.
   // See docs/decisions/0011-creating-sections.md.
   create_onenote_section: 'write',
-  // Reads the page and shows the change against what is written there now. A
-  // read, and it has to be: it is the safeguard a write is conditional on.
-  preview_onenote_edit: 'read',
+  // preview_onenote_edit, a read, was removed by 0019 step 4: a replace or
+  // insert commits in one call, guarded by `expect` and reversed by undo_write.
   // The first operation in this table that can destroy something a musician
   // might want back, and the only one whose undo is this install's own write
   // log rather than the provider's. Appending and replacing share one row
@@ -274,6 +273,10 @@ test('no module outside the sanctioned list exports a write-shaped helper', asyn
     'attachments.ts',
     'onenote-write.ts',
     'onenote-patch.ts',
+    // 0019 step 0 split these two out of onenote-patch.ts; a module absent
+    // from this list is not scanned, so they joined it in the same commit.
+    'onenote-rows.ts',
+    'onenote-undo.ts',
     'tasks.ts',
   ];
   // The sanctioned write path, named in full. Anything else matching the shape
@@ -330,19 +333,15 @@ test('no module outside the sanctioned list exports a write-shaped helper', asyn
     // the guard was blind to the whole of it, a fourth way it went blind. The
     // write is applyEdit; the rest shape, read or bind the change.
     'onenote-patch.ts:editFrom',
-    'onenote-patch.ts:editToken',
-    'onenote-patch.ts:readEditableParts',
     'onenote-patch.ts:editablePartsFrom',
-    'onenote-patch.ts:previewEdit',
     'onenote-patch.ts:applyEdit',
     // 0017 and 0018: the server-built row writes, and the undo. Never scanned
     // until `append`, `update` and `undo` joined the pattern: appendRows and
     // updateRow shipped while the guard was blind to both, a fifth way it went
-    // blind — a write named for the unit it changes. previewRowUpdate is a read.
-    'onenote-patch.ts:appendRows',
-    'onenote-patch.ts:updateRow',
-    'onenote-patch.ts:previewRowUpdate',
-    'onenote-patch.ts:undoWrite',
+    // blind — a write named for the unit it changes. (previewRowUpdate, a read, went with 0019 step 4.)
+    'onenote-rows.ts:appendRows',
+    'onenote-rows.ts:updateRow',
+    'onenote-undo.ts:undoWrite',
   ];
   const found = [];
   for (const file of files) {

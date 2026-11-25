@@ -60,6 +60,7 @@ const allMigrations = [
   '20260824150000_oauth_server.sql',
   '20261124120000_task_view.sql',
   '20261125120000_forget_google_writes.sql',
+  '20261125130000_forget_onenote_writes.sql',
 ]
   .map(read)
   .join('\n');
@@ -469,8 +470,35 @@ test('a Google disconnect deletes that user\'s calendar rows of the write log', 
   assert.match(forget, /create function public\.forget_my_google_writes\(\)/);
   assert.match(forget, /where user_id = me\s+and operation like '%calendar%'/);
   assert.match(forget, /revoke execute on function public\.forget_my_google_writes\(\) from public, anon/);
-  // The latest definition of disconnect_provider is this one: no later
-  // migration may replace it without carrying the Google branch.
-  const later = readdirSync(new URL('../supabase/migrations/', import.meta.url)).filter((f) => f > '20261125120000_forget_google_writes.sql');
-  for (const f of later) assert.doesNotMatch(read(f), /function public\.disconnect_provider/, `${f} replaces disconnect_provider`);
+  // Whatever migration defines disconnect_provider last is the one in force,
+  // and it has to carry the Google branch.
+  assert.match(read(latestDisconnect()), /if p_provider = 'google' then\s+perform public\.forget_my_google_writes\(\)/, `${latestDisconnect()} drops the Google branch`);
 });
+
+/**
+ * 0019 decision 4: once the edit previews are retired the write log's
+ * pre-images are the only way back for every OneNote overwrite, and they do not
+ * outlive the consent behind them. A Microsoft disconnect deletes that user's
+ * OneNote rows — every row that is not a calendar row — through a function
+ * that takes no argument, and keeps forgetting the task view.
+ */
+test('a Microsoft disconnect deletes that user\'s OneNote rows of the write log', () => {
+  const forget = read('20261125130000_forget_onenote_writes.sql');
+  assert.match(forget, /create function public\.forget_my_onenote_writes\(\)/);
+  assert.match(forget, /where user_id = me\s+and operation not like '%calendar%'/);
+  assert.match(forget, /revoke execute on function public\.forget_my_onenote_writes\(\) from public, anon/);
+  const latest = read(latestDisconnect());
+  assert.match(
+    latest,
+    /if p_provider = 'microsoft' then\s+perform public\.forget_my_task_view\(\);\s+perform public\.forget_my_onenote_writes\(\)/,
+    `${latestDisconnect()} drops a Microsoft branch`,
+  );
+});
+
+/** The migration whose definition of disconnect_provider is the one in force. */
+function latestDisconnect() {
+  return readdirSync(new URL('../supabase/migrations/', import.meta.url))
+    .filter((f) => f.endsWith('.sql') && /function public\.disconnect_provider/.test(read(f)))
+    .sort()
+    .at(-1);
+}

@@ -27,7 +27,8 @@ import {
 import { listEmails, readEmail, readThread } from './mail.js';
 import { listNotebooks, listNotes, mapNotes, readNote, type OneNoteSection } from './notes.js';
 import { mapTasks } from './tasks.js';
-import { applyEdit, previewEdit, undoWrite, type ReadWriteLog } from './onenote-patch.js';
+import { applyEdit } from './onenote-patch.js';
+import { undoWrite, type ReadWriteLog } from './onenote-undo.js';
 import { createPage, createSection } from './onenote-write.js';
 import { accessTokenFor } from './oauth.js';
 import { type ProviderName, loadTokens } from './tokens.js';
@@ -96,15 +97,15 @@ export const OPERATIONS = {
   // Under `Notes.Create` too, which can create a section and cannot rename or
   // delete one. See docs/decisions/0011-creating-sections.md.
   create_onenote_section: { provider: 'microsoft', effect: 'write' },
-  // Reads the page and shows the change against what is actually written there
-  // now. A read, and necessarily so: it is what has to happen before a write is
-  // allowed, and gating it would gate the safeguard rather than the danger.
-  preview_onenote_edit: { provider: 'microsoft', effect: 'read' },
+  // preview_onenote_edit stood here, a read, until 0019 step 4 retired it: a
+  // replace or insert commits in one call, guarded by `expect` and undone by
+  // undo_write, so nothing needs showing before the write any more.
+  //
   // The first row here that can destroy something. Both actions ride one row
   // and one grant because no scope separates them, so the distinction is made
   // where it can be enforced — in the operation itself, where a replace cannot
-  // proceed unless what it would overwrite has been captured first.
-  // See docs/decisions/0004-onenote-page-maintenance.md.
+  // proceed unless what it would overwrite has been recorded first.
+  // See docs/decisions/0004-onenote-page-maintenance.md and 0019.
   edit_onenote_page: { provider: 'microsoft', effect: 'write' },
   // 0018: one write this tool made to a OneNote page, reversed — a row it
   // added removed, a row it changed put back, a line it appended removed —
@@ -325,8 +326,6 @@ const dispatchOne =
           return (await createPage(token, params, record)) as T;
         case 'create_onenote_section':
           return (await createSection(token, params, record)) as T;
-        case 'preview_onenote_edit':
-          return (await previewEdit(token, params)) as T;
         case 'edit_onenote_page':
           return (await applyEdit(token, params, record)) as T;
         case 'undo_write':

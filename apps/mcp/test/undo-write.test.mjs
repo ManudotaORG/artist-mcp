@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createServer } from '../dist/server.js';
-import { appendRows, previewRowUpdate, undoWrite, updateRow } from '../dist/onenote-patch.js';
+import { appendRows, updateRow } from '../dist/onenote-rows.js';
+import { undoWrite } from '../dist/onenote-undo.js';
 
 /**
  * undo_write (0018 step 3). Each kind of write is made with the real code, so
@@ -131,10 +132,7 @@ const tickRow = async (l) => {
   const before = page(table([...base, task('Vertrag zur&#252;cksenden')]));
   const after = page(table([...base, task('Vertrag zur&#252;cksenden', { done: true, status: 'ERLEDIGT' })]));
   const params = { page_id: 'p1', action: 'update_row', element_id: TABLE_ID, row: 'Vertrag zurücksenden', done: true, set: { Status: 'ERLEDIGT' } };
-  const shown = await withFetch(notebook(before).fetchImpl, () => previewRowUpdate('t', params));
-  const r = await withFetch(notebook(before, after).fetchImpl, () =>
-    updateRow('t', { ...params, confirmation_token: shown.confirmation_token }, l.record),
-  );
+  const r = await withFetch(notebook(before, after).fetchImpl, () => updateRow('t', params, l.record));
   return r.write_ids[0];
 };
 
@@ -203,7 +201,9 @@ test('an unknown id, an undo, an already-undone write, or an unsupported kind is
   await assert.rejects(undoWrite('t', { write_id: first.write_ids[0] }, l.record, l.readLog), /itself an undo/);
 
   const other = '99999999-2222-3333-4444-555555555555';
-  await l.record({ operation: 'replace_onenote_element', summary: 's', target: 'p1', pre_image: '<p>x</p>', write_id: other, status: 'done' });
+  // A created page: Notes.Create cannot delete, so this tool never undoes one.
+  // (A replace stood here until 0019 step 3 made replaces undoable.)
+  await l.record({ operation: 'create_onenote_page', summary: 's', target: 'p1', pre_image: null, write_id: other, status: 'done' });
   const none = notebook(page(''));
   await withFetch(none.fetchImpl, () =>
     assert.rejects(undoWrite('t', { write_id: other }, l.record, l.readLog), /cannot be undone by this tool yet/),

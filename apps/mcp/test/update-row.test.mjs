@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { applyEdit, previewEdit, previewRowUpdate, updateRow } from '../dist/onenote-patch.js';
+import { applyEdit } from '../dist/onenote-patch.js';
+import { updateRow } from '../dist/onenote-rows.js';
 
 /**
  * update_row (0018 step 2): one task row changed by the server — its tick or
@@ -68,27 +69,22 @@ const audit = () => {
 
 const tick = { page_id: 'p1', action: 'update_row', element_id: TABLE_ID, row: 'Vertrag zurücksenden', done: true, set: { Status: 'ERLEDIGT' } };
 
-/** Preview, then apply with the token it returned, against `after` as the read-back. */
+/** Apply in one call, against `after` as the read-back. */
 const previewThenApply = async (params, after) => {
   const s = server({ after });
-  const preview = await withFetch(s.fetchImpl, () => previewRowUpdate('t', params));
-  s.reset();
   const { lines, record } = audit();
-  const result = await withFetch(s.fetchImpl, () =>
-    updateRow('t', { ...params, confirmation_token: preview.confirmation_token }, record),
-  );
-  return { s, preview, result, lines };
+  const result = await withFetch(s.fetchImpl, () => updateRow('t', params, record));
+  return { s, result, lines };
 };
 
 const ticked = page(tableAsRead([rowsAsRead[0], rowsAsRead[1], task('Vertrag zur&#252;cksenden', { done: true, status: 'ERLEDIGT' })]));
 
-test('the preview shows the row before and after, and carries a token', async () => {
-  const s = server();
-  const preview = await withFetch(s.fetchImpl, () => previewRowUpdate('t', tick));
-  assert.match(preview.preview, /\[ \] Aufgabe: Vertrag zurücksenden · Verantwortlich: Ruben · Frist: UNKNOWN/);
-  assert.match(preview.preview, /to:\n\n {2}\[x\] Aufgabe: Vertrag zurücksenden/);
-  assert.match(preview.confirmation_token, /^[0-9a-f]{32}$/);
-  assert.deepEqual(s.sent, [], 'a preview writes nothing');
+test('the result shows the row before and after, and how to undo it', async () => {
+  // The preview showed this until 0019 step 4; the result is now the only place.
+  const { result } = await previewThenApply(tick, ticked);
+  assert.match(result.note, /\[ \] Aufgabe: Vertrag zurücksenden · Verantwortlich: Ruben · Frist: UNKNOWN/);
+  assert.match(result.note, /to:\n\n {2}\[x\] Aufgabe: Vertrag zurücksenden/);
+  assert.match(result.note, /call undo_write with its write id/);
 });
 
 test('a tick changes that row alone, and the table goes back in the form OneNote accepts', async () => {
@@ -153,7 +149,7 @@ test('a row edited since the tool last read it is still found by what it says no
 test('an unclear or impossible change is refused, writing nothing', async () => {
   const refuse = async (params, pattern, before) => {
     const s = server(before ? { before } : {});
-    await withFetch(s.fetchImpl, () => assert.rejects(previewRowUpdate('t', params), pattern));
+    await withFetch(s.fetchImpl, () => assert.rejects(updateRow('t', params, audit().record), pattern));
     assert.deepEqual(s.sent, []);
   };
   await refuse({ ...tick, row: 'Hotel buchen' }, /No row of this table has the task "Hotel buchen"/);
@@ -175,15 +171,10 @@ test('a row that reads back wrong after the write is reported loudly', async () 
   assert.match(result.note, /WARNING: after the write, row 2 did not read back as expected/);
 });
 
-test('both edit tools route update_row', async () => {
+test('edit_onenote_page routes update_row', async () => {
   const s = server({ after: ticked });
-  const preview = await withFetch(s.fetchImpl, () => previewEdit('t', tick));
-  assert.ok(preview.confirmation_token);
-  s.reset();
   const { record } = audit();
-  const result = await withFetch(s.fetchImpl, () =>
-    applyEdit('t', { ...tick, confirmation_token: preview.confirmation_token }, record),
-  );
+  const result = await withFetch(s.fetchImpl, () => applyEdit('t', tick, record));
   assert.equal(result.verified, true);
 });
 
@@ -191,7 +182,7 @@ test('a tick in a table with a Status column needs the Status, so the cell never
   const s = server();
   await withFetch(s.fetchImpl, () =>
     assert.rejects(
-      previewRowUpdate('t', { page_id: 'p1', action: 'update_row', element_id: TABLE_ID, row: 'Vertrag zurücksenden', done: true }),
+      updateRow('t', { page_id: 'p1', action: 'update_row', element_id: TABLE_ID, row: 'Vertrag zurücksenden', done: true }, audit().record),
       /has a Status column, and it changes with the tick: give Status in set/,
     ),
   );

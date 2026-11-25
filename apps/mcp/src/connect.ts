@@ -12,7 +12,7 @@
  */
 
 import { access } from 'node:fs/promises';
-import { forgetGoogleWrites } from './audit.js';
+import { forgetGoogleWrites, forgetMicrosoftWrites } from './audit.js';
 import { resolveRegistry, setLocalAgentRoot } from './agents.js';
 import { ENTRY_NAME, configPath, readConfig } from './config.js';
 import { parseGrants, type WriteCapability } from './grants.js';
@@ -66,9 +66,9 @@ export const runConnect = async (input?: string): Promise<void> => {
     const microsoft = canEdit
       ? 'creating OneNote pages and changing the ones it created. It cannot ' +
         'touch a page you wrote or one another app created — Microsoft refuses ' +
-        'those — and it cannot delete anything. A change it makes to its own ' +
-        'page overwrites what was there, and OneNote keeps no version, so what ' +
-        'it replaced is kept only in this install\'s write log.'
+        'those — and it never deletes a page. A change it makes to its own ' +
+        'page overwrites what was there, and OneNote keeps no version: what it ' +
+        'replaced is kept in this install\'s write log, and undo_write puts it back.'
       : 'creating OneNote pages. No page can be changed or deleted by this ' +
         'tool, including the ones it creates — the permission it holds cannot ' +
         'express that.';
@@ -133,11 +133,14 @@ export const runDisconnect = async (input?: string): Promise<void> => {
   const config = PROVIDERS[provider];
 
   // Before the connection check, so a log left by an older version's
-  // disconnect is cleared by running it again (0022).
-  const forgotten = provider === 'google' ? await forgetGoogleWrites() : 0;
+  // disconnect is cleared by running it again (0022 for Google, 0019 for
+  // Microsoft).
+  const forgotten =
+    provider === 'google' ? await forgetGoogleWrites() : await forgetMicrosoftWrites();
   if (forgotten > 0) {
     console.log(
-      `Removed ${forgotten} calendar ${forgotten === 1 ? 'entry' : 'entries'} from this machine's write log.`,
+      `Removed ${forgotten} ${provider === 'google' ? 'calendar' : 'OneNote'} ` +
+        `${forgotten === 1 ? 'entry' : 'entries'} from this machine's write log.`,
     );
   }
 

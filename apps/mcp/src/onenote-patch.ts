@@ -30,11 +30,12 @@
  */
 
 import { onenotePageContent, onenotePatchPage } from './api.js';
-import { createHash, randomUUID } from 'node:crypto';
-import { type RecordWrite, type WriteRecord, type WrittenRecord } from './audit.js';
+import { randomUUID } from 'node:crypto';
+import { type RecordWrite, type WriteRecord } from './audit.js';
 import { GraphError } from './client.js';
+import { appendRows, updateRow } from './onenote-rows.js';
 
-const failure = (message: string): GraphError => new GraphError(message, false);
+export const failure = (message: string): GraphError => new GraphError(message, false);
 
 /**
  * A generated id as Graph emits it: `p:{guid}{40}`, and for a div nested in a
@@ -214,7 +215,7 @@ export const insertCommand = (
  * composing a correction from an email is passing through text it did not
  * author, and unescaped markup would let that text decide what the page says.
  */
-const escapeXml = (value: string): string =>
+export const escapeXml = (value: string): string =>
   value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -312,7 +313,7 @@ const ATTRS_BY_TAG: Record<string, Set<string>> = {
  * Narrow on purpose, and cheap to widen if a use turns up that is really asked
  * for rather than merely available.
  */
-const TASK_TAGS = new Set(['to-do', 'to-do:completed']);
+export const TASK_TAGS = new Set(['to-do', 'to-do:completed']);
 
 /**
  * What may appear in a `style`, which OneNote's own tables lean on heavily for
@@ -525,6 +526,14 @@ export type EditChange = {
   html: string | null;
   /** Which side of the anchor an insert lands on. Null otherwise. */
   position: 'before' | 'after' | null;
+  /**
+   * What the caller read in the element a replace overwrites, or an insert sits
+   * beside: its text, or for a table its rows. Checked against the page as it
+   * is re-read just before the write, so a page that moved since it was read is
+   * a refusal rather than an overwrite (0019 step 2). Null when not given; an
+   * append has none, since it overwrites nothing and has no anchor.
+   */
+  expect: string | string[][] | null;
 };
 
 export type EditDraft = {
@@ -730,9 +739,9 @@ export const inherit = (
 };
 
 /** As in onenote-write.ts: opaque, but concatenated into URLs. */
-const ONENOTE_ID = /^[A-Za-z0-9!._~-]{1,300}$/;
+export const ONENOTE_ID = /^[A-Za-z0-9!._~-]{1,300}$/;
 
-const MAX_TEXT_CHARS = 4_000;
+export const MAX_TEXT_CHARS = 4_000;
 
 /**
  * Markup gets a larger ceiling than text, and for a reason that is not
@@ -824,8 +833,8 @@ const changeFrom = (params: Record<string, unknown>, where: string): EditChange 
   } else if (!named || !isGeneratedId(elementId as string)) {
     throw failure(
       `${where}: a ${action} needs element_id — the generated id of the part to ` +
-        `${action === 'replace' ? 'change' : 'sit beside'}, as preview_onenote_edit ` +
-        'reports it. Read the page again if you do not have one.',
+        `${action === 'replace' ? 'change' : 'sit beside'}, as read_note lists it. ` +
+        'Read the page again if you do not have one.',
     );
   }
 
@@ -877,7 +886,54 @@ const changeFrom = (params: Record<string, unknown>, where: string): EditChange 
     text,
     html,
     position: action === 'insert' ? (position as 'before' | 'after') : null,
+    expect: expectFrom(params.expect, action, targetsTable, where),
   };
+};
+
+/** The most rows an `expect` may carry, as generous as a table the house shape allows. */
+const MAX_EXPECT_ROWS = 200;
+
+/**
+ * `expect` as given, shape-checked against what it is for: plain text for a
+ * paragraph, heading or list item, a list of rows (each a list of cell texts)
+ * for a table. Refused rather than coerced, because a mismatch in shape would
+ * otherwise be reported as the page having changed when it had not.
+ */
+const expectFrom = (
+  raw: unknown,
+  action: EditChange['action'],
+  table: boolean,
+  where: string,
+): string | string[][] | null => {
+  if (raw === undefined || raw === null) return null;
+  if (action === 'append') {
+    throw failure(
+      `${where}: an append takes no expect. It overwrites nothing and sits beside nothing, ` +
+        'so there is nothing on the page for it to check.',
+    );
+  }
+  if (table) {
+    const rows =
+      Array.isArray(raw) &&
+      raw.length > 0 &&
+      raw.length <= MAX_EXPECT_ROWS &&
+      raw.every(
+        (row) =>
+          Array.isArray(row) &&
+          row.every((cell) => typeof cell === 'string' && cell.length <= MAX_TEXT_CHARS),
+      );
+    if (!rows) {
+      throw failure(
+        `${where}: for a table, expect is its rows as you read them — a list of rows, each a ` +
+          'list of its cells as text, header row first.',
+      );
+    }
+    return raw as string[][];
+  }
+  if (typeof raw !== 'string' || raw.trim() === '' || raw.length > MAX_TEXT_CHARS) {
+    throw failure(`${where}: expect is the element's text as you read it, as one string.`);
+  }
+  return raw;
 };
 
 /**
@@ -967,62 +1023,6 @@ export const editFrom = (params: Record<string, unknown>): EditDraft => {
   };
 };
 
-const base32hex = (bytes: Uint8Array): string => {
-  const alphabet = '0123456789abcdefghijklmnopqrstuv';
-  let bits = 0;
-  let value = 0;
-  let out = '';
-  for (const byte of bytes) {
-    value = (value << 8) | byte;
-    bits += 8;
-    while (bits >= 5) {
-      out += alphabet[(value >>> (bits - 5)) & 31];
-      bits -= 5;
-    }
-  }
-  return out;
-};
-
-/**
- * The token a preview returns and an edit must carry back.
- *
- * Derived from the payload **and from what the change would destroy**, which is
- * the one difference from the create token and the reason this is not shared
- * with `onenote-write.ts`. A create can only be wrong about what it writes. A
- * replace can also be wrong about what it overwrites — and the id naming that
- * content moves after every page update, so an id that was correct at preview
- * may point at something else by the time the edit is applied.
- *
- * Hashing the pre-image makes that case fail closed: the edit is refused unless
- * the element still holds exactly what the musician was shown.
- */
-export const editToken = async (draft: EditDraft, preImages: string[]): Promise<string> => {
-  // Every change and every pre-image, in order. A batch is approved as one
-  // thing, so it fails closed as one thing: if any element it would overwrite
-  // has moved or changed since the preview, the whole batch stops. Hashing them
-  // separately would let a batch apply the changes whose targets still match,
-  // which is the partial application the atomicity of the PATCH exists to
-  // prevent — the guarantee has to hold in our code too, not only in Graph's.
-  const canonical = draft.changes
-    .map((change, index) =>
-      [
-        change.action,
-        change.element_id ?? '',
-        change.position ?? '',
-        change.text ?? '',
-        // The markup itself, not a rendering of it. The preview shows a table as
-        // rows because that is what can be read, but two different tables can
-        // render to the same rows — so what the token binds is what is sent.
-        change.html ?? '',
-        preImages[index] ?? '',
-      ].join(' '),
-    )
-    .join(' | ');
-
-  const data = new TextEncoder().encode(`confirm-edit ${draft.page_id} ${canonical}`);
-  return base32hex(new Uint8Array(await crypto.subtle.digest('SHA-256', data)));
-};
-
 /**
  * Strip tags for display. The page is shown as the musician reads it, not as
  * HTML — and this text is what they approve a destructive change against, so
@@ -1035,7 +1035,7 @@ export const editToken = async (draft: EditDraft, preImages: string[]): Promise<
  *
  * Ampersand last, or the entities the earlier passes produce get decoded again.
  */
-const asText = (html: string): string =>
+export const asText = (html: string): string =>
   html
     .replace(/<br\s*\/?>/gi, '\n')
     // Block boundaries, or a change made of several paragraphs previews as one
@@ -1067,7 +1067,7 @@ const asText = (html: string): string =>
  * shows up as a short table in the preview and is meant to — a preview that
  * silently drops rows is worse than one that visibly ends early.
  */
-const childElements = (html: string, tags: string): string[] => {
+export const childElements = (html: string, tags: string): string[] => {
   const out: string[] = [];
   const open = new RegExp(`<(?:${tags})\\b[^>]*>`, 'gi');
   let start: RegExpExecArray | null;
@@ -1281,6 +1281,80 @@ export const renderFragment = (html: string): string => {
   return blocks.filter((block) => block !== '').join('\n');
 };
 
+/**
+ * The house shape for a OneNote table, sent with the one refusal that is about
+ * a table written wrong (0019 step 4). It used to come back from
+ * preview_onenote_edit on every table edit; now it arrives when a table is
+ * actually being written wrong, which is when it is read — the economics
+ * `CLAUDE.md` asks of any rule moved into a tool's output.
+ */
+export const HOUSE_TABLE =
+  "A table cannot be edited a cell at a time — OneNote supports no update to a " +
+  "row or a cell, so changing one value rewrites the whole table, and EVERY cell " +
+  "that is not changing has to be carried across exactly as it reads. A cell " +
+  "left out of the markup is a value destroyed. A task table is changed with " +
+  "append_row and update_row instead, which carry every row for you. Send a " +
+  "table through `html`, never `text`. Formatting the table on the page carries " +
+  "and the replacement omits is inherited, until your markup specifies styling " +
+  "of its own. The house shape for a NEW table:\n" +
+  '  table: <table border="1" style="border-collapse:collapse"> (the border ' +
+  "attribute is added for you if it is missing)\n" +
+  '  cell:  <td style="border:1px solid #A3A3A3;padding:4px"> with its content in a <p>\n' +
+  "  header row, where there is one: background-color:#EFEFEF on each cell, " +
+  "text in <b>, and kept exactly as it reads\n" +
+  "  a free-text section is a single-cell table with NO header row\n" +
+  "  never set column widths\n" +
+  '  a task is a to-do tag on the paragraph that states it: <p data-tag="to-do">, ' +
+  'and <p data-tag="to-do:completed"> once done — never on a header or a heading';
+
+/**
+ * The one normalisation applied to a table on its way out rather than refused:
+ * OneNote acts on the `border` ATTRIBUTE and returns a CSS border alone as
+ * border:0px, found in 0017. Everything else 0017's `asWritten` does is already
+ * refused by `validateFragment` for markup a caller composes — an `id`, a to-do
+ * tag on a `<span>` — so this is all there is left to apply.
+ */
+const bordered = (html: string): string => html.replace(/<table\b(?![^>]*\bborder=)/gi, '<table border="1"');
+
+/**
+ * The header row of a table, as its cells' text, or null when it has none: a
+ * first row, followed by at least one more, whose every cell is bold or shaded,
+ * which is how the house shape and OneNote's own tables mark one. A single-cell
+ * free-text table has none, and is rewritten freely.
+ */
+const headerOf = (table: string): string[] | null => {
+  const rows = childElements(table, 'tr');
+  if (rows.length < 2) return null;
+  const cells = childElements(rows[0], 'td|th');
+  const marked = (cell: string) =>
+    /^<th\b/i.test(cell) || /<(?:b|strong)\b|font-weight:\s*bold|background(?:-color)?:/i.test(cell);
+  if (cells.length === 0 || !cells.every(marked)) return null;
+  return cells.map((cell) => asText(cell).replace(/\s+/g, ' ').trim());
+};
+
+/**
+ * Refuse a whole-table replace that changes the table's header row: what is not
+ * mechanical is refused, and the refusal carries the house shape (0019 step 4).
+ * A header names what every row below it means, so a header rewritten in
+ * passing silently re-labels the musician's values.
+ */
+const checkHeaders = (draft: EditDraft, captured: string[], content: string[]): void => {
+  for (const [index, change] of draft.changes.entries()) {
+    if (change.action !== 'replace' || !isTableId(change.element_id as string)) continue;
+    const was = headerOf(captured[index]);
+    if (was === null) continue;
+    const now = cellsOf(childElements(content[index], 'tr')[0] ?? '');
+    if (JSON.stringify(now) === JSON.stringify(was)) continue;
+    throw failure(
+      `${draft.changes.length === 1 ? 'That table' : `Change ${index + 1}'s table`} is headed ` +
+        `"${was.join(' | ')}" on the page, and the replacement's first row reads ` +
+        `"${now.join(' | ')}". A whole-table replace keeps the header row as it is, so ` +
+        'nothing was written.\n\n' +
+        HOUSE_TABLE,
+    );
+  }
+};
+
 /** Whether a generated id names a table, which decides what may be done to it. */
 export const isTableId = (id: string): boolean => id.startsWith('table:');
 
@@ -1294,34 +1368,17 @@ const readable = (elementHtml: string, id: string): string =>
   isTableId(id) ? renderTable(elementHtml) : asText(elementHtml);
 
 /**
- * What the page currently says, element by element, so a caller can name the
- * part to change without guessing an id.
+ * What the page currently says, element by element, derived from page HTML
+ * `read_note` already fetched, so a caller can name the part to change without
+ * guessing an id and without a second call to Graph — the only difference is
+ * `includeIDs=true`.
  *
  * Every id here is read in this call and is only good for the next one. They
  * are not stable identifiers and must never be stored, handed to a musician, or
  * quoted back in a later session — Microsoft says they "might change after a
- * page update", and that was observed rather than merely read.
- */
-export const readEditableParts = async (
-  token: string,
-  pageId: string,
-  { full = true }: { full?: boolean } = {},
-): Promise<{ html: string; etag: string | null; parts: EditablePart[] }> => {
-  const { html, etag } = await onenotePageContent(pageId, token);
-  return { html, etag, parts: editablePartsFrom(html, { full }) };
-};
-
-/**
- * The same index, derived from page HTML somebody else already fetched.
- *
- * Split out so `read_note` can return the ids without a second call to Graph.
- * Both paths ask `/content` for the same page; the only difference is
- * `includeIDs=true`, so making the reader ask for ids too turns what used to be
- * a whole extra round trip — preview once for the index, preview again for the
- * change — into a query parameter. The ids are as fresh as the read they came
- * with, and a stale one still fails closed: `editToken` binds the pre-image, so
- * an element that has moved produces a different one and the write is refused
- * before it happens.
+ * page update", and that was observed rather than merely read. A stale one
+ * still fails closed: the edit carries `expect`, what it read there, and an
+ * element that has moved no longer says it (0019 step 2).
  */
 export const editablePartsFrom = (
   html: string,
@@ -1408,7 +1465,7 @@ const showChange = (
 
   if (change.action === 'append') {
     return {
-      preview: `Add to the end of the page:\n\n${
+      preview: `Added to the end of the page:\n\n${
         change.html === null ? (change.text as string).trim() : rendered(change.html)
       }`,
       inherited: [],
@@ -1420,9 +1477,9 @@ const showChange = (
   if (change.action === 'insert') {
     return {
       preview:
-        `Put this ${change.position} the ${
+        `Put ${change.position} the ${
           isTableId(change.element_id as string) ? 'table' : 'paragraph'
-        } that currently reads:\n\n${anchor}\n\nNew block:\n\n${rendered(change.html as string)}`,
+        } that reads:\n\n${anchor}\n\nThis new block:\n\n${rendered(change.html as string)}`,
       inherited: [],
     };
   }
@@ -1437,19 +1494,19 @@ const showChange = (
 
     return {
       preview:
-        `Replace this:\n\n${renderTable(captured, marks.before)}\n\n` +
+        `Replaced this:\n\n${renderTable(captured, marks.before)}\n\n` +
         `With this:\n\n${renderTable(carriedHtml, marks.after)}\n\n` +
         (touched === 0 && dropped === 0
-          ? 'Every row reads exactly as it does now; only the markup differs.'
-          : `Marked rows are the ones that differ: ${dropped} going, ${touched} arriving. ` +
-            'Every unmarked row is being rewritten too — a table is replaced whole — ' +
-            'and is only safe because it is carried across unchanged.'),
+          ? 'Every row reads exactly as it did; only the markup differs.'
+          : `Marked rows are the ones that differ: ${dropped} gone, ${touched} arrived. ` +
+            'Every unmarked row was rewritten too — a table is replaced whole — and ' +
+            'was sent as it read.'),
       inherited: carried.notes,
     };
   }
 
   return {
-    preview: `Replace this:\n\n${anchor}\n\nWith this:\n\n${
+    preview: `Replaced this:\n\n${anchor}\n\nWith this:\n\n${
       change.html === null ? (change.text as string).trim() : rendered(carriedHtml)
     }`,
     inherited: carried.notes,
@@ -1471,955 +1528,62 @@ const resolveChanges = (
   const captured = draft.changes.map((change) =>
     change.action === 'append' ? '' : preImage(html, change.element_id as string),
   );
+  checkExpected(draft, captured);
 
   const content = draft.changes.map((change, index) =>
     change.html === null
       ? paragraph(change.text as string)
-      : change.action === 'replace'
-        ? inherit(captured[index], change.html).html
-        : change.html,
+      : bordered(change.action === 'replace' ? inherit(captured[index], change.html).html : change.html),
   );
+  checkHeaders(draft, captured, content);
 
   return { captured, content };
 };
 
 /**
- * Show the change that would be made, and hand back the token making it needs.
- *
- * A read despite the name, exactly as the calendar and create previews are.
+ * Text as compared by `expect`: whitespace collapsed, and a line break inside a
+ * cell — which `tableRows` shows as " / " — treated as a space. The same on both
+ * sides, so a real slash in the text compares equal to itself.
  */
-export async function previewEdit(token: string, params: Record<string, unknown>) {
-  if (params.action === 'append_row') {
-    throw failure(
-      'append_row needs no preview: it changes no existing cell and commits in one call. ' +
-        'Call edit_onenote_page with it directly.',
-    );
-  }
-  if (params.action === 'update_row') return previewRowUpdate(token, params);
-  // Naming a part to change requires knowing its id, and an id is only knowable
-  // by reading the page. So a replace with no element_id is not a malformed
-  // call — it is the first half of the only workflow available, and the tool
-  // text says so. It used to be refused here, which meant a model following that
-  // text got an error and had to guess its way out.
-  //
-  // No confirmation token comes back from this branch. Nothing has been chosen
-  // yet, and a token would be one for a change nobody has described.
-  const wantsPart =
-    params.changes === undefined &&
-    (params.action === 'replace' || params.action === 'insert') &&
-    (params.element_id === undefined || params.element_id === null || params.element_id === '');
-
-  if (wantsPart) {
-    const pageId = params.page_id;
-    if (typeof pageId !== 'string' || !ONENOTE_ID.test(pageId)) {
-      throw failure('page_id is required, and must name the page to change.');
-    }
-
-    // In full: this is the call whose whole purpose is showing what the page
-    // holds, and the one place the cost is the point.
-    const { parts } = await readEditableParts(token, pageId);
-    return {
-      preview: null,
-      page_id: pageId,
-      parts,
-      abbreviated: false,
-      confirmation_token: null,
-      note:
-        parts.length === 0
-          ? 'This page has no separately editable parts, so nothing on it can be ' +
-            'replaced. An append can still add to the end of it.'
-          : 'Nothing has been previewed yet. These are the parts of the page as it ' +
-            'stands. Name one as element_id and preview again to see the change ' +
-            'itself — or list several changes at once as `changes`, which are ' +
-            'applied together in one write. The ids were read just now and are ' +
-            'good only for the next call.',
-    };
-  }
-
-  const draft = editFrom(params);
-
-  // An index rather than the page: the caller has named what it is changing, so
-  // what it needs back is the diff for that, plus enough to look up an id it
-  // did not have. Returning every table in full on every call is the dominant
-  // cost of patching one page in several steps.
-  const { html, parts } = await readEditableParts(token, draft.page_id, { full: false });
-  const { captured, content } = resolveChanges(html, draft);
-
-  const shown = draft.changes.map((change, index) =>
-    showChange(change, captured[index], content[index]),
-  );
-
-  const inherited = [...new Set(shown.flatMap((one) => one.inherited))];
-  const inheritedNote =
-    inherited.length === 0
-      ? ''
-      : `\n\nKeeping ${inherited.join(', ')}, which this change does not specify. ` +
-        'Without that it would land as ordinary body text.';
-
-  const body =
-    draft.changes.length === 1
-      ? shown[0].preview
-      : `${draft.changes.length} changes, applied together in one write — all of them ` +
-        'or none:\n\n' +
-        shown.map((one, index) => `${index + 1}. ${one.preview}`).join('\n\n');
-
-  const destroys = draft.changes.some((change) => change.action === 'replace');
-
-  // Kept per-kind rather than folded into the general wording: this is the
-  // sentence that tells a musician a table replace takes every row with it, and
-  // it stopped being said when the note started describing a batch instead of a
-  // change. A note that covers several changes still has to say the strongest
-  // thing true of any of them.
-  const wholeTable = draft.changes.some(
-    (change) => change.action === 'replace' && isTableId(change.element_id ?? ''),
-  );
-
-  return {
-    preview: `${body}${inheritedNote}`,
-    page_id: draft.page_id,
-    parts,
-    // Said plainly, because a shortened list that does not announce itself is a
-    // list a reader will treat as the whole page.
-    abbreviated: true,
-    confirmation_token: await editToken(draft, captured),
-    note:
-      'Show this to the musician and wait for their yes. ' +
-      (destroys
-        ? 'This overwrites what is quoted above' +
-          (wholeTable
-            ? ' — a table is replaced whole, every row of it, because OneNote supports ' +
-              'no change to a single row or cell'
-            : '') +
-          ', and OneNote keeps no version of a ' +
-          "page — what it replaces is kept in this install's own write log and " +
-          'nowhere else.'
-        : 'Nothing on the page is overwritten or removed by this.') +
-      (draft.changes.length === 1
-        ? ''
-        : ' They are one confirmation: applied in a single write, and if any one of ' +
-          'them cannot be applied then none of them is.'),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// append_row: one or more task rows added to the end of a table, built by the
-// server, committed in one call. See docs/decisions/0017-appending-a-table-row.md.
-
-/** The most rows one call may add. A digest adds a handful; more is a sign something is wrong. */
-const MAX_NEW_ROWS = 12;
-
-/** A header cell naming the task column, matched on the whole cell, as tasks mode does. */
-const TASK_COLUMN = /^(aufgaben?|tasks?|to-?dos?)$/i;
+const comparable = (text: string): string =>
+  text.replace(/\s+\/\s+/g, ' ').replace(/\s+/g, ' ').trim();
 
 /**
- * What a task table may hold for the server to carry it: text and tags, the
- * owner's rule for CL Aufgaben tables, and exactly what the round trip tested.
- * An allowlist rather than a list of dangers, because a list of dangers can only
- * name what is already known to break.
+ * Refuse every change whose `expect` no longer matches the element it names,
+ * as captured from the page just read. A batch fails as a whole, as with the
+ * token: the changes are one decision about one state of the page. The refusal
+ * carries what each element says now, so the caller can read it and decide
+ * again rather than read the page a second time.
  */
-const CARRIED_TAGS = new Set(['table', 'tbody', 'tr', 'td', 'th', 'p', 'span', 'br', 'a', 'b', 'i', 'u', 'strong', 'em']);
-const CARRIED_ATTRIBUTES = new Set(['id', 'data-id', 'style', 'href', 'data-tag', 'lang', 'border']);
-
-/** Why a table cannot be carried, or null when it can. */
-const uncarried = (table: string): string | null => {
-  if ((table.match(/<table\b/gi) ?? []).length > 1) return 'it holds a table inside a cell';
-  for (const tag of table.matchAll(/<([a-z][a-z0-9]*)\b([^>]*)>/gi)) {
-    const name = tag[1].toLowerCase();
-    if (!CARRIED_TAGS.has(name)) return `it holds a <${name}>, and a task table carries text and tags only`;
-    for (const attr of tag[2].matchAll(/\s([a-z-]+)\s*=/gi)) {
-      const attrName = attr[1].toLowerCase();
-      if (!CARRIED_ATTRIBUTES.has(attrName)) {
-        return attrName === 'colspan' || attrName === 'rowspan'
-          ? 'it has merged cells'
-          : `a <${name}> in it carries ${attrName}, which this does not carry`;
+const checkExpected = (draft: EditDraft, captured: string[]): void => {
+  const moved = draft.changes
+    .map((change, index) => ({ change, index, element: captured[index] }))
+    .filter(({ change, element }) => {
+      if (change.expect === null) return false;
+      if (typeof change.expect === 'string') {
+        return comparable(asText(element)) !== comparable(change.expect);
       }
-    }
-    const tagValue = tag[2].match(/\sdata-tag="([^"]*)"/i)?.[1];
-    if (tagValue !== undefined && !TASK_TAGS.has(tagValue)) {
-      return `it carries the OneNote tag "${tagValue}", and only the two to-do tags are carried`;
-    }
-  }
-  return null;
-};
-
-/**
- * The table as read, put back into the form OneNote accepts.
- *
- * Found by the round trip in 0017, every one of these silently: OneNote returns
- * a to-do tag on a <span> in the cell and accepts one only on a <p> — sent back
- * as read, every tag in the table is dropped, the ticks included; it returns a
- * CSS border and honours only the attribute; and it keeps a sent id as a
- * data-id, so ids sent back pile up with every append.
- */
-const asWritten = (table: string): string => {
-  let out = '';
-  let at = 0;
-  const tagged = /<span\b([^>]*?)\sdata-tag="([^"]*)"([^>]*)>/gi;
-  let open: RegExpExecArray | null;
-  while ((open = tagged.exec(table)) !== null) {
-    // Depth-counted to this span's own close: a bold run inside a task would
-    // otherwise end the paragraph halfway through the task.
-    const step = /<(\/?)span\b[^>]*?(\/?)>/gi;
-    step.lastIndex = open.index;
-    let depth = 0;
-    let match: RegExpExecArray | null;
-    let close = -1;
-    while ((match = step.exec(table)) !== null) {
-      if (match[2] === '/') continue;
-      depth += match[1] === '/' ? -1 : 1;
-      if (depth === 0) {
-        close = match.index;
-        break;
-      }
-    }
-    if (close < 0) throw failure('The table could not be read whole, so it cannot be carried. Nothing was changed.');
-    const inner = table.slice(open.index + open[0].length, close);
-    out += `${table.slice(at, open.index)}<p data-tag="${open[2]}">${inner}</p>`;
-    at = close + '</span>'.length;
-    tagged.lastIndex = at;
-  }
-  out += table.slice(at);
-
-  return out
-    .replace(/\s(?:data-id|id)="[^"]*"/g, '')
-    .replace(/<table\b(?![^>]*\bborder=)/i, '<table border="1"');
-};
-
-const rowFacts = (row: string): { text: string; tags: string } => ({
-  text: asText(row).replace(/\s+/g, ' ').trim(),
-  tags: [...row.matchAll(/data-tag="([^"]*)"/g)].map((m) => m[1]).join(','),
-});
-
-/** The outermost tables of a page, in order. */
-const pageTables = (html: string): string[] => childElements(html, 'table');
-
-type NewRow = Record<string, string>;
-
-const newRowsFrom = (params: Record<string, unknown>): NewRow[] => {
-  const rows = params.rows;
-  if (!Array.isArray(rows) || rows.length === 0) {
-    throw failure('append_row needs rows: the new rows, each as its cells by header name.');
-  }
-  if (rows.length > MAX_NEW_ROWS) {
-    throw failure(`That is ${rows.length} rows in one call; ${MAX_NEW_ROWS} is the most.`);
-  }
-  return rows.map((row, index) => {
-    if (row === null || typeof row !== 'object' || Array.isArray(row)) {
-      throw failure(`Row ${index + 1} is not a set of cells by header name.`);
-    }
-    const cells: NewRow = {};
-    for (const [name, value] of Object.entries(row as Record<string, unknown>)) {
-      if (typeof value !== 'string') throw failure(`Row ${index + 1}: the cell "${name}" is not text.`);
-      if (value.length > MAX_TEXT_CHARS) {
-        throw failure(`Row ${index + 1}: the cell "${name}" is ${value.length} characters; ${MAX_TEXT_CHARS} is the most.`);
-      }
-      cells[name] = value;
-    }
-    return cells;
-  });
-};
-
-/** A cell in the house shape, its text escaped. */
-const houseCell = (text: string, task: boolean): string =>
-  `<td style="border:1px solid #A3A3A3;padding:4px"><p${task ? ' data-tag="to-do"' : ''}>${escapeXml(text.trim()).replace(/\n/g, '<br/>')}</p></td>`;
-
-/**
- * A task table read for a server-built change: the page as it stands (its ETag
- * goes out as If-Match), the table, its rows and header, and its task column —
- * or a refusal, writing nothing, where the table is not one the server can
- * carry. Shared by append_row and update_row, so both refuse the same tables
- * for the same reasons.
- */
-const readTaskTable = async (token: string, pageId: string, tableId: string, otherwise: string) => {
-  const before = await onenotePageContent(pageId, token);
-  const table = preImage(before.html, tableId);
-  const ordinal = pageTables(before.html).findIndex((t) => t.includes(`id="${tableId}"`));
-
-  const reason = uncarried(table);
-  if (reason !== null) {
-    throw failure(`This table cannot be changed by this tool: ${reason}. Nothing was changed. ${otherwise}`);
-  }
-  const rows = childElements(table, 'tr');
-  const header = rows.length === 0 ? [] : childElements(rows[0], 'td|th').map((cell) => asText(cell).replace(/\s+/g, ' ').trim());
-  if (rows.length === 0 || /data-tag=/.test(rows[0]) || header.length < 2) {
-    throw failure(`This table has no header row, so its columns cannot be named. Nothing was changed. ${otherwise}`);
-  }
-  const taskAt = header.findIndex((cell) => TASK_COLUMN.test(cell));
-  if (taskAt < 0) {
-    throw failure(
-      `This table (headed "${header.join(' · ')}") has no task column, so it is not a task ` +
-        `table. Nothing was changed. ${otherwise}`,
-    );
-  }
-  return { before, table, ordinal, rows, header, taskAt };
-};
-
-/**
- * Add rows to the end of a task table: the server reads the table, carries every
- * existing row across as OneNote returned it, adds the new ones, writes with
- * If-Match, and reads the page back to check every existing row survived.
- *
- * The model writes no existing cell, which is what puts this on the one-call
- * side of 0009's rule, and the read-back proves it on every write rather than
- * once on a scratch page.
- */
-export async function appendRows(token: string, params: Record<string, unknown>, record: RecordWrite) {
-  const pageId = params.page_id;
-  if (typeof pageId !== 'string' || !ONENOTE_ID.test(pageId)) {
-    throw failure('page_id is required, and must name the page to change.');
-  }
-  const tableId = params.element_id;
-  if (typeof tableId !== 'string' || !isGeneratedId(tableId) || !isTableId(tableId)) {
-    throw failure(
-      'append_row needs element_id: the generated id of the table, as read_note lists it. ' +
-        'Read the page again if you do not have one.',
-    );
-  }
-  for (const other of ['text', 'html', 'changes', 'position']) {
-    if (params[other] !== undefined && params[other] !== null && params[other] !== '') {
-      throw failure(`append_row takes rows, not ${other}. Send any other change in its own call.`);
-    }
-  }
-  const source = params.source_page;
-  if (source !== undefined && source !== null && source !== '' && (typeof source !== 'string' || !ONENOTE_ID.test(source))) {
-    throw failure('source_page is malformed.');
-  }
-  const wanted = newRowsFrom(params);
-
-  // 1–2. Read immediately before, and refuse what cannot be carried.
-  const { before, table, ordinal, rows, header, taskAt } = await readTaskTable(
-    token,
-    pageId,
-    tableId,
-    'Add the task below the table instead, as an append.',
-  );
-
-  const byName = new Map(header.map((name, index) => [name.toLowerCase(), index]));
-  const built = wanted.map((cells, index) => {
-    const values = header.map(() => 'UNKNOWN');
-    for (const [name, value] of Object.entries(cells)) {
-      const at = byName.get(name.trim().toLowerCase());
-      if (at === undefined) {
-        throw failure(
-          `Row ${index + 1}: "${name}" is not a column of this table. Its columns are ` +
-            `${header.map((h) => `"${h}"`).join(', ')}. Nothing was changed.`,
-        );
-      }
-      values[at] = value.trim() === '' ? 'UNKNOWN' : value;
-    }
-    if (values[taskAt] === 'UNKNOWN') {
-      throw failure(`Row ${index + 1} has no task: give the "${header[taskAt]}" cell. Nothing was changed.`);
-    }
-    return values;
-  });
-  const newRowsHtml = built
-    .map((values) => `<tr>${values.map((value, at) => houseCell(value, at === taskAt)).join('')}</tr>`)
-    .join('');
-
-  // 3. The table put back into what OneNote accepts, with the new rows at the end.
-  const content = asWritten(table).replace(/<\/table>\s*$/i, `${newRowsHtml}</table>`);
-
-  // 4. Recorded before the write, with the table as it was and the row as it
-  // will be written, and the write refused if that fails (0018). The row is
-  // what an undo looks for; the table is the only copy of what stood before.
-  const entries: WriteRecord[] = built.map((values) => ({
-    operation: 'append_table_row',
-    summary: `Added a row to the table headed "${header.join(' · ')}": ${values.join(' · ')}`,
-    target: pageId,
-    source_page: typeof source === 'string' && source !== '' ? source : null,
-    pre_image: table,
-    write_id: randomUUID(),
-    wrote: JSON.stringify({ table: tableId, header, cells: values }),
-  }));
-  for (const entry of entries) await record({ ...entry, status: 'pending' });
-
-  // 5. Written whole, If-Match on the read just made.
-  await onenotePatchPage(pageId, [replaceCommand(tableId, content)], token, before.etag);
-  for (const entry of entries) await record({ ...entry, status: 'done' });
-
-  // 6. Read back, and every existing row checked.
-  const oldRows = rows.map(rowFacts);
-  let changed: number[] = [];
-  let unread = false;
-  try {
-    const after = await onenotePageContent(pageId, token);
-    const written = ordinal < 0 ? undefined : pageTables(after.html)[ordinal];
-    const newRows = written === undefined ? [] : childElements(written, 'tr').map(rowFacts);
-    if (newRows.length !== oldRows.length + built.length) unread = true;
-    changed = oldRows
-      .map((old, index) => ({ old, now: newRows[index], index }))
-      .filter(({ old, now }) => now === undefined || now.text !== old.text || now.tags !== old.tags)
-      .map(({ index }) => index);
-  } catch {
-    unread = true;
-  }
-
-  const added = built.map((values) => `[ ] ${values[taskAt]}`).join('\n');
-  const note =
-    changed.length === 0 && !unread
-      ? `Added to the table headed "${header.join(' · ')}":\n\n${added}\n\n` +
-        `The ${oldRows.length - 1} rows already in it were read back unchanged. To take this ` +
-        'back, call undo_write with its write id, below.'
-      : `Added to the table headed "${header.join(' · ')}":\n\n${added}\n\n` +
-        'WARNING: ' +
-        (unread
-          ? 'the table could not be read back whole after the write, so it is NOT confirmed that the rows already in it survived. '
-          : `row${changed.length === 1 ? '' : 's'} ${changed.join(', ')} of the table read back differently after the write. `) +
-        "Tell the musician now. The table as it was before is in this install's write log, " +
-        'and nothing here can put it back.';
-
-  return {
-    changed: true,
-    page_id: pageId,
-    verified: changed.length === 0 && !unread,
-    write_ids: entries.map((entry) => entry.write_id as string),
-    note: `${note}\n\nRecorded as write ${entries.map((entry) => entry.write_id).join(', ')}.`,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// update_row: one task row changed by the server — its tick, its cells — with
-// every other row carried across and checked afterwards. 0018 step 2.
-
-/** The task text of a row, as tasks mode and read_note show it: one line, checkbox markers gone. */
-const taskTextOf = (row: string, taskAt: number): string => {
-  const cells = childElements(row, 'td|th');
-  return cells[taskAt] === undefined
-    ? ''
-    : asText(cells[taskAt]).replace(/^(?:- )?\[[ x]\]\s*/gm, '').replace(/\s+/g, ' ').trim();
-};
-
-type RowChange = { match: string; done: boolean | null; set: Record<string, string> };
-
-const rowChangeFrom = (params: Record<string, unknown>): RowChange => {
-  const match = params.row;
-  if (typeof match !== 'string' || match.trim() === '') {
-    throw failure(
-      'update_row needs row: the task text of the row to change, exactly as map_notes or ' +
-        'read_note shows it.',
-    );
-  }
-  const done = params.done;
-  if (done !== undefined && done !== null && typeof done !== 'boolean') {
-    throw failure('done is true to tick the task, false to reopen it, or left out.');
-  }
-  const rawSet = params.set ?? {};
-  if (rawSet === null || typeof rawSet !== 'object' || Array.isArray(rawSet)) {
-    throw failure('set is the cells to change, by header name, as text.');
-  }
-  const set: Record<string, string> = {};
-  for (const [name, value] of Object.entries(rawSet as Record<string, unknown>)) {
-    if (typeof value !== 'string' || value.trim() === '') {
-      throw failure(`The cell "${name}" needs text. A cell is never emptied by this.`);
-    }
-    if (value.length > MAX_TEXT_CHARS) throw failure(`The cell "${name}" is ${value.length} characters; ${MAX_TEXT_CHARS} is the most.`);
-    set[name] = value;
-  }
-  if ((done === undefined || done === null) && Object.keys(set).length === 0) {
-    throw failure('update_row needs something to change: done, or cells in set.');
-  }
-  return { match: match.replace(/\s+/g, ' ').trim(), done: typeof done === 'boolean' ? done : null, set };
-};
-
-/**
- * The change resolved against the table as it is now: which row, what it says,
- * and the row as it will be written. Shared by the preview and the write, so
- * the two cannot drift, and the token is bound to what this returns.
- */
-const resolveRowChange = (
-  table: string,
-  rows: string[],
-  header: string[],
-  taskAt: number,
-  change: RowChange,
-) => {
-  const matches = rows
-    .map((row, index) => ({ row, index }))
-    .filter(({ row, index }) => index > 0 && taskTextOf(row, taskAt) === change.match);
-  if (matches.length !== 1) {
-    throw failure(
-      matches.length === 0
-        ? `No row of this table has the task "${change.match}". Nothing was changed. Read the ` +
-            'page again and give the task exactly as it reads now.'
-        : `${matches.length} rows of this table have the task "${change.match}", so which one ` +
-            'to change is not clear. Nothing was changed.',
-    );
-  }
-  const [{ row, index }] = matches;
-  if (!/data-tag="to-do(?::completed)?"/.test(childElements(row, 'td|th')[taskAt] ?? '')) {
-    throw failure(`The row "${change.match}" carries no to-do tag, so it is not a task row. Nothing was changed.`);
-  }
-
-  const byName = new Map(header.map((name, at) => [name.toLowerCase(), at]));
-
-  // policy:tasks: the status cell follows the tag, in the same change — never
-  // a tick beside a cell still saying OFFEN. Applied here rather than only
-  // stated there, because an unattended tick (0018 step 4) has nobody to
-  // notice, and this fires only on the calls it is about.
-  const statusAt = header.findIndex((name) => /^status$/i.test(name.trim()));
-  if (change.done !== null && statusAt >= 0) {
-    const given = Object.keys(change.set).some((name) => name.trim().toLowerCase() === header[statusAt].toLowerCase());
-    if (!given) {
-      throw failure(
-        `This table has a ${header[statusAt]} column, and it changes with the tick: give ` +
-          `${header[statusAt]} in set — the page's own word for ${change.done ? 'done (ERLEDIGT where the page uses it)' : 'open (OFFEN where the page uses it)'}. ` +
-          'Nothing was changed.',
-      );
-    }
-  }
-  const setAt = new Map<number, string>();
-  for (const [name, value] of Object.entries(change.set)) {
-    const at = byName.get(name.trim().toLowerCase());
-    if (at === undefined) {
-      throw failure(
-        `"${name}" is not a column of this table. Its columns are ` +
-          `${header.map((h) => `"${h}"`).join(', ')}. Nothing was changed.`,
-      );
-    }
-    if (at === taskAt) {
-      throw failure(
-        `The task text itself is not changed by this — only its tick and the other cells. ` +
-          'Nothing was changed.',
-      );
-    }
-    setAt.set(at, value);
-  }
-
-  // The row as OneNote accepts it, then the change applied to it alone.
-  const written = asWritten(`<table>${row}</table>`).replace(/^<table border="1">|<\/table>$/g, '');
-  const cells = childElements(written, 'td|th');
-  const changedCells = cells.map((cell, at) => {
-    if (at === taskAt && change.done !== null) {
-      return cell.replace(/data-tag="to-do(?::completed)?"/, `data-tag="${change.done ? 'to-do:completed' : 'to-do'}"`);
-    }
-    const value = setAt.get(at);
-    if (value === undefined) return cell;
-    const open = cell.match(/^<t[dh]\b[^>]*>/)?.[0] ?? '<td>';
-    const close = cell.match(/<\/t[dh]>\s*$/)?.[0] ?? '</td>';
-    return `${open}<p>${escapeXml(value.trim()).replace(/\n/g, '<br/>')}</p>${close}`;
-  });
-  // Rebuilt from its cells in order, never by replacing one cell's markup in
-  // the row: two cells reading UNKNOWN have identical markup, and a string
-  // replace would change the first of them, not the one asked for.
-  const rowOpen = written.match(/^\s*<tr\b[^>]*>/)?.[0].trim() ?? '<tr>';
-  const rebuilt = `${rowOpen}${changedCells.join('')}</tr>`;
-
-  const cellTexts = (r: string) => childElements(r, 'td|th').map((c) => asText(c).replace(/\s+/g, ' ').trim());
-  return {
-    index,
-    row,
-    rebuilt,
-    before: { cells: cellTexts(row), done: /data-tag="to-do:completed"/.test(row) },
-    after: { cells: cellTexts(rebuilt), done: /data-tag="to-do:completed"/.test(rebuilt) },
-  };
-};
-
-const rowToken = (pageId: string, tableId: string, change: RowChange, rowBefore: string): string =>
-  createHash('sha256')
-    .update(JSON.stringify({ pageId, tableId, change, row: rowFacts(rowBefore) }))
-    .digest('hex')
-    .slice(0, 32);
-
-const describeRow = (header: string[], cells: string[], done: boolean): string =>
-  `${done ? '[x]' : '[ ]'} ${header.map((name, at) => `${name}: ${cells[at] ?? ''}`).join(' · ')}`;
-
-const rowCallFrom = (params: Record<string, unknown>) => {
-  const pageId = params.page_id;
-  if (typeof pageId !== 'string' || !ONENOTE_ID.test(pageId)) {
-    throw failure('page_id is required, and must name the page to change.');
-  }
-  const tableId = params.element_id;
-  if (typeof tableId !== 'string' || !isGeneratedId(tableId) || !isTableId(tableId)) {
-    throw failure(
-      'update_row needs element_id: the generated id of the table, as read_note lists it.',
-    );
-  }
-  for (const other of ['text', 'html', 'changes', 'position', 'rows']) {
-    if (params[other] !== undefined && params[other] !== null && params[other] !== '') {
-      throw failure(`update_row takes row, done and set, not ${other}. Send any other change in its own call.`);
-    }
-  }
-  return { pageId, tableId, change: rowChangeFrom(params) };
-};
-
-/** Show a row change and hand back the token that makes it — until undo exists, 0018 step 3. */
-export async function previewRowUpdate(token: string, params: Record<string, unknown>) {
-  const { pageId, tableId, change } = rowCallFrom(params);
-  const { table, rows, header, taskAt } = await readTaskTable(token, pageId, tableId, '');
-  const resolved = resolveRowChange(table, rows, header, taskAt, change);
-  return {
-    preview:
-      `Change this row:\n\n  ${describeRow(header, resolved.before.cells, resolved.before.done)}\n\n` +
-      `to:\n\n  ${describeRow(header, resolved.after.cells, resolved.after.done)}\n\n` +
-      'Every other row of the table is carried across unchanged by this tool and checked afterwards.',
-    page_id: pageId,
-    parts: [],
-    abbreviated: false,
-    confirmation_token: rowToken(pageId, tableId, change, resolved.row),
-    note: 'Show this to the musician and wait for their yes.',
-  };
-}
-
-/**
- * Change one task row: read the table, find the row by its task text, apply
- * the tick or the cells to that row alone, record the table and the row as
- * they were before writing, write with If-Match, and read back to check that
- * every other row is unchanged and this one says what was set.
- */
-export async function updateRow(token: string, params: Record<string, unknown>, record: RecordWrite) {
-  const { pageId, tableId, change } = rowCallFrom(params);
-  const source = params.source_page;
-  if (source !== undefined && source !== null && source !== '' && (typeof source !== 'string' || !ONENOTE_ID.test(source))) {
-    throw failure('source_page is malformed.');
-  }
-
-  const { before, table, ordinal, rows, header, taskAt } = await readTaskTable(token, pageId, tableId, '');
-  const resolved = resolveRowChange(table, rows, header, taskAt, change);
-
-  // No token since undo_write was verified on hosted (0018): a wrong tick or
-  // date is reversed by its write id, so 0009's rule puts this on the one-call
-  // side. What stands between a change and Ruben's edits is If-Match on the
-  // read just made, and the read-back below. A preview is still available, and
-  // in a conversation policy:patch still has the change shown first; in an
-  // automation it is not allowed at all until 0018's step 4.
-  // The table as OneNote accepts it, with this one row replaced.
-  // Swapped by position, not by searching for its markup, so the row changed
-  // is the row resolved — and refused outright if the table does not split
-  // into the rows it was read as.
-  const translated = asWritten(table);
-  const translatedRows = childElements(translated, 'tr');
-  if (translatedRows.length !== rows.length) {
-    throw failure('The table could not be read row by row, so it cannot be changed safely. Nothing was changed.');
-  }
-  let at = -1;
-  for (let i = 0, from = 0; i <= resolved.index; i++) {
-    at = translated.indexOf(translatedRows[i], from);
-    from = at + translatedRows[i].length;
-  }
-  const content =
-    translated.slice(0, at) + resolved.rebuilt + translated.slice(at + translatedRows[resolved.index].length);
-
-  const entry: WriteRecord = {
-    operation: 'update_table_row',
-    summary:
-      `Changed a row of the table headed "${header.join(' · ')}": ` +
-      `${describeRow(header, resolved.before.cells, resolved.before.done)} → ` +
-      `${describeRow(header, resolved.after.cells, resolved.after.done)}`,
-    target: pageId,
-    source_page: typeof source === 'string' && source !== '' ? source : null,
-    pre_image: table,
-    write_id: randomUUID(),
-    wrote: JSON.stringify({ table: tableId, header, before: resolved.before, after: resolved.after }),
-  };
-  await record({ ...entry, status: 'pending' });
-  await onenotePatchPage(pageId, [replaceCommand(tableId, content)], token, before.etag);
-  await record({ ...entry, status: 'done' });
-
-  // Read back: every other row unchanged, and this one as set.
-  // Other rows are compared read against read. The changed row is compared
-  // cell by cell, because what was written and what OneNote reads back differ
-  // in shape — a <p> in the cell as written, a run of text as read — and run
-  // together as one string they never match.
-  const oldRows = rows.map(rowFacts);
-  const cellsOf = (r: string) => childElements(r, 'td|th').map((c) => asText(c).replace(/\s+/g, ' ').trim());
-  const expectedCells = JSON.stringify(cellsOf(resolved.rebuilt));
-  const expectedTags = rowFacts(resolved.rebuilt).tags;
-  let problems: string[] = [];
-  try {
-    const after = await onenotePageContent(pageId, token);
-    const written = ordinal < 0 ? undefined : pageTables(after.html)[ordinal];
-    const nowRows = written === undefined ? [] : childElements(written, 'tr');
-    if (nowRows.length !== oldRows.length) problems.push('the table read back with a different number of rows');
-    oldRows.forEach((old, at) => {
-      const got = nowRows[at];
-      const same =
-        got !== undefined &&
-        (at === resolved.index
-          ? JSON.stringify(cellsOf(got)) === expectedCells && rowFacts(got).tags === expectedTags
-          : rowFacts(got).text === old.text && rowFacts(got).tags === old.tags);
-      if (!same) problems.push(`row ${at}`);
+      const now = tableRows(element).map((row) => row.map(comparable));
+      const read = change.expect.map((row) => row.map(comparable));
+      return JSON.stringify(now) !== JSON.stringify(read);
     });
-  } catch {
-    problems = ['the table could not be read back'];
-  }
+  if (moved.length === 0) return;
+  throw failure(
+    'The page has changed since it was read, so nothing was written. ' +
+      moved
+        .map(
+          ({ change, index, element }) =>
+            `${draft.changes.length === 1 ? 'The element' : `Change ${index + 1}'s element`} ` +
+            `(${change.element_id}) now reads:\n\n${readable(element, change.element_id as string)}`,
+        )
+        .join('\n\n') +
+      '\n\nDecide again against what it says now. If the musician changed it, their change stands.',
+  );
+};
 
-  const shown = describeRow(header, resolved.after.cells, resolved.after.done);
-  return {
-    changed: true,
-    page_id: pageId,
-    verified: problems.length === 0,
-    write_ids: [entry.write_id as string],
-    note:
-      (problems.length === 0
-        ? `Changed the row to:\n\n  ${shown}\n\nEvery other row was read back unchanged.`
-        : `Changed the row to:\n\n  ${shown}\n\nWARNING: after the write, ${problems.join(', ')} ` +
-          "did not read back as expected. Tell the musician now. The table as it was before is in this install's write log.") +
-      `\n\nRecorded as write ${entry.write_id}.`,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// undo_write: one write this tool made to a OneNote page, reversed at the
-// smallest unit — a row, or a line — and only while what it wrote still reads
-// exactly as written. 0018 step 3.
-
-/** Reads this install's own write log: the file locally, the user's rows hosted. */
-export type ReadWriteLog = (query: { writeId?: string; since?: string; limit?: number }) => Promise<WrittenRecord[]>;
-
-const WRITE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-const cellsOf = (row: string): string[] =>
+/** A row's cells as text, whitespace collapsed — shared by the row writes and their undo. */
+export const cellsOf = (row: string): string[] =>
   childElements(row, 'td|th').map((cell) => asText(cell).replace(/\s+/g, ' ').trim());
-const isTicked = (row: string): boolean => /data-tag="to-do:completed"/.test(row);
-const sameCells = (a: string[], b: string[]): boolean => JSON.stringify(a) === JSON.stringify(b);
-
-/** A row put back into what OneNote accepts, on its own. */
-const rowAsWritten = (row: string): string =>
-  asWritten(`<table>${row}</table>`).replace(/^<table border="1">|<\/table>$/g, '');
-
-/** The page's tables headed exactly as `header`, each with its rows. */
-const tablesHeaded = (html: string, header: string[]) =>
-  pageTables(html)
-    .map((table, ordinal) => ({ table, ordinal, rows: childElements(table, 'tr') }))
-    .filter(({ rows }) => rows.length > 0 && sameCells(cellsOf(rows[0]), header));
-
-/** Replace the row at `index` of a translated table, found by walking the rows in order. */
-const swapRow = (translated: string, index: number, replacement: string): string => {
-  const rows = childElements(translated, 'tr');
-  let at = -1;
-  for (let i = 0, from = 0; i <= index; i++) {
-    at = translated.indexOf(rows[i], from);
-    from = at + rows[i].length;
-  }
-  return translated.slice(0, at) + replacement + translated.slice(at + rows[index].length);
-};
-
-type Found = { table: string; ordinal: number; rows: string[]; index: number };
-
-/**
- * The one row that still reads as `cells`, ticked or not as `done` says. None
- * and several are both refusals: none means it was edited, removed, or never
- * landed, and several means the tool cannot tell which one it wrote.
- */
-const findRow = (html: string, header: string[], cells: string[], done: boolean, what: string): Found => {
-  const found: Found[] = [];
-  for (const { table, ordinal, rows } of tablesHeaded(html, header)) {
-    rows.forEach((row, index) => {
-      if (index > 0 && sameCells(cellsOf(row), cells) && isTicked(row) === done) found.push({ table, ordinal, rows, index });
-    });
-  }
-  if (found.length === 1) return found[0];
-  throw failure(
-    found.length === 0
-      ? `${what} no longer reads as this tool left it — it was edited, ticked, removed, or the ` +
-          `write never landed — so nothing was undone. It read: ${cells.join(' · ')}`
-      : `${what} appears ${found.length} times, so which one this tool wrote is not clear. Nothing was undone.`,
-  );
-};
-
-/** Write a table back, checked afterwards: the rows `expect` lists, in order, by text and tags. */
-const writeTableChecked = async (
-  token: string,
-  pageId: string,
-  found: Found,
-  content: string,
-  etag: string | null,
-  expect: { cells: string[]; tags: string }[],
-) => {
-  const tableId = found.table.match(/<table\b[^>]*?\sid="([^"]+)"/)?.[1];
-  if (tableId === undefined) throw failure('The table has no id to write to. Nothing was undone.');
-  await onenotePatchPage(pageId, [replaceCommand(tableId, content)], token, etag);
-  try {
-    const after = await onenotePageContent(pageId, token);
-    const written = pageTables(after.html)[found.ordinal];
-    const rows = written === undefined ? [] : childElements(written, 'tr');
-    if (rows.length !== expect.length) return false;
-    return rows.every((row, i) => sameCells(cellsOf(row), expect[i].cells) && rowFacts(row).tags === expect[i].tags);
-  } catch {
-    return false;
-  }
-};
-
-/**
- * Reverse one write this tool made, by its write_id. A row it added is
- * removed, a row it changed is put back, a line it appended is removed — each
- * only while it still reads exactly as written, which is what keeps an edit
- * Ruben made in between from being destroyed by an undo.
- */
-export async function undoWrite(
-  token: string,
-  params: Record<string, unknown>,
-  record: RecordWrite,
-  readLog: ReadWriteLog,
-) {
-  const writeId = params.write_id;
-  if (typeof writeId !== 'string' || !WRITE_ID.test(writeId)) {
-    throw failure('write_id is required: the id a write result named, as "Recorded as write …".');
-  }
-
-  const lines = await readLog({ writeId });
-  if (lines.length === 0) {
-    throw failure(
-      `There is no write ${writeId} in this install's write log. Only writes recorded since ` +
-        'two-phase recording began can be undone; older ones are removed by hand.',
-    );
-  }
-  const original = lines.find((line) => line.status === 'pending') ?? lines[lines.length - 1];
-  if (original.operation.startsWith('undo_')) {
-    throw failure('That write is itself an undo, and undoing an undo is not offered. Nothing was changed.');
-  }
-  const undoneBy = (await readLog({ since: original.at, limit: 500 })).find((line) => {
-    if (!line.operation.startsWith('undo_') || line.status !== 'done' || !line.wrote) return false;
-    try {
-      return (JSON.parse(line.wrote) as { undoes?: string }).undoes === writeId;
-    } catch {
-      return false;
-    }
-  });
-  if (undoneBy !== undefined) {
-    throw failure(`Write ${writeId} was already undone, by write ${undoneBy.write_id}. Nothing was changed.`);
-  }
-
-  // Decided before anything is read or parsed, so a write this cannot reverse
-  // — a calendar change, a created page, an element replaced — is named as
-  // such rather than failing on a record shaped for something else.
-  const undoable = ['append_table_row', 'update_table_row', 'append_onenote_page'];
-  if (!undoable.includes(original.operation)) {
-    throw failure(
-      `A ${original.operation.replace(/_/g, ' ')} cannot be undone by this tool yet. Nothing was changed.`,
-    );
-  }
-
-  const pageId = original.target;
-  let wrote: Record<string, unknown> = {};
-  if (original.operation !== 'append_onenote_page') {
-    try {
-      wrote = JSON.parse(original.wrote ?? '') as Record<string, unknown>;
-    } catch {
-      throw failure('The record of that write cannot be read, so it cannot be undone. Nothing was changed.');
-    }
-  }
-  const before = await onenotePageContent(pageId, token);
-  const undoEntry = (summary: string, preImage: string): WriteRecord => ({
-    operation: `undo_${original.operation}`,
-    summary,
-    target: pageId,
-    source_page: null,
-    pre_image: preImage,
-    write_id: randomUUID(),
-    wrote: JSON.stringify({ undoes: writeId }),
-  });
-
-  if (original.operation === 'append_table_row') {
-    const header = wrote.header as string[];
-    const cells = wrote.cells as string[];
-    const found = findRow(before.html, header, cells, false, 'The row this tool added');
-    if (uncarried(found.table) !== null) {
-      throw failure('That table now holds something this tool does not carry, so it cannot be rewritten. Nothing was undone.');
-    }
-    const content = swapRow(asWritten(found.table), found.index, '');
-    const expect = found.rows.filter((_, i) => i !== found.index).map((row) => ({ cells: cellsOf(row), tags: rowFacts(row).tags }));
-    const entry = undoEntry(`Removed the row this tool added: ${cells.join(' · ')}`, found.table);
-    await record({ ...entry, status: 'pending' });
-    const ok = await writeTableChecked(token, pageId, found, content, before.etag, expect);
-    await record({ ...entry, status: 'done' });
-    return undoResult(ok, `Removed the row this tool added:\n\n  ${cells.join(' · ')}`, entry, 'row');
-  }
-
-  if (original.operation === 'update_table_row') {
-    const header = wrote.header as string[];
-    const was = wrote.before as { cells: string[]; done: boolean };
-    const now = wrote.after as { cells: string[]; done: boolean };
-    const found = findRow(before.html, header, now.cells, now.done, 'The row this tool changed');
-    if (uncarried(found.table) !== null) {
-      throw failure('That table now holds something this tool does not carry, so it cannot be rewritten. Nothing was undone.');
-    }
-    // The row exactly as it stood, from the table captured before the change.
-    const previous = childElements(original.pre_image ?? '', 'tr').filter(
-      (row, i) => i > 0 && sameCells(cellsOf(row), was.cells) && isTicked(row) === was.done,
-    );
-    if (previous.length !== 1) {
-      throw failure('The row as it was before cannot be found in the record of that write. Nothing was undone.');
-    }
-    const restored = rowAsWritten(previous[0]);
-    const content = swapRow(asWritten(found.table), found.index, restored);
-    const expect = found.rows.map((row, i) =>
-      i === found.index
-        ? { cells: was.cells, tags: rowFacts(previous[0]).tags }
-        : { cells: cellsOf(row), tags: rowFacts(row).tags },
-    );
-    const entry = undoEntry(`Put back the row this tool changed: ${was.cells.join(' · ')}`, found.table);
-    await record({ ...entry, status: 'pending' });
-    const ok = await writeTableChecked(token, pageId, found, content, before.etag, expect);
-    await record({ ...entry, status: 'done' });
-    return undoResult(ok, `Put the row back as it was:\n\n  ${was.done ? '[x]' : '[ ]'} ${was.cells.join(' · ')}`, entry, 'row');
-  }
-
-  if (original.operation === 'append_onenote_page') {
-    // A single paragraph or heading, which is what the digest appends: an
-    // appended table or a run of several elements is removed by hand.
-    const written = original.wrote ?? '';
-    // rootTag is undefined unless the fragment is exactly one element.
-    const tag = rootTag(written) ?? '';
-    if (!/^(p|h[1-6])$/.test(tag)) {
-      throw failure('That append was not a single paragraph or heading, so it is removed by hand. Nothing was changed.');
-    }
-    const text = asText(written).replace(/\s+/g, ' ').trim();
-    const tagValue = written.match(/data-tag="([^"]*)"/)?.[1] ?? null;
-    const inTables = pageTables(before.html).map((t) => {
-      const at = before.html.indexOf(t);
-      return [at, at + t.length] as const;
-    });
-    const candidates = [...before.html.matchAll(new RegExp(`<${tag}\\b[^>]*\\sid="([^"]+)"`, 'gi'))]
-      .filter((m) => !inTables.some(([from, to]) => (m.index ?? 0) > from && (m.index ?? 0) < to))
-      .map((m) => ({ id: m[1], element: extractElement(before.html, 'id', m[1]) ?? '' }))
-      .filter(({ element }) =>
-        asText(element).replace(/\s+/g, ' ').trim() === text &&
-        (element.match(/data-tag="([^"]*)"/)?.[1] ?? null) === tagValue,
-      );
-    if (candidates.length !== 1) {
-      throw failure(
-        candidates.length === 0
-          ? 'The line this tool appended no longer reads as written — it was edited, ticked, removed, ' +
-              `or the write never landed — so nothing was undone. It read: ${text}`
-          : `The line this tool appended appears ${candidates.length} times, so which one it wrote is not clear. Nothing was undone.`,
-      );
-    }
-    const entry = undoEntry(`Removed the line this tool appended: ${text}`, candidates[0].element);
-    await record({ ...entry, status: 'pending' });
-    // Replacing with an empty paragraph removes the element entirely: verified
-    // live in 0015, with no empty line left where it stood.
-    await onenotePatchPage(pageId, [replaceCommand(candidates[0].id, '<p></p>')], token, before.etag);
-    await record({ ...entry, status: 'done' });
-    let ok = false;
-    try {
-      const after = await onenotePageContent(pageId, token);
-      ok = extractElement(after.html, 'id', candidates[0].id) === undefined || !asText(after.html).includes(text);
-    } catch {
-      ok = false;
-    }
-    return undoResult(ok, `Removed the line this tool appended:\n\n  ${text}`, entry, 'line');
-  }
-
-  throw failure(
-    `A ${original.operation.replace(/_/g, ' ')} cannot be undone by this tool yet. Nothing was changed.`,
-  );
-}
-
-const undoResult = (ok: boolean, what: string, entry: WriteRecord, unit: 'row' | 'line') => ({
-  changed: true,
-  verified: ok,
-  write_ids: [entry.write_id as string],
-  note:
-    `${what}\n\n` +
-    (ok
-      ? unit === 'row'
-        ? 'Every other row of the table was read back unchanged.'
-        : 'Read back: it is gone, and nothing else was touched.'
-      : 'WARNING: the page did not read back as expected after the undo. Tell the musician now; ' +
-        "what stood before is in this install's write log.") +
-    `\n\nRecorded as write ${entry.write_id}.`,
-});
 
 /**
  * Commit a change made only of appends: one PATCH, nothing read first.
@@ -2430,7 +1594,7 @@ const undoResult = (ok: boolean, what: string, entry: WriteRecord, unit: 'row' |
  */
 const appendOnly = async (token: string, draft: EditDraft, record: RecordWrite) => {
   const content = draft.changes.map((change) =>
-    change.html === null ? paragraph(change.text as string) : (change.html as string),
+    change.html === null ? paragraph(change.text as string) : bordered(change.html as string),
   );
 
   // Recorded before the write, and the write refused if that fails (0018): an
@@ -2483,22 +1647,28 @@ const appendOnly = async (token: string, draft: EditDraft, record: RecordWrite) 
 };
 
 /**
- * Apply the change, or the batch of them, having shown it.
+ * Apply the change, or the batch of them, in one call (0019 step 4).
  *
- * The page is read again here rather than trusted from the preview, and that is
- * not caution: generated ids move after any page update, so an id that was right
- * at preview may name something else by now. Re-reading also produces the ETag
- * that goes out as `If-Match`, which is what makes the musician typing in
- * OneNote between the two calls a refusal rather than a silent overwrite.
+ * No preview and no token: the musician's request is the yes, and a change the
+ * model derived itself is asked about in words first, which `policy:patch` says
+ * and no tool can check. What the token used to guard is guarded here instead,
+ * without a person. Every replace and insert names what it read in its target
+ * (`expect`), and the page is read again here and refused if the target no
+ * longer says it. That re-read is not caution: generated ids move after any page
+ * update, so an id that was right when the caller read the page may name
+ * something else by now. It also produces the ETag that goes out as `If-Match`,
+ * so the musician typing in OneNote between the read and the write is a refusal
+ * rather than a silent overwrite.
  *
- * The confirmation token is checked against every change *and* every pre-image,
- * so a batch fails closed if any element it would overwrite has changed since
- * the preview — not merely the one that moved.
+ * A batch fails closed as a whole if any target it would overwrite has moved —
+ * not merely the one that moved — and all the commands go out in one `PATCH`,
+ * which is what Graph's array is for. A batch containing an unresolvable target
+ * applies nothing at all, verified against a real page, so there is no state in
+ * which half a batch is on the page.
  *
- * All the commands go out in one `PATCH`, which is what Graph's array is for.
- * A batch containing an unresolvable target applies nothing at all, verified
- * against a real page, so there is no state in which half a confirmed batch is
- * on the page.
+ * Every change is recorded before the write, with what it destroys, and the
+ * result says exactly what changed, before and after, and the write id that
+ * undo_write reverses it by — 0009's rule for every one-call write.
  */
 export async function applyEdit(
   token: string,
@@ -2510,51 +1680,37 @@ export async function applyEdit(
 
   const draft = editFrom(params);
 
-  // An append destroys nothing, so under 0009's rule it commits in one call:
-  // no preview, no token, and no read of the page either. The read exists to
-  // capture what a change would overwrite and to produce the ETag that guards
-  // it, and an append overwrites nothing — so it would spend one of the
-  // musician's OneNote requests to protect nothing. A token passed anyway is
-  // ignored rather than checked, so a client following the old two-step flow
-  // keeps working. See docs/decisions/0015-recovery-replaces-confirmation.md.
+  // An append destroys nothing and has no anchor, so it needs no read of the
+  // page either: the read exists to check what a change overwrites or sits
+  // beside, and to produce the ETag that guards it. See 0015.
   //
-  // Known and accepted: without a token or a read, a caller that retries after
-  // a timeout in which the write actually landed appends the line twice. Left
-  // until it is seen to happen, by the owner's decision on 2026-11-21.
+  // Known and accepted: without a read, a caller that retries after a timeout
+  // in which the write actually landed appends the line twice. Left until it is
+  // seen to happen, by the owner's decision on 2026-11-21.
   if (draft.changes.every((change) => change.action === 'append')) {
     return appendOnly(token, draft, record);
   }
 
-  if (typeof params.confirmation_token !== 'string' || params.confirmation_token === '') {
-    const needing = draft.changes
-      .map((change, index) => ({ change, index }))
-      .filter(({ change }) => change.action !== 'append')
-      .map(({ change, index }) =>
-        draft.changes.length === 1 ? `This ${change.action}` : `Change ${index + 1} (${change.action})`,
-      );
+  const unchecked = draft.changes
+    .map((change, index) => ({ change, index }))
+    .filter(({ change }) => change.action !== 'append' && change.expect === null);
+  if (unchecked.length > 0) {
     throw failure(
-      `${needing.join(', ')} needs a confirmation_token, and nothing was written. ` +
-        'Only an append commits in one call, because it removes nothing. Call ' +
-        'preview_onenote_edit with these values, show the musician what it returns, ' +
-        'and after their yes call this again with the token it gives.',
+      `${unchecked
+        .map(({ change, index }) =>
+          draft.changes.length === 1 ? `This ${change.action}` : `Change ${index + 1} (${change.action})`,
+        )
+        .join(', ')} needs expect, and nothing was written: what you read in the element it ` +
+        `${unchecked.some(({ change }) => change.action === 'replace') ? 'overwrites' : 'sits beside'} — ` +
+        'its text, or for a table its rows as lists of cell texts. read_note with its edit ids ' +
+        'gives both. It is how a page that changed since you read it is refused rather than ' +
+        'overwritten.',
     );
   }
 
   const { html, etag } = await onenotePageContent(draft.page_id, token);
   const { captured, content } = resolveChanges(html, draft);
-
-  const expected = await editToken(draft, captured);
-  if (params.confirmation_token !== expected) {
-    throw failure(
-      draft.changes.some((change) => change.action !== 'append')
-        ? 'That part of the page is not what was previewed — either the values ' +
-          'changed, or the page did since it was shown. Nothing was written. Call ' +
-          'preview_onenote_edit again and show the musician what it returns now.'
-        : 'The confirmation token does not match these values. Call ' +
-          'preview_onenote_edit again with exactly what should be written, show the ' +
-          'musician what it returns, then apply it with those same values.',
-    );
-  }
+  const shown = draft.changes.map((change, index) => showChange(change, captured[index], content[index]));
 
   const commands = draft.changes.map((change, index) =>
     change.action === 'append'
@@ -2568,19 +1724,19 @@ export async function applyEdit(
         : replaceCommand(change.element_id as string, content[index]),
   );
 
-  await onenotePatchPage(draft.page_id, commands, token, etag);
-
-  // After the write, and carrying what each change destroyed. For a replace
-  // this line is the only copy of the previous content that exists anywhere, so
-  // a batch is logged as one line per change rather than one line for the
-  // batch — a restore is per element, and a summary of five changes is not
-  // something anybody can put back.
-  for (const [index, change] of draft.changes.entries()) {
+  // Recorded before the write, one pending line per change, and the write
+  // refused if any of them cannot be made (0019 step 1, the form 0018 gave the
+  // other writes). For a replace this line is the only copy of the previous
+  // content that will exist anywhere, so it has to be on record before the
+  // PATCH destroys it: a replace whose log line failed used to land anyway,
+  // with its pre-image nowhere. A batch is one line per change rather than one
+  // for the batch, because a restore is per element, and a summary of five
+  // changes is not something anybody can put back.
+  const entries: WriteRecord[] = draft.changes.map((change, index) => {
     const wrote = change.html === null ? (change.text as string).trim() : change.html;
     const destroyed =
       change.action === 'replace' ? readable(captured[index], change.element_id as string) : '';
-
-    await record({
+    return {
       operation:
         change.action === 'append'
           ? 'append_onenote_page'
@@ -2602,26 +1758,43 @@ export async function applyEdit(
             : `Replaced "${destroyed}" with "${wrote}"`),
       target: draft.page_id,
       source_page: draft.source_page,
-      // Only a replace has one. An insert captured the anchor to bind its token,
+      // Only a replace has one. An insert captured the anchor to check its `expect`,
       // but nothing of it was destroyed, and recording it as a pre-image would
       // put content in the log that is still on the page — which is the one thing
       // a reader of this log must be able to trust it does not do.
       pre_image: change.action === 'replace' ? captured[index] : null,
-    });
-  }
+      write_id: randomUUID(),
+      // The element as sent, which is what an undo finds it by: generated ids
+      // move after any page update, so the id cannot be what it looks for.
+      wrote: content[index],
+    };
+  });
+  for (const entry of entries) await record({ ...entry, status: 'pending' });
 
-  const replaced = draft.changes.filter((change) => change.action === 'replace').length;
+  await onenotePatchPage(draft.page_id, commands, token, etag);
+
+  for (const entry of entries) await record({ ...entry, status: 'done' });
+
+  const ids = entries.map((entry) => entry.write_id as string);
+  const inherited = [...new Set(shown.flatMap((one) => one.inherited))];
 
   return {
     changed: true,
     page_id: draft.page_id,
+    write_ids: ids,
     note:
       (draft.changes.length === 1
+        ? shown[0].preview
+        : `${draft.changes.length} changes, applied together in one write:\n\n` +
+          shown.map((one, index) => `${index + 1}. ${one.preview}`).join('\n\n')) +
+      (inherited.length === 0
         ? ''
-        : `${draft.changes.length} changes were applied in one write. `) +
-      (replaced === 0
-        ? 'The page now carries this. Nothing was removed.'
-        : "The previous text is only in this install's write log; OneNote cannot " +
-          'undo it.'),
+        : `\n\nKept from what was there, since the change did not specify it: ${inherited.join(', ')}.`) +
+      '\n\nOneNote keeps no version of a page. To take ' +
+      (draft.changes.length === 1 ? 'this' : 'one of these') +
+      ' back, call undo_write with its write id: it puts back what a replace overwrote ' +
+      'and removes an inserted paragraph, while it still reads as written. ' +
+      `Recorded as write ${ids.join(', ')}.`,
   };
 }
+

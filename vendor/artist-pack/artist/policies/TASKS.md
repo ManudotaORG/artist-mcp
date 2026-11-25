@@ -65,7 +65,7 @@ Under `policy:patch`, and only on a page this tool may change.
   is stated, and otherwise the date it was said, stamped the way the page
   stamps chat values. That addition is the one change to a task's wording this
   policy allows. `update_row` never changes a task's wording, so in a
-  conversation a handover is a replace of the table, with its preview — or, on a
+  conversation a handover is a replace of the table, carrying `expect` — or, on a
   page with a delegation table, a row there instead, never both: two records of
   one handover drift. Never unattended.
 - **The status cell follows the tag, in the same change.** Ticking a task sets
@@ -73,7 +73,7 @@ Under `policy:patch`, and only on a page this tool may change.
   it — in the same `changes` call. Never change a status cell without the tag,
   and never tick a tag and leave its cell saying `OFFEN`.
 - **An untagged task on a page you are already changing gets its tag** in that
-  change, and the preview says so as its own line. Tagging is not a change of
+  change, and you say so as its own line when reporting the change. Tagging is not a change of
   meaning, but it is a change the musician should see.
 - **Only the two tags.** `to-do` and `to-do:completed`, on a paragraph or a list
   item — never on a header, a heading, or a cell that is not a task. Every other

@@ -30,18 +30,23 @@ and it is still only our code — Google's scope allows all of it. Read
 [0001](docs/decisions/0001-opt-in-calendar-writes.md) and 0013 before touching
 that path. **Confirmation follows what a write can destroy**: every write
 this tool can undo commits in one call, and a write that overwrites or removes
-the musician's own content keeps a preview and a token — a replace or insert
-through `edit_onenote_page`, `edit_calendar_event`, and deleting an event this
-tool did not create. An append to a page commits in one call, the first step of
-[0015](docs/decisions/0015-recovery-replaces-confirmation.md), and so does a row
-added to a task table with `append_row`, because the server carries every
-existing row and checks them after the write
-([0017](docs/decisions/0017-appending-a-table-row.md)) — OneNote reads a to-do
-tag back on a `<span>` and drops one sent that way, so a table sent back as read
-loses every tick. A row's tick or cell changed with `update_row` commits in one
-call too, since `undo_write` reverses it by write id
-([0018](docs/decisions/0018-undo-and-unattended-row-updates.md)); unattended it
-is still not allowed, until 0018's step 4. See
+the musician's own content and cannot yet be undone keeps a preview and a token
+— now only `edit_calendar_event` and deleting an event this tool did not create,
+which wait on [0022](docs/decisions/0022-google-requires-mcp-for-agents.md).
+Every OneNote write commits in one call since
+[0019](docs/decisions/0019-retiring-the-previews.md) retired
+`preview_onenote_edit`: an append ([0015](docs/decisions/0015-recovery-replaces-confirmation.md)),
+a row added with `append_row`, because the server carries every existing row and
+checks them after the write ([0017](docs/decisions/0017-appending-a-table-row.md))
+— OneNote reads a to-do tag back on a `<span>` and drops one sent that way, so a
+table sent back as read loses every tick — a row changed with `update_row`
+([0018](docs/decisions/0018-undo-and-unattended-row-updates.md)), and a replace
+or insert, which records its pre-image before writing, carries `expect` (what
+the caller read there, re-checked against the page) instead of a token, and is
+reversed by `undo_write`. In a conversation the musician's request is the yes;
+the model asks first only for a change it derived itself or a target the request
+does not pin down, which `policy:patch` says and no code can check. Unattended,
+a replace or insert is still never allowed. See
 [0009](docs/decisions/0009-confirm-by-reversibility.md) before adding a preview
 back or taking the last one away.
 
@@ -74,14 +79,15 @@ its last two defects; nothing else did.
 [0006](docs/decisions/0006-replacing-a-whole-table.md) extends it to tables,
 which is where a filled-in page actually keeps its content: OneNote supports no
 update to a row or a cell, so the unit is the whole table, written as markup and
-previewed as rows. That widens what one confirmed change can destroy, and it
+reported as rows. That widens what one change can destroy, and it
 amends `policy:patch`'s smallest-fragment rule rather than quietly breaking it —
 read it before touching either. **Deleting stays out** — no page is ever
 deleted, because a Graph page delete leaves nothing in the recycle bin. The one
 removal that exists is narrower and recoverable: `undo_write` may take away a
-row or line this tool itself added, only while the write log holds it by
-`write_id` and it still reads exactly as written, and records what it removed
-([0018](docs/decisions/0018-undo-and-unattended-row-updates.md)). A row Ruben
+row, line or inserted paragraph this tool itself added, only while the write
+log holds it by `write_id` and it still reads exactly as written, and records
+what it removed ([0018](docs/decisions/0018-undo-and-unattended-row-updates.md),
+[0019](docs/decisions/0019-retiring-the-previews.md)). A row Ruben
 wrote, or one of the tool's he has since touched, is never removed.
 
 Message sending and synchronization remain out, and the reasoning is in the
@@ -212,18 +218,19 @@ docs/           the brief
   rare enough to look for deliberately.
 
   Three so far. The house markup for a OneNote table left `policy:patch` for
-  `preview_onenote_edit`'s output, where it arrives one call before the markup
-  is composed. `read_note` returns the element ids an edit needs, which deleted
-  a whole discovery call — it and `readEditableParts` fetch the same page and
-  differed only in `includeIDs=true`. And `list_events` used to tell the reader
+  `preview_onenote_edit`'s output, where it arrived one call before the markup
+  was composed; since 0019 removed that tool it rides with the one refusal about
+  a table written wrong, and the border attribute is simply added. `read_note`
+  returns the element ids an edit needs, which deleted a whole discovery call —
+  it and the preview fetched the same page and differed only in
+  `includeIDs=true`. And `list_events` used to tell the reader
   to call `list_calendars` before reporting an absence; the empty result now
   names the calendars it did not search, so the rule cannot be skipped.
 
   **The qualifier, which cost a regression to learn: output is paid per call,
   so this only wins when the calls that pay for it are the calls that use it.**
   Check that second, and separately from whether the move worked. The table
-  markup passes — `preview_onenote_edit` is called when a table is being
-  written. The calendar absence passes — it fires only on an empty result. The
+  markup passes — it is sent only when a table is being written wrong. The calendar absence passes — it fires only on an empty result. The
   element index failed it: a survey of ten pages paid about 977 tokens a read
   for ids that only an edit spends, which was worse than the round trip it had
   removed. It is capped now, tables exempt. A saving measured only on the path
