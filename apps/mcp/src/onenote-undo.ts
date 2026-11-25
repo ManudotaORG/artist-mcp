@@ -13,15 +13,19 @@ import {
   childElements,
   extractElement,
   failure,
+  renderTable,
   replaceCommand,
   rootTag,
+  tableRows,
+  validateFragment,
 } from './onenote-patch.js';
 import { asWritten, pageTables, rowFacts, uncarried } from './onenote-rows.js';
 
 // ---------------------------------------------------------------------------
 // undo_write: one write this tool made to a OneNote page, reversed at the
-// smallest unit — a row, or a line — and only while what it wrote still reads
-// exactly as written. 0018 step 3.
+// smallest unit — a row, a line, an element — and only while what it wrote
+// still reads exactly as written. 0018 step 3, and 0019 step 3 for inserts and
+// replaces.
 
 /** Reads this install's own write log: the file locally, the user's rows hosted. */
 export type ReadWriteLog = (query: { writeId?: string; since?: string; limit?: number }) => Promise<WrittenRecord[]>;
@@ -98,6 +102,91 @@ const writeTableChecked = async (
   }
 };
 
+/** Text as an undo compares it: tags gone, whitespace collapsed. */
+const plain = (html: string): string => asText(html).replace(/\s+/g, ' ').trim();
+
+/** A table's rows as an undo compares them, a line break in a cell read as a space. */
+const rowsOf = (table: string): string[][] =>
+  tableRows(table).map((row) => row.map((cell) => cell.replace(/\s+\/\s+/g, ' ').replace(/\s+/g, ' ').trim()));
+
+/** How many paragraphs and headings outside tables read exactly as `text`. */
+const reading = (html: string, text: string): number => {
+  const inTables = pageTables(html).map((t) => {
+    const at = html.indexOf(t);
+    return [at, at + t.length] as const;
+  });
+  return [...html.matchAll(/<(p|h[1-6])\b[^>]*\sid="([^"]+)"/gi)]
+    .filter((m) => !inTables.some(([from, to]) => (m.index ?? 0) > from && (m.index ?? 0) < to))
+    .filter((m) => plain(extractElement(html, 'id', m[2]) ?? '') === text).length;
+};
+
+type Placed = { id: string; element: string; shown: string };
+
+/**
+ * The one element on the page that still reads as `written`, found by content:
+ * generated ids move after any page update, so the id a write targeted cannot
+ * be what an undo looks for (0015). A paragraph or heading outside any table is
+ * matched by its text and its to-do tag; a table by its rows, cell by cell.
+ * None and several are both refusals, for the reasons `findRow` gives.
+ */
+const findWritten = (html: string, written: string, what: string): Placed => {
+  const tag = rootTag(written) ?? '';
+  if (tag === 'table') {
+    const rows = rowsOf(written);
+    const shown = renderTable(written);
+    const found = pageTables(html)
+      .filter((table) => JSON.stringify(rowsOf(table)) === JSON.stringify(rows))
+      .map((table) => ({ id: table.match(/<table\b[^>]*?\sid="([^"]+)"/)?.[1] ?? '', element: table, shown }))
+      .filter(({ id }) => id !== '');
+    if (found.length === 1) return found[0];
+    throw failure(
+      found.length === 0
+        ? `${what} no longer reads as this tool left it — a cell was edited, a row added or removed, ` +
+            `or the write never landed — so nothing was undone. It read:\n\n${shown}`
+        : `${what} appears ${found.length} times, so which one this tool wrote is not clear. Nothing was undone.`,
+    );
+  }
+  if (!/^(p|h[1-6])$/.test(tag)) {
+    throw failure(`${what} was not a single paragraph, heading or table, so it is changed back by hand. Nothing was changed.`);
+  }
+  const text = plain(written);
+  const tagValue = written.match(/data-tag="([^"]*)"/)?.[1] ?? null;
+  const inTables = pageTables(html).map((t) => {
+    const at = html.indexOf(t);
+    return [at, at + t.length] as const;
+  });
+  const found = [...html.matchAll(new RegExp(`<${tag}\\b[^>]*\\sid="([^"]+)"`, 'gi'))]
+    .filter((m) => !inTables.some(([from, to]) => (m.index ?? 0) > from && (m.index ?? 0) < to))
+    .map((m) => ({ id: m[1], element: extractElement(html, 'id', m[1]) ?? '', shown: text }))
+    .filter(
+      ({ element }) =>
+        plain(element) === text && (element.match(/data-tag="([^"]*)"/)?.[1] ?? null) === tagValue,
+    );
+  if (found.length === 1) return found[0];
+  throw failure(
+    found.length === 0
+      ? `${what} no longer reads as written — it was edited, ticked, removed, ` +
+          `or the write never landed — so nothing was undone. It read: ${text}`
+      : `${what} appears ${found.length} times, so which one it wrote is not clear. Nothing was undone.`,
+  );
+};
+
+/**
+ * A pre-image put back into markup OneNote accepts: generated ids and
+ * `data-id`s stripped, since they name the element as it was and not as it will
+ * be, and a table normalised as `append_row` writes one. Null when what remains
+ * is something this tool would refuse to write — then the undo refuses too and
+ * shows what stood there, for a person to put back.
+ */
+const restorable = (preImage: string): string | null => {
+  try {
+    if (rootTag(preImage) === 'table') return uncarried(preImage) === null ? asWritten(preImage) : null;
+    return validateFragment(preImage.replace(/\s(?:id|data-id)="[^"]*"/g, ''));
+  } catch {
+    return null;
+  }
+};
+
 /**
  * Reverse one write this tool made, by its write_id. A row it added is
  * removed, a row it changed is put back, a line it appended is removed — each
@@ -141,7 +230,13 @@ export async function undoWrite(
   // Decided before anything is read or parsed, so a write this cannot reverse
   // — a calendar change, a created page, an element replaced — is named as
   // such rather than failing on a record shaped for something else.
-  const undoable = ['append_table_row', 'update_table_row', 'append_onenote_page'];
+  const undoable = [
+    'append_table_row',
+    'update_table_row',
+    'append_onenote_page',
+    'insert_onenote_element',
+    'replace_onenote_element',
+  ];
   if (!undoable.includes(original.operation)) {
     throw failure(
       `A ${original.operation.replace(/_/g, ' ')} cannot be undone by this tool yet. Nothing was changed.`,
@@ -150,7 +245,7 @@ export async function undoWrite(
 
   const pageId = original.target;
   let wrote: Record<string, unknown> = {};
-  if (original.operation !== 'append_onenote_page') {
+  if (original.operation === 'append_table_row' || original.operation === 'update_table_row') {
     try {
       wrote = JSON.parse(original.wrote ?? '') as Record<string, unknown>;
     } catch {
@@ -213,50 +308,70 @@ export async function undoWrite(
     return undoResult(ok, `Put the row back as it was:\n\n  ${was.done ? '[x]' : '[ ]'} ${was.cells.join(' · ')}`, entry, 'row');
   }
 
-  if (original.operation === 'append_onenote_page') {
-    // A single paragraph or heading, which is what the digest appends: an
-    // appended table or a run of several elements is removed by hand.
+  if (original.operation === 'append_onenote_page' || original.operation === 'insert_onenote_element') {
+    // A single paragraph or heading: an appended or inserted table, a list, or a
+    // run of several elements is removed by hand. Removing a table this way, or
+    // a list item, is refused until it has been tried on a real page (0019).
     const written = original.wrote ?? '';
-    // rootTag is undefined unless the fragment is exactly one element.
-    const tag = rootTag(written) ?? '';
-    if (!/^(p|h[1-6])$/.test(tag)) {
-      throw failure('That append was not a single paragraph or heading, so it is removed by hand. Nothing was changed.');
+    const added = original.operation === 'append_onenote_page' ? 'appended' : 'inserted';
+    if (!/^(p|h[1-6])$/.test(rootTag(written) ?? '')) {
+      throw failure(`That ${added === 'appended' ? 'append' : 'insert'} was not a single paragraph or heading, so it is removed by hand. Nothing was changed.`);
     }
-    const text = asText(written).replace(/\s+/g, ' ').trim();
-    const tagValue = written.match(/data-tag="([^"]*)"/)?.[1] ?? null;
-    const inTables = pageTables(before.html).map((t) => {
-      const at = before.html.indexOf(t);
-      return [at, at + t.length] as const;
-    });
-    const candidates = [...before.html.matchAll(new RegExp(`<${tag}\\b[^>]*\\sid="([^"]+)"`, 'gi'))]
-      .filter((m) => !inTables.some(([from, to]) => (m.index ?? 0) > from && (m.index ?? 0) < to))
-      .map((m) => ({ id: m[1], element: extractElement(before.html, 'id', m[1]) ?? '' }))
-      .filter(({ element }) =>
-        asText(element).replace(/\s+/g, ' ').trim() === text &&
-        (element.match(/data-tag="([^"]*)"/)?.[1] ?? null) === tagValue,
-      );
-    if (candidates.length !== 1) {
-      throw failure(
-        candidates.length === 0
-          ? 'The line this tool appended no longer reads as written — it was edited, ticked, removed, ' +
-              `or the write never landed — so nothing was undone. It read: ${text}`
-          : `The line this tool appended appears ${candidates.length} times, so which one it wrote is not clear. Nothing was undone.`,
-      );
-    }
-    const entry = undoEntry(`Removed the line this tool appended: ${text}`, candidates[0].element);
+    const found = findWritten(before.html, written, `The line this tool ${added}`);
+    const entry = undoEntry(`Removed the line this tool ${added}: ${found.shown}`, found.element);
     await record({ ...entry, status: 'pending' });
     // Replacing with an empty paragraph removes the element entirely: verified
     // live in 0015, with no empty line left where it stood.
-    await onenotePatchPage(pageId, [replaceCommand(candidates[0].id, '<p></p>')], token, before.etag);
+    await onenotePatchPage(pageId, [replaceCommand(found.id, '<p></p>')], token, before.etag);
     await record({ ...entry, status: 'done' });
     let ok = false;
     try {
       const after = await onenotePageContent(pageId, token);
-      ok = extractElement(after.html, 'id', candidates[0].id) === undefined || !asText(after.html).includes(text);
+      ok = extractElement(after.html, 'id', found.id) === undefined || !asText(after.html).includes(found.shown);
     } catch {
       ok = false;
     }
-    return undoResult(ok, `Removed the line this tool appended:\n\n  ${text}`, entry, 'line');
+    return undoResult(ok, `Removed the line this tool ${added}:\n\n  ${found.shown}`, entry, 'line');
+  }
+
+  if (original.operation === 'replace_onenote_element') {
+    // Found by what the replace wrote, and put back from the pre-image recorded
+    // before it. A table goes back whole, only while every row still reads as
+    // the replace left it: an edit the musician made anywhere in it since makes
+    // the undo refuse, which is coarser than a row undo and the reason task
+    // tables are changed with append_row and update_row instead.
+    const written = original.wrote ?? '';
+    const was = original.pre_image ?? '';
+    if (written === '' || was === '') {
+      throw failure('The record of that replace has no copy of what it wrote or what it replaced, so it cannot be undone. Nothing was changed.');
+    }
+    const table = rootTag(written) === 'table';
+    const shownWas = table ? renderTable(was) : plain(was);
+    const content = restorable(was);
+    if (content === null) {
+      throw failure(
+        'What that replace overwrote holds something this tool does not write, so it cannot be put back ' +
+          `automatically. Nothing was changed. It read:\n\n${shownWas}`,
+      );
+    }
+    const found = findWritten(before.html, written, table ? 'The table this tool wrote' : 'The text this tool wrote');
+    const entry = undoEntry(`Put back what this tool replaced: ${table ? 'a table' : shownWas}`, found.element);
+    await record({ ...entry, status: 'pending' });
+    await onenotePatchPage(pageId, [replaceCommand(found.id, content)], token, before.etag);
+    await record({ ...entry, status: 'done' });
+    // Read back by content, as everything here is: the restored element has a
+    // new id, and what counts is that the page says again what it said.
+    let ok = false;
+    try {
+      const after = await onenotePageContent(pageId, token);
+      ok = table
+        ? pageTables(after.html).some((t) => JSON.stringify(rowsOf(t)) === JSON.stringify(rowsOf(was)))
+        : reading(after.html, shownWas) === reading(before.html, shownWas) + 1 &&
+          reading(after.html, found.shown) === reading(before.html, found.shown) - 1;
+    } catch {
+      ok = false;
+    }
+    return undoResult(ok, `Put back what this tool replaced:\n\n${table ? shownWas : `  ${shownWas}`}`, entry, table ? 'table' : 'element');
   }
 
   throw failure(
@@ -264,7 +379,7 @@ export async function undoWrite(
   );
 }
 
-const undoResult = (ok: boolean, what: string, entry: WriteRecord, unit: 'row' | 'line') => ({
+const undoResult = (ok: boolean, what: string, entry: WriteRecord, unit: 'row' | 'line' | 'table' | 'element') => ({
   changed: true,
   verified: ok,
   write_ids: [entry.write_id as string],
@@ -273,7 +388,11 @@ const undoResult = (ok: boolean, what: string, entry: WriteRecord, unit: 'row' |
     (ok
       ? unit === 'row'
         ? 'Every other row of the table was read back unchanged.'
-        : 'Read back: it is gone, and nothing else was touched.'
+        : unit === 'table'
+          ? 'Read back: the table reads as it did before.'
+          : unit === 'element'
+            ? 'Read back: it reads as it did before.'
+            : 'Read back: it is gone, and nothing else was touched.'
       : 'WARNING: the page did not read back as expected after the undo. Tell the musician now; ' +
         "what stood before is in this install's write log.") +
     `\n\nRecorded as write ${entry.write_id}.`,

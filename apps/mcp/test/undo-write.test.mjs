@@ -204,7 +204,9 @@ test('an unknown id, an undo, an already-undone write, or an unsupported kind is
   await assert.rejects(undoWrite('t', { write_id: first.write_ids[0] }, l.record, l.readLog), /itself an undo/);
 
   const other = '99999999-2222-3333-4444-555555555555';
-  await l.record({ operation: 'replace_onenote_element', summary: 's', target: 'p1', pre_image: '<p>x</p>', write_id: other, status: 'done' });
+  // A created page: Notes.Create cannot delete, so this tool never undoes one.
+  // (A replace stood here until 0019 step 3 made replaces undoable.)
+  await l.record({ operation: 'create_onenote_page', summary: 's', target: 'p1', pre_image: null, write_id: other, status: 'done' });
   const none = notebook(page(''));
   await withFetch(none.fetchImpl, () =>
     assert.rejects(undoWrite('t', { write_id: other }, l.record, l.readLog), /cannot be undone by this tool yet/),

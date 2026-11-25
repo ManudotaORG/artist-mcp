@@ -211,6 +211,71 @@ measurement is taken across the whole promotion in step 4.
 Each undo is itself two-phase and recorded, as in 0018. A restore returns words
 and structure, not exact markup (0015).
 
+**Built on 2026-11-25, and verified live locally the same day.** `undo_write` now reverses
+`insert_onenote_element` and `replace_onenote_element`, besides 0018's three
+kinds:
+- **Insert:** a single paragraph or heading is found by its text and to-do
+  tag, outside any table, and replaced with `<p></p>`, as an appended line
+  is. An inserted table, list or run of elements is refused as removed by
+  hand.
+- **Replace:** the element is found by what was written (`wrote`, recorded
+  in step 1): a paragraph or heading by its text, a table by its rows cell by
+  cell. It is then replaced with the pre-image, with its old `id` and
+  `data-id` stripped. A table pre-image is normalised as `append_row` writes
+  one, and refused if it holds something that isn't carried. A pre-image this
+  tool would not write is not restored; the refusal shows its text for a
+  person to put back.
+
+Both read back by content, since the restored element has a new id. Both
+are refused, with nothing sent and nothing recorded, when the target no
+longer reads as written or matches more than once. Each undo is two-phase,
+and its pending line keeps what the undo overwrites. The already-undone and
+undo-of-an-undo refusals apply unchanged. Results and the tool text now say
+a replace is put back by `undo_write`, instead of "only in this install's
+write log".
+
+Tests (`undo-edit.test.mjs`) make each write through the real edit path and
+undo it against the page as OneNote returns it, with new ids. They cover a
+paragraph and a table put back, each refused after a later edit, a duplicate
+refused, an insert removed, an inserted table refused, an unwritable
+pre-image shown rather than restored, and a second undo refused. Four fail
+with the content match removed. One 0018 test used a replace as its example
+of a kind that cannot be undone; it now uses a created page, which never can
+be.
+
+**Live, locally, on `artist-mcp live test 0009 (delete me)`**, driving the
+rebuilt dispatcher with the owner's Microsoft connection. Each step was read
+back through `read_note`, and each result reported `verified: true`.
+- **Paragraph:** a paragraph appended, replaced (1200 → 1400) with `expect`,
+  and undone: it read 1200 again.
+- **Insert:** a line inserted after it, then undone, and it was gone.
+- **Table:** a two-row non-task table appended, replaced whole (1200 → 1450)
+  with `expect` as rows, and undone: it read 1200 again.
+- **Edited since (by proxy):** one replace (1200 → 1500), a second on top of
+  it standing in for the musician's own edit, then an undo of the first. It
+  was refused with what the paragraph then read, and nothing was sent.
+  Undoing the second, then the first, brought back 1200.
+- **Stale `expect`:** refused with the element's current text, and the page
+  unchanged.
+- **Cleanup:** the appended paragraph was undone. The appended table is still
+  on the page, because removing a table is by hand until that has been tried.
+
+One failure on the way, and it was the token, not this step. A preview and
+its commit, a few seconds apart and shortly after an undo had rewritten the
+same paragraph, captured different markup. The token, which hashes the raw
+pre-image, stopped matching and nothing was written; the same call landed
+first time when run again. OneNote apparently goes on rewriting an element
+for a moment after a write. `expect` compares text rather than markup, so it
+does not trip on this, which is one more reason for step 4.
+
+Found on the way, and fixed: `test/onenote-tools.test.mjs` spawned the
+server with the developer's own token file and write log. On a machine
+connected to Microsoft, its append to `a-page-id` reached Graph, and every
+test run since 0018 left a pending line in `~/.artist-mcp/writes.log` (29 of
+them). The spawned server now gets a temporary token file and log. The lines
+already there are inert, pending lines for a page that does not exist, and
+were left in place.
+
 ### 4. The table rule moves into the edit, then the OneNote previews go
 
 What is mechanical is applied, not refused: the `asWritten` normalisation that

@@ -3079,9 +3079,9 @@ const createServer = async (
         "not this tool — and it cannot delete anything. 'append' adds to the end " +
         "and removes nothing. 'insert' adds a block before or after an existing " +
         "paragraph, heading or table and removes nothing. 'replace' overwrites one element and is " +
-        "destructive: OneNote keeps no page version and what it replaced is " +
-        "recoverable only from this install's own write log, so never describe it " +
-        "as undoable in OneNote. Replacing a TABLE overwrites every row of it at " +
+        "destructive: OneNote keeps no page version, so never describe it as " +
+        "undoable in OneNote; undo_write puts it back from this install's own write " +
+        "log while it still reads as written. Replacing a TABLE overwrites every row of it at " +
         "once, because OneNote supports no change to a single row or cell — so " +
         "the html must carry the cells that are staying exactly as they read now, " +
         "and a cell left out is a value destroyed. A replace or insert requires the confirmation_token from a preview " +
@@ -3161,7 +3161,8 @@ const createServer = async (
     server.tool(
       "undo_write",
       "Reverses one write this tool made to a OneNote page, by the write id its result named " +
-        "(\"Recorded as write …\"): removes a row or line it added, or puts back a row it changed. " +
+        "(\"Recorded as write …\"): removes a row or line it added or inserted, puts back a row it changed, " +
+        "or puts back what a replace overwrote, a whole table included. " +
         "Only while that still reads exactly as written — if Ruben has edited, ticked or removed it " +
         "since, it is refused and nothing changes. It removes nothing else, ever. In a conversation, " +
         "show the musician what will be undone and wait for their yes.",

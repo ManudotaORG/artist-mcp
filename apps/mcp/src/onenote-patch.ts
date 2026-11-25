@@ -1915,8 +1915,8 @@ export async function applyEdit(
         : `${draft.changes.length} changes were applied in one write. `) +
       (replaced === 0
         ? 'The page now carries this. Nothing was removed.'
-        : "The previous text is only in this install's write log; OneNote cannot " +
-          'undo it.') +
+        : "OneNote keeps no version of what was replaced; this install's write log " +
+          'does, and undo_write puts it back by its write id while it still reads as written.') +
       ` Recorded as write ${ids.join(', ')}.`,
   };
 }

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { createServer } from '../dist/server.js';
@@ -140,7 +141,18 @@ test('create_onenote_page requires nothing a caller cannot supply', async () => 
  * defect lived in the gap between the schema and it.
  */
 const callTool = async (name, args, flags) => {
-  const server = spawn(process.execPath, [entry, ...flags], { stdio: ['pipe', 'pipe', 'pipe'] });
+  // Never this machine's own tokens or write log. Without this, a developer's
+  // real Microsoft connection let an append to 'a-page-id' reach Graph, and
+  // every test run left a pending line in ~/.artist-mcp/writes.log.
+  const scratch = await mkdtemp(join(tmpdir(), 'artist-tools-'));
+  const server = spawn(process.execPath, [entry, ...flags], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: {
+      ...process.env,
+      ARTIST_MCP_TOKENS: join(scratch, 'tokens.json'),
+      ARTIST_MCP_AUDIT: join(scratch, 'writes.log'),
+    },
+  });
   try {
     const send = (msg) => server.stdin.write(`${JSON.stringify(msg)}\n`);
     send({
