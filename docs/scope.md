@@ -331,19 +331,27 @@ Deliberately out of the MVP. Recorded so they aren't rediscovered as surprises.
    updates. Aligning `.nvmrc` with the 24 that CI actually uses is the smaller,
    separate half.
 
-   **Settled on 2026-11-28, for 4.0.0.** `engines.node` is `>=22` in the root
-   and in `apps/mcp`, since Node 20 has had no security updates since
-   2026-04-30. `.nvmrc` pins 24, matching CI, the release workflow and Vercel.
-   Nothing in the package needed 22: no dependency asks for it, and the pdf.js
-   that unpdf bundles carries its own fallbacks for the newer built-ins it
-   uses. The floor is now tested rather than assumed. A CI job runs the
-   package's tests on Node 22, and `scripts/node-versions.test.mjs` fails when
-   the floor, that job and `.nvmrc` disagree. Checked locally on Node 22.23.5
-   before the change: all 805 package tests pass, and the packed tarball
-   installs with no engine warning and serves its tools over stdio. npm on
-   Node 20 now warns at install but does not refuse. The website's
-   `@types/node` follows Vercel's 24, and the package's stays at 22, its
-   floor.
+   **Settled on 2026-11-28, for 4.0.0.** `engines.node` is `>=24` in the root
+   and in `apps/mcp`. Node 20 has had no security updates since 2026-04-30,
+   and the floor was first raised to 22, the oldest line still supported. The
+   owner chose 24 instead, before the release, because 22's support ends on
+   2027-04-30. Raising the floor again then would be another breaking release,
+   and this way it rides in 4.0.0. The cost is that Node 22 users are shut out
+   five months early. Nothing in the package needs 24, or 22: no dependency
+   asks for either, and the pdf.js that unpdf bundles carries its own
+   fallbacks for the newer built-ins it uses.
+
+   The floor is now tested rather than assumed. The CI job *Package tests on
+   the oldest supported Node* runs the package's tests on exactly the floor,
+   and `scripts/node-versions.test.mjs` fails when the floor, that job and
+   `.nvmrc` disagree. `.nvmrc` pins 24, matching CI, the release workflow and
+   Vercel. Both `@types/node` are at 24. The package's tests were also run on
+   Node 22.23.5 before the choice, and all 805 passed. npm on an older Node
+   warns at install but does not refuse.
+
+   Next, decided the same day and not yet done: CI, the release workflow,
+   `.nvmrc` and the Vercel project move to Node 26, the newest LTS. The floor
+   job stays on 24.
 
 9. **Staging builds misreported their own version over MCP.** Fixed. `set-staging-version.mjs`
    rewrites `package.json` and nothing else, while `src/server.ts` carries the

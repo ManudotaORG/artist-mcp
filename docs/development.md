@@ -35,7 +35,7 @@ in the artist's project.
 
 ## Prerequisites
 
-- Node.js 22 or newer — that is what `engines.node` promises users, and the
+- Node.js 24 or newer — that is what `engines.node` promises users, and the
   CI job *Package tests on the oldest supported Node* runs the package's tests
   on exactly that version. `.nvmrc` pins 24, which CI, the release workflow and
   the Vercel project run. `scripts/node-versions.test.mjs` fails if the floor,

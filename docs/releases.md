@@ -179,7 +179,7 @@ pnpm --filter @manudota/artist-mcp pack
 ```
 
 Inspect the tarball. It must ship only `dist` and `agent-pack`, keep the
-executable shebang, target Node 22 or newer, and publish publicly.
+executable shebang, target Node 24 or newer, and publish publicly.
 
 ### After publishing
 
