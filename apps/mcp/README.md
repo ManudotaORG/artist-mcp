@@ -197,7 +197,7 @@ refusals mean, and how to go back to the shipped set.
 
 ## Requirements
 
-Node 22 or newer.
+Node 24 or newer.
 
 ## Links
 
