@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { dispatchWith } from '../dist/dispatch.js';
 import { updateRow } from '../dist/onenote-rows.js';
-import { isTick, planTick, statusWord, tickTask, undoTick } from '../dist/task-tick.js';
+import { isTick, isTickOf, planTick, statusWord, tickTask, undoTick } from '../dist/task-tick.js';
 
 /**
  * The task view's tick (0023): find the task on the page as read now, by the
@@ -189,6 +189,54 @@ test('a write Graph refuses is reported, not retried', async () => {
   assert.equal(out.ticked, false);
   assert.equal(out.reason, 'failed');
   assert.equal(calls.filter((c) => c.op === 'edit_onenote_page').length, 1);
+});
+
+test('a write that reports failure but landed is reported as done, with no write id', async () => {
+  // A timeout after OneNote saved the change looks like any other failure
+  // from here. The page read afterwards decides.
+  const before = page(table(rows));
+  const after = page(table([rows[0], task('Vertrag zur&#252;cksenden', { done: true, status: 'ERLEDIGT' }), rows[2]]));
+  const { call } = fakeCall([before, after], {
+    edit: async () => {
+      throw new Error('Graph timed out');
+    },
+  });
+  const out = await tickTask(call, 'p1', 'Vertrag zurücksenden');
+  assert.equal(out.ticked, true);
+  assert.equal(out.write_id, null);
+  assert.equal(out.response_lost, true);
+  assert.equal(out.verified, true);
+  assert.equal(out.status_before, 'OFFEN — warte auf Agnes');
+});
+
+test('a write that reports failure and did not land stays a failure', async () => {
+  const { call } = fakeCall([page(table(rows)), page(table(rows))], {
+    edit: async () => {
+      throw new Error('Graph timed out');
+    },
+  });
+  const out = await tickTask(call, 'p1', 'Vertrag zurücksenden');
+  assert.equal(out.ticked, false);
+  assert.equal(out.reason, 'failed');
+});
+
+test('isTickOf matches a logged tick to its task, a cell with a note under it included', () => {
+  const entry = (cells) => ({
+    operation: 'update_table_row',
+    target: 'p1',
+    pre_image: '<table/>',
+    wrote: JSON.stringify({
+      header: ['Aufgabe', 'Status'],
+      before: { cells: [cells, 'OFFEN'], done: false },
+      after: { cells: [cells, 'ERLEDIGT'], done: true },
+    }),
+  });
+  assert.equal(isTickOf(entry('Hotel buchen'), 'Hotel buchen'), true);
+  assert.equal(isTickOf(entry('Hotel buchen (Agnes fragen)'), 'Hotel buchen'), true);
+  assert.equal(isTickOf(entry('Zug buchen'), 'Hotel buchen'), false);
+  const p = { operation: 'replace_onenote_element', target: 'p1', pre_image: line('Hotel buchen') };
+  assert.equal(isTickOf({ ...p, wrote: '<p data-tag="to-do:completed">Hotel buchen</p>' }, 'Hotel buchen'), true);
+  assert.equal(isTickOf({ ...p, wrote: '<p data-tag="to-do:completed">Hotel buchen</p>' }, 'Zug buchen'), false);
 });
 
 test('isTick accepts a tick and its Status cell, and nothing else', () => {

@@ -248,13 +248,20 @@ export type Call = <T>(op: 'read_note' | 'edit_onenote_page' | 'undo_write', par
 export type TickOutcome =
   | {
       ticked: true;
-      write_id: string;
+      /**
+       * The write's id, from its result. Null when the write's response was
+       * lost but the page shows the task done: the write landed, and its id is
+       * only in the write log's pending line, which the caller can look up.
+       */
+      write_id: string | null;
       /** The page's tasks read after the write, for the snapshot. Null if that read failed. */
       tasks: PageTasks | null;
       /** What the Status cell said before the tick, when it was overwritten. */
       status_before: string | null;
       /** True when the read after the write shows the task done. */
       verified: boolean;
+      /** True when the write reported a failure and the page shows the task done anyway. */
+      response_lost: boolean;
     }
   | {
       ticked: false;
@@ -312,26 +319,51 @@ export const tickTask = async (call: Call, pageId: string, text: string): Promis
     );
     writeId = result.write_ids?.[0];
   } catch (err) {
-    return { ticked: false, reason: 'failed', message: messageOf(err), tasks: await reread(call, pageId) };
+    // A failed write may still have landed: a timeout or a dropped connection
+    // after OneNote saved it looks exactly like a refusal from here. The page
+    // is read again anyway, for the snapshot, so it decides. A task that now
+    // reads done is reported as done — the view must not offer to tick again,
+    // or say "nicht geklappt", about a task OneNote holds ticked.
+    const after = await reread(call, pageId);
+    if (readsDone(after, text)) {
+      return {
+        ticked: true,
+        write_id: null,
+        tasks: after,
+        status_before: plan.kind === 'row' ? plan.status_before : null,
+        verified: true,
+        response_lost: true,
+      };
+    }
+    return { ticked: false, reason: 'failed', message: messageOf(err), tasks: after };
   }
   if (writeId === undefined) {
     return { ticked: false, reason: 'failed', message: 'Die Änderung nannte keine Kennung.', tasks: await reread(call, pageId) };
   }
 
   const tasks = await reread(call, pageId);
-  const wanted = oneLine(text);
   return {
     ticked: true,
     write_id: writeId,
     tasks,
     status_before: plan.kind === 'row' ? plan.status_before : null,
-    verified: tasks !== null && tasks.tasks.some((task) => task.text === wanted && task.done),
+    verified: readsDone(tasks, text),
+    response_lost: false,
   };
+};
+
+/** Whether a read of the page shows the task with this text done. */
+const readsDone = (tasks: PageTasks | null, text: string): boolean => {
+  const wanted = oneLine(text);
+  return tasks !== null && tasks.tasks.some((task) => task.text === wanted && task.done);
 };
 
 /** A log entry, as `ReadWriteLog` returns it. Only the fields the check reads. */
 export type LoggedTick = {
   operation: string;
+  /** When it was recorded, as the log gives it. */
+  at?: string;
+  status?: string;
   target: string;
   pre_image?: string | null;
   wrote?: string | null;
@@ -388,3 +420,24 @@ export const undoTick = async (call: Call, pageId: string, writeId: string): Pro
 };
 
 const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+/**
+ * Whether a logged write is a tick of the task with this text. Used to find
+ * the write id of a tick whose response was lost: its pending line, recorded
+ * before the write, carries the id, and nothing else does.
+ */
+export const isTickOf = (entry: LoggedTick, text: string): boolean => {
+  if (!isTick(entry) || typeof entry.wrote !== 'string') return false;
+  const wanted = oneLine(text);
+  if (entry.operation === 'update_table_row') {
+    try {
+      const cells = (JSON.parse(entry.wrote) as { before?: { cells?: string[] } }).before?.cells ?? [];
+      // The logged cells are whole cells; a task with a note on a second line
+      // in its cell reads as the task text followed by that note.
+      return cells.some((cell) => oneLine(cell) === wanted || oneLine(cell).startsWith(`${wanted} `));
+    } catch {
+      return false;
+    }
+  }
+  return oneLine(asText(entry.wrote)) === wanted;
+};

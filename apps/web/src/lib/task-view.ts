@@ -233,6 +233,7 @@ const tickDeps = (userId: string): TickDeps => ({
   },
   hasPage: async (pageId) => (await readTaskView(userId)).pages.some((p) => p.page_id === pageId),
   logEntries: (writeId) => hostedWriteLog(userId)({ writeId }),
+  logSince: (since) => hostedWriteLog(userId)({ since, limit: 50 }),
   // This user's tokens, audit and own write log, so undo_write finds only
   // their writes.
   writer: () =>
