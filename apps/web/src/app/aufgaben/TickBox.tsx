@@ -79,18 +79,30 @@ const TickBox = ({ taskKey, onenoteHref, children }: TickBoxProps) => {
             erledigt in OneNote
             {ticked.status_before !== null ? ` · Status war: ${ticked.status_before}` : ''}
             {ticked.verified ? '' : ' · noch nicht zurückgelesen'}
+            {ticked.response_lost
+              ? ' · OneNote hat nicht geantwortet, die Seite zeigt die Aufgabe aber erledigt'
+              : ''}
           </Typography>
-          <form action={undo}>
-            <input type="hidden" name="write_id" value={ticked.write_id} />
-            <input type="hidden" name="page_id" value={ticked.page_id} />
-            <button
-              type="submit"
-              disabled={undoing}
-              className="inline-flex min-h-11 cursor-pointer items-center font-mono text-sm font-bold text-signal-cyan underline underline-offset-4 disabled:cursor-wait"
+          {ticked.write_id !== null ? (
+            <form action={undo}>
+              <input type="hidden" name="write_id" value={ticked.write_id} />
+              <input type="hidden" name="page_id" value={ticked.page_id} />
+              <button
+                type="submit"
+                disabled={undoing}
+                className="inline-flex min-h-11 cursor-pointer items-center font-mono text-sm font-bold text-signal-cyan underline underline-offset-4 disabled:cursor-wait"
+              >
+                {undoing ? 'wird zurückgenommen…' : 'Rückgängig'}
+              </button>
+            </form>
+          ) : onenoteHref !== null ? (
+            <a
+              href={onenoteHref}
+              className="inline-flex min-h-11 items-center font-mono text-sm font-bold text-signal-cyan underline underline-offset-4"
             >
-              {undoing ? 'wird zurückgenommen…' : 'Rückgängig'}
-            </button>
-          </form>
+              In OneNote rückgängig machen
+            </a>
+          ) : null}
         </div>
       ) : null}
       {refusal !== null ? (

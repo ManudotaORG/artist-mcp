@@ -8,6 +8,7 @@
  */
 import {
   isTick,
+  isTickOf,
   tickTask,
   undoTick,
   type Call,
@@ -20,10 +21,13 @@ export type TickState =
   | { status: 'idle' }
   | {
       status: 'ticked';
-      write_id: string;
+      /** Null only when the response was lost and no single pending line names the write. */
+      write_id: string | null;
       page_id: string;
       status_before: string | null;
       verified: boolean;
+      /** The write reported a failure, and the page shows the task done anyway. */
+      response_lost: boolean;
     }
   | { status: 'undone'; write_id: string }
   | { status: 'refused'; message: string };
@@ -42,6 +46,10 @@ export type TickDeps = {
   hasPage: (pageId: string) => Promise<boolean>;
   /** This user's own log entries for one write id. */
   logEntries: (writeId: string) => Promise<(LoggedTick & { status?: string })[]>;
+  /** This user's own log entries recorded since a time, newest first. */
+  logSince: (since: string) => Promise<LoggedTick[]>;
+  /** The time now, for the log lookup. Injected so a test can fix it. */
+  now?: () => number;
   /** A dispatcher bound to this user, able to write. Built only after the grant check. */
   writer: () => Call;
   /** One page's tasks, re-read after a write, into the snapshot. */
@@ -79,6 +87,7 @@ export const tickByKey = async (deps: TickDeps, key: string): Promise<TickState>
   if (task === null) {
     return { status: 'refused', message: 'Diese Aufgabe ist in der Ansicht nicht (mehr) offen.' };
   }
+  const startedAt = (deps.now ?? Date.now)();
   const outcome = await tickTask(deps.writer(), task.page_id, task.text);
   await deps.store(task.page_id, outcome.tasks);
   if (!outcome.ticked) {
@@ -89,11 +98,42 @@ export const tickByKey = async (deps: TickDeps, key: string): Promise<TickState>
   }
   return {
     status: 'ticked',
-    write_id: outcome.write_id,
+    write_id: outcome.write_id ?? (await lostWriteId(deps, task, startedAt)),
     page_id: task.page_id,
     status_before: outcome.status_before,
     verified: outcome.verified,
+    response_lost: outcome.response_lost,
   };
+};
+
+/** How far before the tick began the log is searched, against clock skew between the server and the database. */
+const LOOKBACK_MS = 2 * 60 * 1000;
+
+/**
+ * The write id of a tick whose response was lost. It was recorded, with its
+ * pre-image, in a pending line before the write, and undo_write works from
+ * that line. Exactly one such tick of this task on this page since the tick
+ * began, or none: two would mean guessing which one to undo.
+ */
+const lostWriteId = async (
+  deps: TickDeps,
+  task: { page_id: string; text: string },
+  startedAt: number,
+): Promise<string | null> => {
+  try {
+    const since = new Date(startedAt - LOOKBACK_MS).toISOString();
+    const ids = new Set(
+      (await deps.logSince(since))
+        .filter(
+          (e) => e.target === task.page_id && e.status === 'pending' && isTickOf(e, task.text),
+        )
+        .map((e) => e.write_id)
+        .filter((id): id is string => typeof id === 'string'),
+    );
+    return ids.size === 1 ? [...ids][0] : null;
+  } catch {
+    return null;
+  }
 };
 
 /**
