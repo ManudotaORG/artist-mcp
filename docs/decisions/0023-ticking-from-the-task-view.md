@@ -412,7 +412,15 @@ requests) read the pages again after the fix. Nothing was written.
   - the ciphertext held no task text, and a wrong key was refused;
   - `anon` and `authenticated` were refused the function.
 
-  It is in `hosted-custody.test.mjs`. **Not yet applied to production.**
+  It is in `hosted-custody.test.mjs`. **Applied to production on 2026-11-28**
+  with `supabase db push`, after a dry run showed it was the only migration
+  production lacked. Checked there, by counts and grants only:
+  - `store_task_page` is refused to `anon` and `authenticated` and
+    executable by `service_role`;
+  - the migration is recorded;
+  - the snapshot's 28 pages are intact, each with its tasks and no error.
+
+  The checkout was unlinked afterwards.
 - **`apps/web`**:
   - `lib/task-tick-view.ts` has the grant check, the key lookup and the undo
     guard, with no `@/` imports, so `scripts/task-tick-view.test.mjs` drives it
@@ -440,8 +448,8 @@ requests) read the pages again after the fix. Nothing was written.
 **Not verified yet:**
 
 - No tick has been made against OneNote. The scratch-page run and the one real
-  task are next. They need the migration applied to production and a deploy
-  carrying the page, because no local Supabase runs here.
+  task are next. They need a deploy carrying the page, because no local
+  Supabase runs here.
 - The first real line tick is the one to watch: whether OneNote takes the
   paragraph back with its formatting, and whether `undo_write` finds it by its
   text.
