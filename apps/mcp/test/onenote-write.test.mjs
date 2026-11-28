@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { draftFrom, pageXhtml, refuseUnsettled } from '../dist/onenote-write.js';
+import { createPage, draftFrom, pageXhtml, refuseUnsettled } from '../dist/onenote-write.js';
 
 const draft = (over = {}) => ({
   section_id: '0-AE14106C4F7C7DCC!sedce32b208ec46618fd34301f03b8cba',
@@ -30,7 +30,7 @@ test('a body of nothing but whitespace is not a page', () => {
 });
 
 test('ids are shape-checked, because they are concatenated into a URL', () => {
-  assert.throws(() => draftFrom(draft({ section_id: '../../pages' })), /section_id is malformed/);
+  assert.throws(() => draftFrom(draft({ section_id: '../../pages' })), /section_id takes a section's id, and "\.\.\/\.\.\/pages" is not one\. /);
   assert.throws(() => draftFrom(draft({ source_page: 'a b/c' })), /source_page is malformed/);
 });
 
@@ -95,4 +95,34 @@ test('everything the caller supplied is escaped, in both title and body', () => 
 test('the ampersand is escaped once, not twice', () => {
   assert.match(pageXhtml(draft({ body: 'Bass & drums' })), /<p>Bass &amp; drums<\/p>/);
   assert.ok(!pageXhtml(draft({ body: 'Bass & drums' })).includes('&amp;amp;'));
+});
+
+/**
+ * Found on hosted (2026-11-25): asked to put a page "in Claude Test", ChatGPT
+ * passed the section's name as section_id, because no tool lists section ids,
+ * and got only "section_id is malformed." The refusal now says it was a name
+ * and what to pass instead, before anything is fetched.
+ */
+test('a section name passed as section_id is named as such, with the way that works', async () => {
+  const original = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests += 1;
+    throw new Error('no request should be made');
+  };
+  try {
+    await assert.rejects(
+      createPage('t', { section_id: 'Claude Test', title: 'x', body: 'y' }, async () => {}),
+      (err) => {
+        assert.match(err.message, /"Claude Test" is not one — it looks like a name/);
+        assert.match(err.message, /pass one of that section's pages as source_page/);
+        assert.match(err.message, /list_notes gives them with their ids/);
+        return true;
+      },
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+  assert.equal(requests, 0);
+  assert.throws(() => draftFrom(draft({ section_id: 'Claude Test' })), /looks like a name/);
 });

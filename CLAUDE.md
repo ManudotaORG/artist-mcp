@@ -169,6 +169,14 @@ docs/           the brief
   them, so a hosted user who granted them gets the same write tools a local
   install does. Parity is the intent — a feature that ships to one custody
   model ships to both. See #98.
+
+  **The one hosted write that is not a tool is the task view's tick**
+  ([0023](docs/decisions/0023-ticking-from-the-task-view.md)). Its server
+  actions call `dispatchWith` directly, and `dispatchWith` checks no grant —
+  a grant is enforced by which tools `createServer` registers, and an action
+  is not a tool. So each tick and undo action checks `onenote-edit` itself,
+  first, through `writeGrantsFor`. Anything else that reaches the dispatcher
+  from outside `createServer` has to do the same.
 - **`/me/onenote/pages` dies on accounts with many sections.** Graph answers the
   whole request with 400 and error `20266`, so listing goes from working to
   broken with no partial result. Enumerate `/me/onenote/sections` and fetch

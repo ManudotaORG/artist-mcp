@@ -24,6 +24,23 @@ const failure = (message: string): GraphError => new GraphError(message, false);
 const ONENOTE_ID = /^[A-Za-z0-9!._~-]{1,300}$/;
 
 /**
+ * The refusal for a section_id that is not an id, which in practice means a
+ * section's name: no tool lists section ids — `list_notebooks` names sections,
+ * and every other id a tool prints is a page's — so a model told to put a page
+ * "in Claude Test" passes the name. Found on hosted (2026-11-25), where the bare
+ * "section_id is malformed." left ChatGPT to guess its way to source_page. The
+ * refusal now says what does work, which is where a rule holds best.
+ */
+const notASectionId = (value: string): GraphError =>
+  failure(
+    `section_id takes a section's id, and "${value.length > 60 ? `${value.slice(0, 59)}…` : value}" ` +
+      `is not one${/\s/.test(value) ? ' — it looks like a name' : ''}. No tool lists section ids; only ` +
+      'create_onenote_section returns one, for a section it has just made. To put the page ' +
+      'in a section the musician named, pass one of that section\'s pages as source_page ' +
+      '(list_notes gives them with their ids) and the new page lands beside it.',
+  );
+
+/**
  * A page long enough to be worth creating and short enough to stay one working
  * unit. The cap is not a Graph limit — it is the "one page is one working unit"
  * rule, which a 40,000-character dump would break as surely as a bad edit.
@@ -153,7 +170,7 @@ export const draftFrom = (params: Record<string, unknown>): PageDraft => {
   };
 
   const sectionId = text(params.section_id, 'section_id', true) as string;
-  if (!ONENOTE_ID.test(sectionId)) throw failure('section_id is malformed.');
+  if (!ONENOTE_ID.test(sectionId)) throw notASectionId(sectionId);
 
   const title = (text(params.title, 'title', true) as string).trim();
   if (title === '') throw failure('title is required to create a page.');
@@ -291,7 +308,7 @@ export const sectionOfPage = async (token: string, pageId: string): Promise<Sect
 
 /** Read back a section's own name, for a caller that named the section directly. */
 const sectionById = async (token: string, sectionId: string): Promise<SectionRef> => {
-  if (!ONENOTE_ID.test(sectionId)) throw failure('section_id is malformed.');
+  if (!ONENOTE_ID.test(sectionId)) throw notASectionId(sectionId);
   const res = await graphGet(
     `/me/onenote/sections/${encodeURIComponent(sectionId)}` +
       '?$select=id,displayName&$expand=parentNotebook($select=displayName)',

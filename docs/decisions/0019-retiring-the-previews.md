@@ -1,7 +1,7 @@
 # 0019 — Retiring the previews
 
-Status: **proposed, decisions taken 2026-11-25 for the OneNote half (steps
-0–4); not built.** The calendar half (steps 5–6) is deferred to
+Status: **the OneNote half (steps 0–4) built, verified live locally and on
+hosted, and shipped with #278 on 2026-11-25.** The calendar half (steps 5–6) is deferred to
 [0022](0022-google-requires-mcp-for-agents.md). A build plan for the rest of
 [0015](0015-recovery-replaces-confirmation.md), written for approval before any
 code. It follows [0018](0018-undo-and-unattended-row-updates.md), which built
@@ -390,7 +390,22 @@ rebuilt dispatcher:
 The run also caught one awkwardly worded result line, about the formatting
 kept, which is fixed.
 
-**Still to do for this step:** a run on hosted, after the promotion.
+**Verified on hosted after #278**, through ChatGPT. On a new scratch page,
+`artist-mcp hosted 0019 test (delete me)` in `Claude Test` (2026-27), a line
+was appended, replaced with `expect` and no token, and both writes were undone
+by the write ids their results named. The page read back as created.
+Production's `write_audit` holds exactly the rows that should exist, in order:
+- one for the page creation;
+- a pending and a done row for the append;
+- a pending row for the replace carrying its pre-image, recorded before the
+  write, and its done row;
+- a pending and a done row for each undo, each naming the write it undoes.
+
+The checkout was unlinked again. Seen on the way, and fixed outside this
+record: ChatGPT's first `create_onenote_page` call passed the section's name
+as `section_id` and was refused as malformed, and its retry placed the page by
+`source_page`. The refusal now says so and names `source_page` (see
+`docs/scope.md`).
 
 ### 5. Calendar edit and delete record before they write, and can be undone
 

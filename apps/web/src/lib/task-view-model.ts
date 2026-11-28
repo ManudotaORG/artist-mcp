@@ -95,6 +95,8 @@ export type ShownTask = {
   unsettled: string | null;
   stale_status: string | null;
   page: SnapshotPage;
+  /** Whether the view offers a tick box for it (0023): set by `allowTicks`, never from the snapshot. */
+  tickable?: boolean;
 };
 
 export type ShownHandover = DelegatedTask & { key: string; page: SnapshotPage };
@@ -265,3 +267,16 @@ export const pageLinks = (page: Pick<SnapshotPage, 'web_url' | 'client_url'>) =>
   app: page.client_url,
   web: page.web_url,
 });
+
+/**
+ * Offer a tick box on every open and unsettled task (0023), for a user who
+ * holds `onenote-edit`. Ticking an unsettled task is how it is settled as
+ * done. Handovers are already counted done, and a page that was not read has
+ * no tasks to show. Marks the shared task objects in place, so every view
+ * built from them — Neu, the date views, the Zeitplan — carries the box.
+ */
+export const allowTicks = (view: TaskView): void => {
+  for (const group of view.projects) {
+    for (const task of [...group.open, ...group.unsettled]) task.tickable = true;
+  }
+};

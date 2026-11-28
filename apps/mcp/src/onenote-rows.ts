@@ -22,6 +22,7 @@ import {
   replaceCommand,
   TASK_TAGS,
 } from './onenote-patch.js';
+import { taggedLines } from './tasks.js';
 
 // ---------------------------------------------------------------------------
 // append_row: one or more task rows added to the end of a table, built by the
@@ -355,9 +356,20 @@ const resolveRowChange = (
   taskAt: number,
   change: RowChange,
 ) => {
+  // A row matches by the task text as tasks mode reads it — the one the
+  // musician, the snapshot (0020) and map_notes all show — when its task cell
+  // holds exactly that one task. The whole cell's text is still accepted, as
+  // before, for a caller that copied it from read_note. Two text functions
+  // used to decide this alone, and a cell with a note under its task on a
+  // second line matched under neither name tasks mode gave it (0023).
+  const matchesTask = (row: string): boolean => {
+    if (taskTextOf(row, taskAt) === change.match) return true;
+    const lines = taggedLines(childElements(row, 'td|th')[taskAt] ?? '');
+    return lines.length === 1 && lines[0].text === change.match;
+  };
   const matches = rows
     .map((row, index) => ({ row, index }))
-    .filter(({ row, index }) => index > 0 && taskTextOf(row, taskAt) === change.match);
+    .filter(({ row, index }) => index > 0 && matchesTask(row));
   if (matches.length !== 1) {
     throw failure(
       matches.length === 0
