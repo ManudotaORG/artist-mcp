@@ -280,6 +280,8 @@ type TaskScreenProps = {
   intro?: ReactNode;
   /** The notebook choice, at the bottom once made. */
   settings?: ReactNode;
+  /** Whether this user holds onenote-edit, so the tasks carry tick boxes (0023). */
+  canTick?: boolean;
 };
 
 const TaskScreen = ({
@@ -290,6 +292,7 @@ const TaskScreen = ({
   seenControl,
   intro,
   settings,
+  canTick = false,
 }: TaskScreenProps) => {
   const stand = standLine(view);
   return (
@@ -318,9 +321,20 @@ const TaskScreen = ({
         </Typography>
         <Typography variant="small" color="muted">
           Zeigt, was auf den CL Aufgaben-Seiten steht. Aufgaben auf anderen Seiten fehlen, bis der
-          Digest sie überträgt. Hier wird nichts geändert: Abhaken und Bearbeiten passiert in
-          OneNote.
+          Digest sie überträgt.{' '}
+          {canTick
+            ? 'Abhaken ändert die Seite in OneNote. Jede Änderung wird mit dem vorherigen Stand aufgezeichnet und lässt sich gleich danach rückgängig machen. Alles andere passiert in OneNote.'
+            : 'Hier wird nichts geändert: Abhaken und Bearbeiten passiert in OneNote.'}
         </Typography>
+        {canTick ? null : (
+          <Typography variant="small" color="muted">
+            Abhaken ist ausgeschaltet. Dafür braucht es im{' '}
+            <Link href="/" className="text-signal-cyan underline underline-offset-4">
+              Dashboard
+            </Link>{' '}
+            die Freigabe zum Ändern von Seiten.
+          </Typography>
+        )}
         {view.sectionsWithout.length > 0 ? (
           <Typography variant="small" color="muted">
             Ohne CL Aufgaben-Seite, daher nicht gelesen:{' '}

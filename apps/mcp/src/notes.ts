@@ -937,6 +937,8 @@ export type NoteContent = {
    * with a tool that takes one.
    */
   editable: EditablePart[] | null;
+  /** The raw page, ids included. Only when the dispatcher's caller asked with `include_html`. */
+  html?: string;
   parts_total: number;
   part: number;
   /** The part to ask for next, or null when the page is finished. */
@@ -967,7 +969,7 @@ export const readNote = async (
   token: string,
   noteId: unknown,
   fromPart: unknown = 1,
-  { withEditIds = false }: { withEditIds?: boolean } = {},
+  { withEditIds = false, withHtml = false }: { withEditIds?: boolean; withHtml?: boolean } = {},
 ): Promise<NoteContent> => {
   if (typeof noteId !== 'string' || !ONENOTE_ID.test(noteId)) {
     throw new GraphError('note_id is missing or malformed.', false);
@@ -1012,5 +1014,9 @@ export const readNote = async (
     part,
     next_from_part: part < parts ? part + 1 : null,
     editable,
+    // The page as Graph returned it, ids included, only for a caller that
+    // finds an element itself (the task view's tick, 0023). Never set by a
+    // tool handler: the model reads text, and this doubles the payload.
+    ...(withHtml ? { html } : {}),
   };
 };

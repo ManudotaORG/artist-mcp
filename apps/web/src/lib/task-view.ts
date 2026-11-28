@@ -2,10 +2,12 @@ import 'server-only';
 
 import { dispatchWith } from '@manudota/artist-mcp/dispatch';
 import { hostedTokens } from '@/lib/hosted-tokens';
-import { hostedAudit } from '@/lib/write-audit';
+import { tickByKey, undoById, type TickDeps, type TickState } from '@/lib/task-tick-view';
+import { hostedAudit, hostedWriteLog } from '@/lib/write-audit';
+import { writeGrantsFor } from '@/lib/write-grants';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { SINCE_OVERLAP_MS, listNotebookTasks, readTaskPages } from '@/lib/task-refresh';
-import type { Snapshot } from '@/lib/task-view-model';
+import { buildTaskView, type Snapshot } from '@/lib/task-view-model';
 
 /**
  * The hosted task view's store and refresh (0020).
@@ -211,3 +213,53 @@ export const markSeen = async (userId: string, keys: string[]): Promise<void> =>
   });
   if (error) throw new Error(error.message);
 };
+
+// ---------------------------------------------------------------------------
+// Ticking a task done from the view (0023). The logic is in task-tick-view.ts;
+// this binds it to one signed-in user.
+
+export type { TickState } from '@/lib/task-tick-view';
+
+/** Whether this user holds onenote-edit. A failure to read the grants is no grant. */
+export const mayTick = async (userId: string): Promise<boolean> =>
+  (await writeGrantsFor(userId)).includes('onenote-edit');
+
+const tickDeps = (userId: string): TickDeps => ({
+  mayTick: () => mayTick(userId),
+  findTask: async (taskKeyValue) => {
+    const view = buildTaskView(await readTaskView(userId));
+    const task = [...view.open, ...view.unsettled].find((t) => t.key === taskKeyValue);
+    return task === undefined ? null : { page_id: task.page.page_id, text: task.text };
+  },
+  hasPage: async (pageId) => (await readTaskView(userId)).pages.some((p) => p.page_id === pageId),
+  logEntries: (writeId) => hostedWriteLog(userId)({ writeId }),
+  // This user's tokens, audit and own write log, so undo_write finds only
+  // their writes.
+  writer: () =>
+    dispatchWith(hostedTokens(userId), hostedAudit(userId), {
+      paceKey: userId,
+      budgetMs: READ_BUDGET_MS,
+      readLog: hostedWriteLog(userId),
+    }),
+  store: async (pageId, tasks) => {
+    if (tasks === null) return;
+    const { error } = await supabaseAdmin().rpc('store_task_page', {
+      p_user_id: userId,
+      p_key: key(),
+      p_page_id: pageId,
+      p_tasks: tasks,
+    });
+    if (error)
+      console.warn(`[artist-mcp] task view page not stored after a tick: ${error.message}`);
+  },
+});
+
+export const tickInView = async (userId: string, taskKeyValue: string): Promise<TickState> => {
+  const t0 = Date.now();
+  const state = await tickByKey(tickDeps(userId), taskKeyValue);
+  console.warn(`[artist-mcp] task view tick ${state.status} elapsed=${Date.now() - t0}ms`);
+  return state;
+};
+
+export const undoInView = (userId: string, pageId: string, writeId: string): Promise<TickState> =>
+  undoById(tickDeps(userId), pageId, writeId);

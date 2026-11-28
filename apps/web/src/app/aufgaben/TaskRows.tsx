@@ -3,6 +3,7 @@ import { type ReactNode } from 'react';
 import { Typography } from '@/components/ui/Typography';
 import { cn } from '@/lib/utils';
 import { type ShownHandover, type ShownTask, type SnapshotPage } from '@/lib/task-view-model';
+import { TickBox } from './TickBox';
 
 /** The rows every view of the task screen is made of (0020). */
 
@@ -70,8 +71,8 @@ type TaskRowProps = {
   id?: string;
 };
 
-const TaskRow = ({ task, standalone, lead, id }: TaskRowProps) => (
-  <li id={id} className="scroll-mt-16 border-b border-foreground/15">
+const TaskRow = ({ task, standalone, lead, id }: TaskRowProps) => {
+  const details = (
     <details className="group">
       <summary className={SUMMARY}>
         <Marker />
@@ -112,8 +113,19 @@ const TaskRow = ({ task, standalone, lead, id }: TaskRowProps) => (
         {standalone ? <OneNoteLink page={task.page} /> : null}
       </div>
     </details>
-  </li>
-);
+  );
+  return (
+    <li id={id} className="scroll-mt-16 border-b border-foreground/15">
+      {task.tickable ? (
+        <TickBox taskKey={task.key} onenoteHref={task.page.client_url ?? task.page.web_url}>
+          {details}
+        </TickBox>
+      ) : (
+        details
+      )}
+    </li>
+  );
+};
 
 type HandoverRowProps = {
   handover: ShownHandover;
