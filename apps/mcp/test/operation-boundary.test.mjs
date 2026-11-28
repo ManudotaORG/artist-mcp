@@ -354,6 +354,8 @@ test('no module outside the sanctioned list exports a write-shaped helper', asyn
     'task-tick.ts:planTick',
     'task-tick.ts:tickTask',
     'task-tick.ts:isTick',
+    // Pure, like isTick: it matches a logged tick to its task's text.
+    'task-tick.ts:isTickOf',
     'task-tick.ts:undoTick',
   ];
   const found = [];

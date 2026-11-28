@@ -1,7 +1,7 @@
 # 0023 — Ruben ticks a task done from the task view
 
 Status: **accepted 2026-11-25** with every open question settled as
-recommended, **built the same day, not yet run live** (see "Built" at the
+recommended, **built the same day, verified on hosted on 2026-11-28** (see "Built" at the
 end, including where the build departs from what is written here). Phase 2 of
 [0020](0020-a-snapshot-of-the-task-pages.md) (issue #267), which left acting
 on a task undecided until 0015's undo existed. It exists now:
@@ -445,14 +445,48 @@ requests) read the pages again after the fix. Nothing was written.
 - `pnpm test` passes: 101 tests in `scripts/` and 802 in the package, with lint
   and the Next build.
 
+**Verified on hosted after #280**, 2026-11-28, on a scratch page made for it:
+`CL Aufgaben — Claude Test 0023 (delete me)` in `Claude Test` (2026-27),
+created and filled from the local install. It holds one done row, one open
+row and one open line. A full refresh picked it up (2026-27: 25 pages), and
+Neu showed the two open tasks with their boxes.
+- **The table row:** ticked in about two seconds. The view showed "erledigt in
+  OneNote · Status war: OFFEN — Test", with no read-back warning. OneNote read
+  back the row ticked with Status `ERLEDIGT`, and the done row untouched.
+  "Rückgängig" put the row back, Status "OFFEN — Test" included.
+- **The line:** ticked through the replace. OneNote kept its own
+  `style="margin-top:5.5pt;margin-bottom:5.5pt"`, and `undo_write` found the
+  paragraph by its text and put its tag back.
+- **The page afterwards** read exactly as created, and a reload of the view
+  showed both tasks open.
+- **Production's `write_audit`** for that page holds exactly eight rows: a
+  pending row before each write and a done row after it, for the tick, its
+  undo, the line tick and its undo. Each pending row carries its pre-image.
+
+**A write whose response is lost**, handled 2026-11-28 after the live run. A
+timeout or a dropped connection after OneNote saved a tick looks, from the
+server, exactly like a refusal, and the view used to say "nicht geklappt" for
+a task OneNote held ticked. Now:
+- **The page decides.** `tickTask` already re-reads the page after a failed
+  write, for the snapshot. If that read shows the task done, the tick is
+  reported as done, with "OneNote hat nicht geantwortet, die Seite zeigt die
+  Aufgabe aber erledigt", and not as a failure.
+- **"Rückgängig" still works.** The write id is in the pending line recorded
+  before the write, and `undo_write` works from that line. The view looks in
+  this user's own log for pending ticks of this task on this page since the
+  tick began (`isTickOf`). It uses the write id only if exactly one matches.
+  With none or two, it links to OneNote instead of guessing which write to
+  undo.
+- **A failed write that did not land** is still a refusal.
+
+Tests cover each of those, and the guards were checked: without the re-read
+check a package test fails, and without the single-match rule or the page and
+task filter two web tests fail. Not seen live, because a lost response cannot
+be produced on demand.
+
 **Not verified yet:**
 
-- No tick has been made against OneNote. The scratch-page run and the one real
-  task are next. They need a deploy carrying the page, because no local
-  Supabase runs here.
-- The first real line tick is the one to watch: whether OneNote takes the
-  paragraph back with its formatting, and whether `undo_write` finds it by its
-  text.
+- One tick and undo on a real task. The scratch page is for deleting by hand.
 - The "Microsoft neu verbinden" line was folded into the 401/403 refusal,
   rather than decided after the live test as written above. With all 28 pages
   created by this app, a 401 or 403 now most likely means the token's scope.
