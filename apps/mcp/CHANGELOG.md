@@ -1,5 +1,64 @@
 # Changelog
 
+## [4.0.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v3.0.0...artist-mcp-v4.0.0) (2026-11-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* the package requires Node 24 or newer, which supersedes the Node 22 floor earlier in this release. npm on an older Node warns at install and does not refuse.
+* the package requires Node 22 or newer. npm on Node 20 warns at install and does not refuse, but Node 20 is no longer supported.
+* **0019:** retire the OneNote edit preview
+
+### Features
+
+* **0019:** expect, the stale-state guard that needs no person ([cf3a014](https://github.com/ManudotaORG/artist-mcp/commit/cf3a01455f57904fa24600cb6d79e0f5cc5a85a3))
+* **0019:** replace and insert record before they write; Microsoft disconnect forgets ([dc30be6](https://github.com/ManudotaORG/artist-mcp/commit/dc30be6d8cc930f5667ebf53a216901b14436fa3))
+* **0019:** retire the OneNote edit preview ([490a970](https://github.com/ManudotaORG/artist-mcp/commit/490a970f1855df51ffdddbe9f980e36db1291c05))
+* **0019:** undo_write reverses inserts and replaces ([5eeafdc](https://github.com/ManudotaORG/artist-mcp/commit/5eeafdcb4e3bf480c91d38408c3166b1304070e4))
+* a Google disconnect forgets the calendar entries of the write log (0022) ([4451701](https://github.com/ManudotaORG/artist-mcp/commit/44517012450342d4fad43a971df72e86a3be2ac0))
+* a read-only web view of Ruben's tasks (0020) ([af8a47d](https://github.com/ManudotaORG/artist-mcp/commit/af8a47d82ddaa4ea2ca1583c62751c45c6ced64d))
+* **mcp:** a task row's cells by header, for the Zeitplan (0021) ([7d1ba9f](https://github.com/ManudotaORG/artist-mcp/commit/7d1ba9fb43b055120ec93c59229d6bc45c4624f6))
+* **mcp:** a tick never leaves its Status cell behind; Frist only unattended (0018 step 4) ([9903d53](https://github.com/ManudotaORG/artist-mcp/commit/9903d5386c18078ca2686b9fe3daeb089ac5b582))
+* **mcp:** add a task row to a table, built by the server (0017) ([2e23e34](https://github.com/ManudotaORG/artist-mcp/commit/2e23e34efc7313277469cc8850c3eefd09f1596f))
+* **mcp:** change one task row, built by the server (0018 step 2) ([ba87452](https://github.com/ManudotaORG/artist-mcp/commit/ba874523c47e752f8e7ed4f26645b93912a4549a))
+* **mcp:** commit a task row change in one call (0018) ([685b680](https://github.com/ManudotaORG/artist-mcp/commit/685b680d304e7acec03738e7e088293f09bca1aa))
+* **mcp:** commit an append to a OneNote page in one call ([8ddc95f](https://github.com/ManudotaORG/artist-mcp/commit/8ddc95fcf39a97624a5dc838e68d10e0485286ff))
+* **mcp:** count a delegated task as done, with who has it ([710f710](https://github.com/ManudotaORG/artist-mcp/commit/710f7104f5f9a774bcffa6cdde612b97664c9567))
+* **mcp:** export the CL Aufgaben parser as @manudota/artist-mcp/tasks ([f7f108b](https://github.com/ManudotaORG/artist-mcp/commit/f7f108b2964d5b12b910c0096acd70d0387a1502))
+* **mcp:** list only a named notebook's sections (0016) ([7d26d51](https://github.com/ManudotaORG/artist-mcp/commit/7d26d519c3754c5cca15f2750a7d85d36b90d4b1))
+* **mcp:** mark an open task its own row calls done or handed on ([6fbca94](https://github.com/ManudotaORG/artist-mcp/commit/6fbca947e17b3f63bb5e882f555922b1f752e719))
+* **mcp:** narrow the section walk by since, before pages are listed ([27827c5](https://github.com/ManudotaORG/artist-mcp/commit/27827c51ffea1bf52ab0016ff62e6a0533778779))
+* **mcp:** pace OneNote requests per user under the per-minute limit ([0f371b5](https://github.com/ManudotaORG/artist-mcp/commit/0f371b5f66dbc5d08ba9e3a8a7c37c1c20140b8a))
+* **mcp:** read a notebook's tasks from its CL Aufgaben pages ([0130eec](https://github.com/ManudotaORG/artist-mcp/commit/0130eec25d8d8355290e6f4144cdd0ee2df68994))
+* **mcp:** read a whole Gmail thread with read_thread ([8873cb0](https://github.com/ManudotaORG/artist-mcp/commit/8873cb0ca73c2c3930776205186b68b8c2e91637))
+* **mcp:** record a write before it happens (0018 step 1) ([bc1a339](https://github.com/ManudotaORG/artist-mcp/commit/bc1a3393107f040821b86e72a45e6efb3c8b320e))
+* **mcp:** share the CL Aufgaben page rule and carry page links ([54d01b5](https://github.com/ManudotaORG/artist-mcp/commit/54d01b5628a098ea9033c1013272d7b35c23a654))
+* **mcp:** undo a write this tool made to a page (0018 step 3) ([10b7334](https://github.com/ManudotaORG/artist-mcp/commit/10b733453dc4d6a31ee4819d76122e700f6ccf2b))
+* **task-view:** tick a task done from the task view (0023) ([f27c76b](https://github.com/ManudotaORG/artist-mcp/commit/f27c76b533438676b1762a046cf7538c19235f34))
+
+
+### Bug Fixes
+
+* **deps:** unpdf 2 ([4cbc491](https://github.com/ManudotaORG/artist-mcp/commit/4cbc491f45e2b634a7e391c3d615170ed6acd730))
+* **deps:** update every dependency within its major, Next to 16.4.6 ([e63933e](https://github.com/ManudotaORG/artist-mcp/commit/e63933e548e3eb83f2e858b777cfe8a6c5ca372a))
+* **deps:** zod 4, past its memory-exhaustion advisory ([45e3a62](https://github.com/ManudotaORG/artist-mcp/commit/45e3a62a6180f04a049d2278b469234536afaee5))
+* **mcp:** bound map_notes requests in flight by its deadline ([8c60585](https://github.com/ManudotaORG/artist-mcp/commit/8c6058513d04c1e21c11858039a31585e8f99a93))
+* **mcp:** derive the notebook key from one listing on both paths ([994de37](https://github.com/ManudotaORG/artist-mcp/commit/994de37a7ef3a062a47e0bd710ef7e27073b64d5))
+* **mcp:** retry a Google 403 rate limit like a 429 ([fc8f573](https://github.com/ManudotaORG/artist-mcp/commit/fc8f57300125e6b44c9d03d7db6702334f0fd742))
+* **mcp:** say a section name is not a section_id, and what to pass ([6076d9d](https://github.com/ManudotaORG/artist-mcp/commit/6076d9d40e07c74b9ac2c58e97c6f9710d093be4))
+* **mcp:** say what an install can still do to a page it created ([71050e1](https://github.com/ManudotaORG/artist-mcp/commit/71050e1bf24b6bbeb3907b8cbe744c05ee0dfad2))
+* **mcp:** say what undoes a write, in the pack and in the results ([01af090](https://github.com/ManudotaORG/artist-mcp/commit/01af0906cf4f1401b98a852c2ba7d4afd75f9706))
+* **mcp:** send a mail search whole, or refuse it ([d643a38](https://github.com/ManudotaORG/artist-mcp/commit/d643a38ea45a29e1be2697cdf0d0df0e83e8490e))
+* **mcp:** the Orchestrator defers OneNote writes to policy:patch ([e0d6bae](https://github.com/ManudotaORG/artist-mcp/commit/e0d6bae4ab463726fda774a114d246d503acbdad))
+* **task-view:** show a tick that landed as done when OneNote's response is lost ([0df20a7](https://github.com/ManudotaORG/artist-mcp/commit/0df20a7fda8e841a6d5eac74f1d8de2a94d70352))
+* **web:** bound hosted reads and log where a request's time goes ([4a0283d](https://github.com/ManudotaORG/artist-mcp/commit/4a0283d45a34de69bd6ec43fd7fad7e56b44efed))
+
+
+### Build System
+
+* require Node 22 or newer, and test the floor in CI ([d94d4f7](https://github.com/ManudotaORG/artist-mcp/commit/d94d4f7ccad2b4734b3721573e76a78a0b06ece2))
+* require Node 24 or newer ([7a1d9ee](https://github.com/ManudotaORG/artist-mcp/commit/7a1d9ee39b34baf8dd792a0039bfba4aa03fdfcd))
+
 ## [3.0.0](https://github.com/ManudotaORG/artist-mcp/compare/artist-mcp-v2.4.0...artist-mcp-v3.0.0) (2026-10-03)
 
 
