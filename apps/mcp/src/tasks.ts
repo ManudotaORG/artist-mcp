@@ -129,8 +129,15 @@ const cellText = (cell: string): string =>
       .join(' '),
   );
 
-/** The tagged lines in a fragment, as `htmlToText` marks them. */
-const taggedLines = (html: string): { text: string; done: boolean }[] =>
+/**
+ * The tagged lines in a fragment, as `htmlToText` marks them.
+ *
+ * Exported because this is what a task's text *is*: the snapshot, `map_notes`
+ * and the digest all name a task by it, so anything that finds a task again
+ * to change it — `update_row`'s row match, the task view's tick (0023) — has
+ * to compare against this, not against a text function of its own.
+ */
+export const taggedLines = (html: string): { text: string; done: boolean }[] =>
   htmlToText(html)
     .split('\n')
     .map((line) => line.match(CHECKBOX) && { line, done: line.match(CHECKBOX)?.[1] === 'x' })

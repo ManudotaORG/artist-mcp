@@ -45,6 +45,8 @@ const CUSTODY_FUNCTIONS = [
   'fail_task_notebook',
   'task_view_for',
   'mark_task_view_seen',
+  // 0023: one page's tasks re-read after a tick, replacing a stored page only.
+  'store_task_page',
 ];
 
 const allMigrations = [
@@ -61,6 +63,7 @@ const allMigrations = [
   '20261124120000_task_view.sql',
   '20261125120000_forget_google_writes.sql',
   '20261125130000_forget_onenote_writes.sql',
+  '20261126120000_task_view_tick.sql',
 ]
   .map(read)
   .join('\n');

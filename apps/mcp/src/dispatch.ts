@@ -270,6 +270,9 @@ const dispatchOne =
         case 'read_note':
           return (await readNote(token, params.note_id, params.from_part, {
             withEditIds: params.with_edit_ids === true,
+            // Set by the hosted task view only (0023), which finds the task's
+            // element itself; the read_note tool handler never passes it.
+            withHtml: params.include_html === true,
           })) as T;
         case 'list_emails':
           return (await listEmails(token, params.query)) as T;

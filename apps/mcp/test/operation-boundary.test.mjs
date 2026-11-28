@@ -260,7 +260,7 @@ test('no module outside the sanctioned list exports a write-shaped helper', asyn
   // and CRUD words. A write can be named for what it accomplishes rather than
   // for how, and this guard has now missed that twice.
   const suspicious =
-    /export\s+(?:const|function|async function)\s+(\w*(?:post|put|patch|delete|insert|create|send|write|reschedule|move|replace|edit|append|update|undo|remove)\w*)/gi;
+    /export\s+(?:const|function|async function)\s+(\w*(?:post|put|patch|delete|insert|create|send|write|reschedule|move|replace|edit|append|update|undo|remove|tick)\w*)/gi;
   // Every module that can reach the network, not merely the ones that write
   // today. A new file is the third way this guard can go blind — after the
   // capital-D pattern and the verb-shaped names — because a module absent from
@@ -278,6 +278,9 @@ test('no module outside the sanctioned list exports a write-shaped helper', asyn
     'onenote-rows.ts',
     'onenote-undo.ts',
     'tasks.ts',
+    // 0023: reaches the network only through a dispatcher it is handed, but a
+    // module that composes writes is scanned whatever it imports.
+    'task-tick.ts',
   ];
   // The sanctioned write path, named in full. Anything else matching the shape
   // is a boundary change and fails here.
@@ -342,6 +345,16 @@ test('no module outside the sanctioned list exports a write-shaped helper', asyn
     'onenote-rows.ts:appendRows',
     'onenote-rows.ts:updateRow',
     'onenote-undo.ts:undoWrite',
+    // 0023: the task view's tick, composed from read_note, edit_onenote_page
+    // and undo_write through the dispatcher it is given — no request of its
+    // own, so the operation table and the grant are still what bound it.
+    // `tick` joined the pattern with it: a write named for what the musician
+    // does, the sixth shape this guard would otherwise have missed.
+    // planTick and isTick are pure: they decide, and send nothing.
+    'task-tick.ts:planTick',
+    'task-tick.ts:tickTask',
+    'task-tick.ts:isTick',
+    'task-tick.ts:undoTick',
   ];
   const found = [];
   for (const file of files) {

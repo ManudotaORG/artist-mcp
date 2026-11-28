@@ -12,14 +12,18 @@ import {
   listNotebook,
   readPending,
   readTaskView,
+  tickInView,
+  undoInView,
   type Claim,
+  type TickState,
 } from '@/lib/task-view';
 
 /**
  * The task view's actions (0020). Each is reachable by a direct POST, so each
  * resolves the user from the signed-in session itself, and none takes a user
- * id. None writes to OneNote, Gmail or Calendar: they read OneNote and write
- * only this user's own snapshot.
+ * id. The refresh actions read OneNote and write only this user's own
+ * snapshot. The two tick actions (0023) are the only ones that write to
+ * OneNote: one task ticked, or that tick undone, behind `onenote-edit`.
  */
 const signedIn = async (): Promise<string> => {
   const supabase = await supabaseServer();
@@ -82,4 +86,29 @@ export const markAllSeen = async () => {
   const view = buildTaskView(await readTaskView(userId));
   await markSeen(userId, view.keys);
   revalidatePath('/aufgaben');
+};
+
+/**
+ * A tick (0023). The form sends the task's key, never its text, and the key
+ * is looked up in this user's own snapshot. Nothing is revalidated: the row
+ * keeps its state, struck through with "Rückgängig", until the page is left;
+ * the snapshot already holds the page as read after the write, so the next
+ * load shows the task done.
+ */
+export const tickOne = async (_prev: TickState, formData: FormData): Promise<TickState> => {
+  const userId = await signedIn();
+  const key = String(formData.get('key') ?? '');
+  if (!/^[0-9a-f]{32}$/.test(key)) return { status: 'refused', message: 'Unbekannte Aufgabe.' };
+  return tickInView(userId, key);
+};
+
+/** "Rückgängig": the tick's own write id, checked against this user's log as a tick. */
+export const undoOne = async (_prev: TickState, formData: FormData): Promise<TickState> => {
+  const userId = await signedIn();
+  const writeId = String(formData.get('write_id') ?? '');
+  const pageId = String(formData.get('page_id') ?? '');
+  if (!/^[0-9a-f-]{36}$/.test(writeId) || pageId === '') {
+    return { status: 'refused', message: 'Unbekannte Änderung.' };
+  }
+  return undoInView(userId, pageId, writeId);
 };

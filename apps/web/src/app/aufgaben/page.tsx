@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Typography } from '@/components/ui/Typography';
 import { supabaseServer } from '@/lib/supabase/server';
 import { buildTimeline, viennaToday } from '@/lib/task-timeline';
-import { buildTaskView, isViewId } from '@/lib/task-view-model';
-import { readTaskView } from '@/lib/task-view';
+import { allowTicks, buildTaskView, isViewId } from '@/lib/task-view-model';
+import { mayTick, readTaskView } from '@/lib/task-view';
 import { markAllSeen } from './actions';
 import { NotebookPicker } from './NotebookPicker';
 import { RefreshControl } from './RefreshControl';
@@ -16,7 +16,8 @@ import { TaskScreen } from './TaskScreen';
  * Ruben's tasks across projects, from the stored snapshot of the CL Aufgaben
  * pages (0020). A page load reads the snapshot and never OneNote: OneNote
  * allows 400 requests an hour, shared with the digest and the local install.
- * OneNote stays the record; nothing here can change it.
+ * OneNote stays the record. The one change made from here is a tick, and its
+ * undo (0023), for a user who granted onenote-edit.
  */
 
 // The refresh actions run on this page and read OneNote; a notebook can take
@@ -60,6 +61,10 @@ const Aufgaben = async ({ searchParams }: AufgabenProps) => {
   const snapshot = await readTaskView(user.id);
   const chosen = snapshot.notebooks.map((n) => n.notebook);
   const view = buildTaskView(snapshot);
+  // Read per request, never held (CLAUDE.md, "Write grants are a parameter").
+  // The tick actions check it again themselves; this only decides what is shown.
+  const canTick = await mayTick(user.id);
+  if (canTick) allowTicks(view);
   const timeline = buildTimeline(view.open, viennaToday());
   const current = isViewId(ansicht) ? ansicht : 'projekte';
 
@@ -95,6 +100,7 @@ const Aufgaben = async ({ searchParams }: AufgabenProps) => {
       seenControl={seenControl}
       intro={intro}
       settings={firstVisit ? null : picker}
+      canTick={canTick}
     />
   );
 };
