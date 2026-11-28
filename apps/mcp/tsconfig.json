@@ -9,6 +9,9 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    // Named, because TypeScript 6 and later include no @types package
+    // unless asked: without it, every node: import is unresolved.
+    "types": ["node"],
     // The web app imports this package as a workspace dependency and needs to
     // typecheck against it, so the build emits declarations.
     "declaration": true,
