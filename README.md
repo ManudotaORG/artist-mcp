@@ -147,8 +147,8 @@ summary above is deliberately not a second copy of it.
 
 ## Local development
 
-Requirements: Node 20 or newer (`engines.node`; `.nvmrc` pins the version this
-is developed against) and pnpm 11. The web app additionally needs the Supabase
+Requirements: Node 22 or newer (`engines.node`; `.nvmrc` pins the 24 this is
+developed and built with) and pnpm 11. The web app additionally needs the Supabase
 CLI with Docker, for a local Supabase, and a Microsoft Entra app registration;
 the MCP package needs neither.
 

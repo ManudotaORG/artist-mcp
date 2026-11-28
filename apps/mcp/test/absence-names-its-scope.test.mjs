@@ -129,7 +129,8 @@ test('every tool taking source_page describes it, and describes it the same way'
     const shape = tool.inputSchema;
     const field = shape?.source_page ?? shape?.shape?.source_page;
     if (field === undefined) continue;
-    described.push([name, field._def?.description ?? '']);
+    // zod 4 keeps the description on the schema itself; zod 3 kept it in _def.
+    described.push([name, field.description ?? field._def?.description ?? '']);
   }
 
   assert.equal(described.length, 6, 'six tools take source_page');

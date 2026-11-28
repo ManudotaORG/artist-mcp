@@ -1073,7 +1073,7 @@ const ROW_UPDATE_PARAMS = {
     .optional()
     .describe("For update_row: true ticks the task, false reopens it"),
   set: z
-    .record(z.string())
+    .record(z.string(), z.string())
     .optional()
     .describe("For update_row: cells to change, by header name, as text — never the task text itself"),
 };
@@ -2885,7 +2885,7 @@ const createServer = async (
           ),
         ...ROW_UPDATE_PARAMS,
         rows: z
-          .array(z.record(z.string()))
+          .array(z.record(z.string(), z.string()))
           .optional()
           .describe(
             "For append_row: the new rows, each its cells by header name, e.g. {\"Aufgabe\": \"…\", \"Frist\": \"…\"}. A column left out is written UNKNOWN",
