@@ -5,7 +5,7 @@ Setup normally takes a few minutes.
 
 ## What you need
 
-- Node.js 20 or newer. Check with `node --version`.
+- Node.js 24 or newer. Check with `node --version`.
 - A Microsoft account with OneNote pages.
 - Claude Desktop or Codex installed.
 - A browser, for the sign-in step.
@@ -539,7 +539,7 @@ Restart the client; MCP configuration is loaded at startup. For Codex, run
 
 ### `npx` or Node is missing
 
-Install Node.js 20 or newer, open a new terminal, and verify `node --version`
+Install Node.js 24 or newer, open a new terminal, and verify `node --version`
 and `npx --version` before retrying.
 
 ## Security notes

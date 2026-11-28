@@ -35,10 +35,11 @@ in the artist's project.
 
 ## Prerequisites
 
-- Node.js 20 or newer — that is what `engines.node` enforces and what the
-  package promises users. `.nvmrc` pins `22.22.2` while CI, the release
-  workflow and the Vercel project run 24; nothing breaks on the difference,
-  and gap 8 in [scope.md](scope.md) tracks whether to align them.
+- Node.js 24 or newer — that is what `engines.node` promises users, and the
+  CI job *Package tests on the oldest supported Node* runs the package's tests
+  on exactly that version. `.nvmrc` pins 24, which CI, the release workflow and
+  the Vercel project run. `scripts/node-versions.test.mjs` fails if the floor,
+  that job and `.nvmrc` drift apart (gap 8 in [scope.md](scope.md)).
 - pnpm 11 through Corepack.
 - For `apps/web` only: the Supabase CLI and Docker, for the local stack
   (`supabase start`). Work on `apps/mcp` needs neither.
