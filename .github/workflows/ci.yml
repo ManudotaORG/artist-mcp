@@ -42,3 +42,30 @@ jobs:
       - name: Test
         run: pnpm test
 
+
+  # engines.node is a promise about users' machines, and nothing else here
+  # runs on the oldest Node it names: the job above, the release workflow and
+  # Vercel all use 24. This runs the package's own tests on the floor, so the
+  # promise is checked on every pull request rather than assumed. Keep its
+  # node-version equal to the floor in apps/mcp/package.json.
+  package-floor:
+    name: Package tests on the oldest supported Node
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test the package
+        run: pnpm --filter @manudota/artist-mcp test
