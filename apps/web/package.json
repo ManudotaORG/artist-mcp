@@ -30,7 +30,7 @@
     "@types/node": "^20.19.43",
     "@types/react": "^19.3.3",
     "@types/react-dom": "^19.3.0",
-    "eslint": "^9.39.5",
+    "eslint": "^10.15.0",
     "eslint-config-next": "16.4.6",
     "eslint-config-prettier": "^10.1.9",
     "eslint-plugin-prettier": "^5.5.7",
